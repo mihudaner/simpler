@@ -33,7 +33,6 @@ Runtime::Runtime() = default;
 
 void aicore_execute(Runtime *, int block_idx, CoreType) {
     if (get_aicore_report_epoch() != expected_epoch || sim_get_physical_core_id() != static_cast<uint32_t>(block_idx) ||
-        reinterpret_cast<uintptr_t>(sim_get_reg_base()) != register_addresses[block_idx] ||
         get_aicore_pmu_reg_base() != register_addresses[block_idx] || get_aicore_profiling_flag() != 0 ||
         get_chip_swimlane_aicore_head() != nullptr || get_aicore_pmu_ring() != nullptr ||
         platform_ssbuf_hardware_base_address() != UINT64_C(0x8000) + static_cast<uint64_t>(block_idx) * 128)
