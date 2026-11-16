@@ -352,10 +352,14 @@ int run(int argc, char **argv) {
                                                           }
                                                       ) :
                                                       actual == expected;
-            if (!equal)
+            if (!equal) {
+                const auto mismatch = output / ("validation-failure-buffer-" + std::to_string(i) + ".bin");
+                save_value(mismatch, actual);
                 throw std::runtime_error(
-                    "Isolated case differs from original prefix + case at buffer " + std::to_string(i)
+                    "Isolated case differs from original prefix + case at buffer " + std::to_string(i) +
+                    "; actual bytes saved to " + mismatch.string()
                 );
+            }
         }
     };
     auto save_inputs = [&] {
