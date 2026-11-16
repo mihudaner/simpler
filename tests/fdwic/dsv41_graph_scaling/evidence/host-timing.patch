@@ -1,0 +1,88 @@
+diff --git a/src/a5/runtime/host_build_graph/host/runtime_maker.cpp b/src/a5/runtime/host_build_graph/host/runtime_maker.cpp
+index 2e76b7f90..53246deba 100644
+--- a/src/a5/runtime/host_build_graph/host/runtime_maker.cpp
++++ b/src/a5/runtime/host_build_graph/host/runtime_maker.cpp
+@@ -98,6 +98,7 @@
+ #include "common/chip_swimlane_profiling.h"
+ #include "common/host_log_binding.h"
+ #include "common/host_phase_kind.h"
++#include "common/host_span.h"
+ #include "common/platform_config.h"
+ #include "common/unified_log.h"
+ #include "host_log.h"
+@@ -305,6 +306,35 @@ struct BindPhaseMark {
+     BindKernelCounters counters{};
+ };
+
++// Nested spans share the bind invocation; their durations overlap their parent.
++class BindDetailSpan {
++public:
++    BindDetailSpan(const char *name, int32_t depth) :
++        name_(name),
++        depth_(depth) {
++        if (!host_phase_breakdown_enabled() || !unified_log_host_span_enabled()) return;
++        const auto *state = unified_log_host_trace_state();
++        if (state == nullptr || state->inv == 0) return;
++        state_ = *state;
++        start_ns_ = bind_now_ns();
++    }
++
++    ~BindDetailSpan() {
++        if (start_ns_ == 0) return;
++        const SimplerHostSpan span{state_.inv, state_.hid, depth_, 0, start_ns_, bind_now_ns() - start_ns_, name_, ""};
++        unified_log_host_span(&span);
++    }
++
++    BindDetailSpan(const BindDetailSpan &) = delete;
++    BindDetailSpan &operator=(const BindDetailSpan &) = delete;
++
++private:
++    const char *name_;
++    int32_t depth_;
++    SimplerHostTraceState state_{};
++    int64_t start_ns_{0};
++};
++
+ // Open one segment. Every phase start comes from here, so a phase's two spans cannot
+ // drift apart — a fault count taken over a wider span than the clock describes work
+ // the phase does not contain.
+@@ -990,6 +1020,7 @@ bool bind_graph_definitions(
+     Runtime *runtime, const HostApi *api, GraphHostState &graph_state, NativeGraphHostPlan *native_plan,
+     int32_t total_tasks
+ ) {
++    const BindDetailSpan detail_span("chip.run.bind.graph_definitions", 2);
+     *native_plan = NativeGraphHostPlan{};
+     std::vector<uint32_t> invocation_definitions;
+     if (graph_host_upload_count(graph_state) != 0)
+@@ -1160,6 +1191,7 @@ bool bind_graph_definitions(
+         else invocation_definitions[static_cast<size_t>(shell_id.local_id())] = 0;
+     }
+     if (task_image::native_graph_plan && !invocation_definitions.empty()) {
++        const BindDetailSpan nodes_span("chip.run.bind.graph_definitions.native_nodes", 3);
+         std::string error;
+         if (!native_graph_plan_nodes(invocation_definitions, native_plan, &error)) {
+             LOG_ERROR("host-orch: invalid native Graph node map: %s", error.c_str());
+@@ -1273,6 +1305,7 @@ bool prepare_scheduler_calls(
+     Runtime *runtime, void *host_base, const AicoreSchedulerLayout &layout, uint64_t device_base,
+     const void *uploaded_sm, const sm_layout::SegmentOffsets &segments, const NativeGraphHostPlan &native_plan
+ ) {
++    const BindDetailSpan detail_span("chip.run.bind.commit.scheduler_state.calls", 4);
+     if (layout.prepared_layout_offset == 0) return true;
+     const char *platform = get_platform();
+     if (std::strcmp(platform, "a5") != 0 && std::strcmp(platform, "a5sim") != 0) return false;
+@@ -1387,6 +1420,7 @@ bool create_scheduler_state(
+     uint64_t task_window_size, const sm_layout::SegmentOffsets &device_segments, NativeGraphHostPlan &native_plan,
+     void *uploaded_sm
+ ) {
++    const BindDetailSpan detail_span("chip.run.bind.commit.scheduler_state", 3);
+     release_scheduler_state(runtime);
+     if (total_tasks < 0 || task_window_size == 0 || static_cast<uint64_t>(total_tasks) > task_window_size) {
+         LOG_ERROR(
+@@ -1961,6 +1995,7 @@ struct HostPreparePlan : RetainedHostPrepareState {
+ };
+
+ int32_t commit_host_plan(Runtime *runtime, const HostApi *api, HostPreparePlan &plan) {
++    const BindDetailSpan detail_span("chip.run.bind.commit", 2);
+     void *host_sm = plan.host_sm;
+     const uint64_t task_capacity = plan.task_capacity;
+     const uint64_t heap_bytes = plan.heap_bytes;

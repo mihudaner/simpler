@@ -1,0 +1,25 @@
+{
+  "status": "functional_smoke_only",
+  "runtime_revision": "27fe21756a5230cc4cfe7e44fa360d07d782a111",
+  "pto_isa_revision": "83b1b2b52ded9ec5d91e02532a57cd95e497ba86",
+  "task_id": "task_20261116_194328_251896626191",
+  "source": "outputs/graph-scaling/smoke/hbg-graph-10-r2",
+  "runtime": "host_build_graph",
+  "scheduler_mode": 1,
+  "layers": 10,
+  "graph_definitions": 1,
+  "graph_instances": 10,
+  "native_nodes": 30,
+  "node_kinds": {
+    "3": 10,
+    "1": 10,
+    "4": 10
+  },
+  "kernel_executions": 10,
+  "validation": {
+    "passed": true,
+    "expected_value": 55.0,
+    "max_abs_error": 0.0
+  },
+  "performance_status": "not_measured; L4 diagnostic smoke excluded"
+}

@@ -1,0 +1,2366 @@
+[
+  {
+    "layers": 1,
+    "passed": true,
+    "runs": 35,
+    "scheduler_mode": 1,
+    "cpu_reference_layers": 1,
+    "exact_replays": 34,
+    "guards_passed": true,
+    "layer_checks": [
+      {
+        "layer": 1,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      }
+    ]
+  },
+  {
+    "layers": 10,
+    "passed": true,
+    "runs": 35,
+    "scheduler_mode": 1,
+    "cpu_reference_layers": 10,
+    "exact_replays": 34,
+    "guards_passed": true,
+    "layer_checks": [
+      {
+        "layer": 1,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 2,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 3,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 4,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 5,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 6,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 7,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 8,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 9,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 10,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      }
+    ]
+  },
+  {
+    "layers": 100,
+    "passed": true,
+    "runs": 35,
+    "scheduler_mode": 1,
+    "cpu_reference_layers": 100,
+    "exact_replays": 34,
+    "guards_passed": true,
+    "layer_checks": [
+      {
+        "layer": 1,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 2,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 3,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 4,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 5,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 6,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 7,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 8,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 9,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 10,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 11,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 12,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 13,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 14,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 15,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 16,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 17,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 18,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 19,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 20,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 21,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 22,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 23,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 24,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 25,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 26,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 27,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 28,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 29,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 30,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 31,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 32,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 33,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 34,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 35,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 36,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 37,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 38,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 39,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 40,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 41,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 42,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 43,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 44,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 45,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 46,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 47,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 48,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 49,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 50,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 51,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 52,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 53,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 54,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 55,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 56,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 57,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 58,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 59,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 60,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 61,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 62,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 63,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 64,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 65,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 66,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 67,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 68,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 69,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 70,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 71,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 72,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 73,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 74,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 75,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 76,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 77,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 78,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 79,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 80,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 81,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 82,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 83,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 84,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 85,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 86,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 87,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 88,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 89,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 90,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 91,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 92,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 93,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 94,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 95,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 96,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 97,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 98,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 99,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      },
+      {
+        "layer": 100,
+        "checks": {
+          "attention_hidden": {
+            "passed": true,
+            "detail": ""
+          },
+          "attention_pre_mix": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache": {
+            "passed": true,
+            "detail": ""
+          },
+          "window_cache_scale": {
+            "passed": true,
+            "detail": ""
+          }
+        }
+      }
+    ]
+  }
+]

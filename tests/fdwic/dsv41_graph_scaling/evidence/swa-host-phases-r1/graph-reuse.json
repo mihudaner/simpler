@@ -1,0 +1,23 @@
+[
+  {
+    "layers": 1,
+    "invocations_checked": 35,
+    "definitions": 1,
+    "definition_bytes": 9792,
+    "instances": 1
+  },
+  {
+    "layers": 10,
+    "invocations_checked": 35,
+    "definitions": 1,
+    "definition_bytes": 9792,
+    "instances": 10
+  },
+  {
+    "layers": 100,
+    "invocations_checked": 35,
+    "definitions": 1,
+    "definition_bytes": 9792,
+    "instances": 100
+  }
+]

@@ -1,0 +1,56 @@
+[
+  {
+    "source": "outputs/graph-scaling/simple-structure/host_build_graph-graph-1/round-0/chip_swimlane_records.json",
+    "runtime": "host_build_graph",
+    "scheduler_mode": 1,
+    "layers": 1,
+    "kernel_executions": 1,
+    "validation": {
+      "passed": true,
+      "expected_value": 1.0,
+      "max_abs_error": 0.0
+    },
+    "definitions": 1,
+    "graph_instances": 1,
+    "nodes": 3
+  },
+  {
+    "source": "outputs/graph-scaling/simple-structure/host_build_graph-graph-100/round-0/chip_swimlane_records.json",
+    "runtime": "host_build_graph",
+    "scheduler_mode": 1,
+    "layers": 100,
+    "kernel_executions": 100,
+    "validation": {
+      "passed": true,
+      "expected_value": 5050.0,
+      "max_abs_error": 0.0
+    },
+    "definitions": 1,
+    "graph_instances": 100,
+    "nodes": 300
+  },
+  {
+    "source": "outputs/graph-scaling/simple-structure/percounter-graph-1/round-0/chip_swimlane_records.json",
+    "runtime": "percounter",
+    "scheduler_mode": 5,
+    "layers": 1,
+    "kernel_executions": 1,
+    "validation": {
+      "passed": true,
+      "expected_value": 1.0,
+      "max_abs_error": 0.0
+    }
+  },
+  {
+    "source": "outputs/graph-scaling/simple-structure/percounter-graph-100/round-0/chip_swimlane_records.json",
+    "runtime": "percounter",
+    "scheduler_mode": 5,
+    "layers": 100,
+    "kernel_executions": 100,
+    "validation": {
+      "passed": true,
+      "expected_value": 5050.0,
+      "max_abs_error": 0.0
+    }
+  }
+]

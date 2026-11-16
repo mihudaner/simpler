@@ -1,0 +1,14 @@
+{
+  "runtime_commit": "27fe21756a5230cc4cfe7e44fa360d07d782a111",
+  "pypto_commit": "f3fe4058ac15c788266a8b55d58e56b0afe09d7a",
+  "pypto_lib_commit": "7e0ed89b43f913896fca7e5cfbd4d5d07b95bd4d",
+  "pto_isa_commit": "83b1b2b52ded9ec5d91e02532a57cd95e497ba86",
+  "ptoas_version": "0.72",
+  "runtime_production_diff": "",
+  "simple_matrix_task": "task_20261116_195103_290215428890",
+  "simple_matrix_device": 0,
+  "warmups_per_case": 5,
+  "measured_per_case": 30,
+  "diagnostics": false,
+  "cpu_compilation_overlap": true
+}

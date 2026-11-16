@@ -1,0 +1,23 @@
+{
+  "task_id": "task_20261116_200909_377976930794",
+  "baseline_runtime": "27fe21756a5230cc4cfe7e44fa360d07d782a111",
+  "diagnostic_patch": "../host-timing.patch",
+  "device": 0,
+  "variants": [
+    "graph"
+  ],
+  "runtimes": [
+    "host_build_graph",
+    "percounter"
+  ],
+  "layers": [
+    1,
+    10,
+    100
+  ],
+  "warmups": 5,
+  "measured_rounds": 30,
+  "correctness_checks": 210,
+  "concurrent_local_compilation": false,
+  "interrupted_previous_attempt": "task_20261116_200743_37119127814; cancelled after user excluded further ordinary runs"
+}
