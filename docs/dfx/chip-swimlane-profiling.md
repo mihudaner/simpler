@@ -824,6 +824,13 @@ publication, register release, and shutdown spans are recorded on each thread;
 leader-only topology configuration is emitted only on thread 0. Bootstrap wait
 covers each thread's synchronization before the common register release.
 
+For A5 HBG, `SIMPLER_HBG_AICPU_DETAIL_ENABLE=1` adds AICPU lifecycle
+`detail_intervals` at level 2 or above. These nested intervals cover local
+setup, joins, supervision, diagnostic collection, and cleanup on the same
+AICPU thread lanes. The default is disabled. The collector's `swimlane_init`
+and `swimlane_collect` intervals expose profiling work inside Device wall;
+their parent intervals must not be added again when calculating elapsed time.
+
 On the HBG P thread, consecutive empty async-wait polls are compacted into one
 `async_poll(0)` record. Its duration is the exact sum of time spent inside the
 poll calls, anchored at the point where the aggregate is flushed; it is not a

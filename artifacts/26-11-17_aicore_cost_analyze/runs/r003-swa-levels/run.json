@@ -1,0 +1,148 @@
+{
+  "source_commit": "d3afb63b9b5a845097adf5883eb26250bbcfd2db",
+  "case": "pypto_lib_latest/swa",
+  "runtime": "host_build_graph",
+  "device": 1,
+  "files": [
+    {
+      "path": "outputs/aicore-cost/inputs/swa/callable.bin",
+      "sha256": "24f7500298710c0d2a93601901d9e5996a15cce08144729cbd4ca5efd4587ee0"
+    },
+    {
+      "path": "outputs/aicore-cost/inputs/swa/case.json",
+      "sha256": "c203675afab71b9394e2f219c712851718ebbbfae947d1b57df528a1b1b1e5df"
+    },
+    {
+      "path": "tests/fdwic/dsv41_scheduler/build/portable/host/native-runner",
+      "sha256": "d34975307f832d26d6c29896106220b4d1c4c4d894fe1d7962cca1f0fbad88ab"
+    },
+    {
+      "path": "build/lib/a5/onboard/host_build_graph/libhost_runtime.so",
+      "sha256": "1368eb60eb940f9df6900e321cf7e420a3a3a67ef7fd92944cd761e823c1686a"
+    },
+    {
+      "path": "build/lib/a5/onboard/host_build_graph/libaicpu_kernel.so",
+      "sha256": "374e93989df10761598dc01c41cfa95f87c86aa9265c0217d17409543db25a76"
+    },
+    {
+      "path": "build/lib/a5/onboard/host_build_graph/aicore_kernel.o",
+      "sha256": "682b5e407db4645e90095b60cc5b88450b4cc88ea64a81119abcb6b5235db97d"
+    },
+    {
+      "path": "build/lib/a5/dispatcher/libsimpler_aicpu_dispatcher.so",
+      "sha256": "c672f137490b9ee12f483877be08c645e4a4ef3149e9e9080f867d964bbdeb68"
+    }
+  ],
+  "runs": [
+    {
+      "name": "l0",
+      "level": 0,
+      "aicpu_detail": 0,
+      "warmup": 1,
+      "rounds": 10,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r003-swa-levels/l0",
+        "0",
+        "1",
+        "10",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:51:54.279276+00:00",
+      "variant": "l0",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:52:02.156059+00:00"
+    },
+    {
+      "name": "l2-a",
+      "level": 2,
+      "aicpu_detail": 1,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r003-swa-levels/l2-a",
+        "2",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:52:02.156380+00:00",
+      "variant": "l2",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:52:10.991698+00:00"
+    },
+    {
+      "name": "l3-a",
+      "level": 3,
+      "aicpu_detail": 1,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r003-swa-levels/l3-a",
+        "3",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:52:10.992144+00:00",
+      "variant": "l3",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:52:23.924894+00:00"
+    },
+    {
+      "name": "l3-b",
+      "level": 3,
+      "aicpu_detail": 1,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r003-swa-levels/l3-b",
+        "3",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:52:23.925381+00:00",
+      "variant": "l3",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:52:35.987829+00:00"
+    },
+    {
+      "name": "l2-b",
+      "level": 2,
+      "aicpu_detail": 1,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r003-swa-levels/l2-b",
+        "2",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:52:35.988242+00:00",
+      "variant": "l2",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:52:43.839547+00:00"
+    }
+  ]
+}

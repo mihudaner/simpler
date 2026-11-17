@@ -1,0 +1,143 @@
+{
+  "source_commit": "d3afb63b9b5a845097adf5883eb26250bbcfd2db",
+  "case": "pypto_lib_latest/swa",
+  "runtime": "host_build_graph",
+  "device": 0,
+  "files": [
+    {
+      "path": "outputs/aicore-cost/inputs/swa/callable.bin",
+      "sha256": "24f7500298710c0d2a93601901d9e5996a15cce08144729cbd4ca5efd4587ee0"
+    },
+    {
+      "path": "outputs/aicore-cost/inputs/swa/case.json",
+      "sha256": "c203675afab71b9394e2f219c712851718ebbbfae947d1b57df528a1b1b1e5df"
+    },
+    {
+      "path": "tests/fdwic/dsv41_scheduler/build/portable/host/native-runner",
+      "sha256": "d34975307f832d26d6c29896106220b4d1c4c4d894fe1d7962cca1f0fbad88ab"
+    },
+    {
+      "path": "build/lib/a5/onboard/host_build_graph/libhost_runtime.so",
+      "sha256": "b43314e88a17edc06d6a50517c17e3688df959284aa7b97bae3373d898c5df22"
+    },
+    {
+      "path": "build/lib/a5/onboard/host_build_graph/libaicpu_kernel.so",
+      "sha256": "19d49f33181a2511bf4b78a9ca5d5004a6cb52ea230e7c2a70efa377f007f9fa"
+    },
+    {
+      "path": "build/lib/a5/onboard/host_build_graph/aicore_kernel.o",
+      "sha256": "682b5e407db4645e90095b60cc5b88450b4cc88ea64a81119abcb6b5235db97d"
+    },
+    {
+      "path": "build/lib/a5/dispatcher/libsimpler_aicpu_dispatcher.so",
+      "sha256": "c672f137490b9ee12f483877be08c645e4a4ef3149e9e9080f867d964bbdeb68"
+    }
+  ],
+  "runs": [
+    {
+      "name": "l0",
+      "level": 0,
+      "aicpu_detail": 0,
+      "warmup": 1,
+      "rounds": 10,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r001-swa-pair/l0",
+        "0",
+        "1",
+        "10",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:31:40.458262+00:00",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:31:52.193266+00:00"
+    },
+    {
+      "name": "current-a",
+      "level": 3,
+      "aicpu_detail": 0,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r001-swa-pair/current-a",
+        "3",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:31:52.193589+00:00",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:32:05.168594+00:00"
+    },
+    {
+      "name": "detail-a",
+      "level": 3,
+      "aicpu_detail": 1,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r001-swa-pair/detail-a",
+        "3",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:32:05.169030+00:00",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:32:23.228201+00:00"
+    },
+    {
+      "name": "detail-b",
+      "level": 3,
+      "aicpu_detail": 1,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r001-swa-pair/detail-b",
+        "3",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:32:23.228622+00:00",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:32:36.188769+00:00"
+    },
+    {
+      "name": "current-b",
+      "level": 3,
+      "aicpu_detail": 0,
+      "warmup": 1,
+      "rounds": 5,
+      "command": [
+        "bash",
+        "tests/fdwic/dsv41_scheduler/production/run.sh",
+        "outputs/aicore-cost/inputs/swa",
+        "build/lib/a5/onboard",
+        "artifacts/26-11-17_aicore_cost_analyze/runs/r001-swa-pair/current-b",
+        "3",
+        "1",
+        "5",
+        "--runtime=host_build_graph"
+      ],
+      "started": "2026-11-17T02:32:36.189189+00:00",
+      "exit_code": 0,
+      "ended": "2026-11-17T02:32:48.409781+00:00"
+    }
+  ]
+}

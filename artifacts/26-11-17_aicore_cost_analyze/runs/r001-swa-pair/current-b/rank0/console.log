@@ -1,0 +1,6 @@
+run=0 scheduler_mode=1 profiling=3 warmup=1
+run=1 scheduler_mode=1 profiling=3 warmup=0
+run=2 scheduler_mode=1 profiling=3 warmup=0
+run=3 scheduler_mode=1 profiling=3 warmup=0
+run=4 scheduler_mode=1 profiling=3 warmup=0
+run=5 scheduler_mode=1 profiling=3 warmup=0

@@ -1,0 +1,16 @@
+{
+  "current": {
+    "file": "artifacts/26-11-17_aicore_cost_analyze/traces/swa-current-L3.json.gz",
+    "kernel_anchors_checked": 578,
+    "flow_pairs": 603,
+    "gzip_json_readable": true,
+    "lifecycle_intervals": 31
+  },
+  "detail": {
+    "file": "artifacts/26-11-17_aicore_cost_analyze/traces/swa-detail-L3.json.gz",
+    "kernel_anchors_checked": 578,
+    "flow_pairs": 603,
+    "gzip_json_readable": true,
+    "lifecycle_intervals": 84
+  }
+}

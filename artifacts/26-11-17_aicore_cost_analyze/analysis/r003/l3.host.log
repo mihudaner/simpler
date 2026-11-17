@@ -1,0 +1,14 @@
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.bind ts=695858741129520 dur=501480
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.publish_image ts=695858741645310 dur=268410
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.stage_inputs ts=695858742143310 dur=280
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.prepare_execution ts=695858742148190 dur=29960
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.proof.record ts=695858742632430 dur=0 f=0x3821ce0 e=0x3862de8 s=0x5eadfc8 role=0 ep=4 gen=4 disp=0 slot=0
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=2 name=chip.run.runner_run.aicpu_launch ts=695858742645590 dur=0
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.proof.record ts=695858742673850 dur=0 f=0x3821ce0 e=0x5addd38 s=0x5d699b8 role=1 ep=4 gen=4 disp=0 slot=0
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.runner_run ts=695858742193260 dur=511048060
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=2 name=chip.run.runner_run.aicore_wall ts=0 dur=429619 clk=dev clock_source=aicore aicore_start_cycle=696035329691919 aicore_end_cycle=696035330121538 aicore_cnt_hz=1000000000
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=2 name=chip.run.runner_run.device_wall ts=0 dur=1181825 clk=dev dev_id=1 dev_start_cycle=696035329472731 dev_end_cycle=696035330654556 dev_cnt_hz=1000000000
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=2 name=chip.run.runner_run.device_boundaries ts=695859253367010 dur=0 clk=host dev_id=1 aic_start=696035329378 aic_rc=0 wo_end=0 wo_rc=-1000 ts_hz=1000000
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.claim_release ts=695859253370200 dur=520
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=1 name=chip.run.validate ts=695859253379420 dur=910
+[STRACE] v=1 pid=3616324 tid=3616324 inv=4 hid=0 depth=0 name=chip.run ts=695858741093200 dur=512297040 run_id=0 dispatch_id=0 slot_id=0 generation=4 run_epoch=4

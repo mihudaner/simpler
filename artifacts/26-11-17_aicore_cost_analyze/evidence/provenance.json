@@ -1,0 +1,95 @@
+{
+  "source_commit": "d3afb63b9b5a845097adf5883eb26250bbcfd2db",
+  "remote_main_observed_not_used": "92550b6c5a5eef76617a04e660fbdde3a14d40cb",
+  "archive_updated": "2026-11-17T02:58:38.856925+00:00",
+  "environment": {
+    "architecture": "A5",
+    "cann": "9.3.0",
+    "runtime": "host_build_graph",
+    "scheduler_mode": 1,
+    "worker_count": 96,
+    "aicpu_thread_count": 5,
+    "counter_hz": 1000000000,
+    "python": "3.11, project-local .venv"
+  },
+  "inputs": {
+    "bundle": "inputs/swa-bundle.tar.gz",
+    "sha256": "675537885d37fe8c2e3aa0a0741532481bc474d1feef1cf1eb536e3022493c96",
+    "kind": "original PR SWA replay; zero-weight fixture; snapshot inputs and fused-prefix reference"
+  },
+  "runs": [
+    {
+      "run_id": "r001-swa-pair",
+      "task_submit_id": "task_20261117_103138_242543311802",
+      "device": 0,
+      "started": "2026-11-17T02:31:40.458262+00:00",
+      "ended": "2026-11-17T02:32:48.409781+00:00",
+      "iterations_including_warmup": 35,
+      "all_exit_codes_zero": true,
+      "source_snapshot": "17-phase exploratory instrumentation; binary hashes retained"
+    },
+    {
+      "run_id": "r002-swa-pair",
+      "task_submit_id": "task_20261117_103703_26925406953",
+      "device": 0,
+      "started": "2026-11-17T02:37:04.110643+00:00",
+      "ended": "2026-11-17T02:38:00.650695+00:00",
+      "iterations_including_warmup": 35,
+      "all_exit_codes_zero": true,
+      "source_snapshot": "HEAD + evidence/runtime-detail.patch.gz"
+    },
+    {
+      "run_id": "r003-swa-levels",
+      "task_submit_id": "task_20261117_105153_359725530462",
+      "device": 1,
+      "started": "2026-11-17T02:51:54.279276+00:00",
+      "ended": "2026-11-17T02:52:43.839547+00:00",
+      "iterations_including_warmup": 35,
+      "all_exit_codes_zero": true,
+      "source_snapshot": "HEAD + evidence/runtime-detail.patch.gz"
+    }
+  ],
+  "measurement": {
+    "device_wall": "latest dev_end_cycle minus earliest dev_start_cycle; RunWall in AICPU executor",
+    "before": "aicore_start_cycle - dev_start_cycle",
+    "after": "dev_end_cycle - aicore_end_cycle",
+    "phase_aggregation": "union across AICPU threads, not summed thread CPU time",
+    "statistic": "mean of 10 measured iterations per group; warmup excluded",
+    "representative": "actual measured sample nearest median Device wall"
+  },
+  "validation": {
+    "outputs": "all 105 iterations passed bytewise reference checks, including warmup",
+    "converter_tests": "157 passed",
+    "optional_host_phase_tests": "blocked before assertions: missing Torch in build venv; alternate venv extension SHA mismatch",
+    "a5_ir_check": "incomplete: no findings in 15/16 parsed TUs; llvm-dis crashed on kernel.cpp"
+  },
+  "patch_files": [
+    "docs/dfx/chip-swimlane-profiling.md",
+    "simpler_setup/tools/swimlane_converter.py",
+    "src/a5/runtime/host_build_graph/aicpu/aicore_lifecycle.cpp",
+    "src/a5/runtime/host_build_graph/aicpu/aicpu_executor.cpp",
+    "src/a5/runtime/host_build_graph/host/runtime_maker.cpp",
+    "src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_types.h",
+    "tests/ut/py/test_swimlane_converter.py",
+    "src/a5/runtime/host_build_graph/aicpu/aicpu_lifecycle_detail.h",
+    "src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_lifecycle_detail.h"
+  ],
+  "omissions": [
+    "No per-iteration actual output tensor copies; bytewise validation results retained",
+    "No installed venv, build cache or runtime library copies; source patch and run-time binary hashes retained",
+    "r001 exploratory source not snapshotted separately; measurements excluded from final comparisons"
+  ],
+  "transformations": [
+    "Raw trace JSON losslessly gzip-compressed and decompressed bytes checked before replacing large JSON files",
+    "Build and IR logs normalize machine-specific workspace paths",
+    "Trace Device wall overlay uses same-invocation integer cycle endpoints, checked against 578 kernel anchors; no Host clock alignment"
+  ],
+  "publication": {
+    "large_files": "Raw and rendered .json.gz captures retained locally, excluded from Git at user request",
+    "report": "README.zh-CN.md; README.md links to the Chinese report",
+    "script_validation": "Type checks and source headers corrected; re-rendered events exactly match both archived traces",
+    "log_normalization": "Workspace prefixes replaced by placeholders; line-end whitespace normalized; timing values unchanged",
+    "large_capture_count": 76,
+    "lfs_upload": "GitHub refused new LFS objects on a public fork; no LFS objects uploaded"
+  }
+}

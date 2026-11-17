@@ -1,0 +1,80 @@
+{
+  "readme_links_checked": 19,
+  "missing_links": [],
+  "traces": {
+    "swa-current-L3.json.gz": {
+      "events": 102636,
+      "boundary_bars": 4,
+      "device_wall_us": 1203.343
+    },
+    "swa-detail-L3.json.gz": {
+      "events": 101501,
+      "boundary_bars": 4,
+      "device_wall_us": 1205.537
+    }
+  },
+  "run_checks": [
+    {
+      "run": "runs/r003-swa-levels/l0",
+      "validated_iterations": 11
+    },
+    {
+      "run": "runs/r003-swa-levels/l2-a",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r003-swa-levels/l3-a",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r003-swa-levels/l3-b",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r003-swa-levels/l2-b",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r001-swa-pair/l0",
+      "validated_iterations": 11
+    },
+    {
+      "run": "runs/r001-swa-pair/current-a",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r001-swa-pair/detail-a",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r001-swa-pair/detail-b",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r001-swa-pair/current-b",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r002-swa-pair/l0",
+      "validated_iterations": 11
+    },
+    {
+      "run": "runs/r002-swa-pair/current-a",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r002-swa-pair/detail-a",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r002-swa-pair/detail-b",
+      "validated_iterations": 6
+    },
+    {
+      "run": "runs/r002-swa-pair/current-b",
+      "validated_iterations": 6
+    }
+  ],
+  "report": "README.zh-CN.md",
+  "publication_renderer_events_unchanged": true
+}

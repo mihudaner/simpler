@@ -1,0 +1,192 @@
+{
+  "unit": "us",
+  "summary": {
+    "l0": {
+      "before_us": {
+        "n": 10,
+        "mean": 62.3438,
+        "median": 63.1145,
+        "min": 59.148,
+        "max": 64.932
+      },
+      "aicore_us": {
+        "n": 10,
+        "mean": 299.44010000000003,
+        "median": 301.09000000000003,
+        "min": 290.406,
+        "max": 306.714
+      },
+      "after_us": {
+        "n": 10,
+        "mean": 42.3129,
+        "median": 41.958,
+        "min": 40.595,
+        "max": 45.322
+      },
+      "device_us": {
+        "n": 10,
+        "mean": 404.09680000000003,
+        "median": 404.6685,
+        "min": 395.602,
+        "max": 412.112
+      }
+    },
+    "l2": {
+      "before_us": {
+        "n": 10,
+        "mean": 204.5403,
+        "median": 202.5355,
+        "min": 197.022,
+        "max": 217.358
+      },
+      "aicore_us": {
+        "n": 10,
+        "mean": 317.9999,
+        "median": 318.44449999999995,
+        "min": 305.878,
+        "max": 331.92
+      },
+      "after_us": {
+        "n": 10,
+        "mean": 498.7028,
+        "median": 501.3615,
+        "min": 458.988,
+        "max": 527.613
+      },
+      "device_us": {
+        "n": 10,
+        "mean": 1021.2429999999999,
+        "median": 1026.721,
+        "min": 975.117,
+        "max": 1058.0
+      }
+    },
+    "l3": {
+      "before_us": {
+        "n": 10,
+        "mean": 216.589,
+        "median": 216.418,
+        "min": 211.754,
+        "max": 221.895
+      },
+      "aicore_us": {
+        "n": 10,
+        "mean": 430.7124,
+        "median": 430.3405,
+        "min": 426.963,
+        "max": 434.306
+      },
+      "after_us": {
+        "n": 10,
+        "mean": 544.9105,
+        "median": 535.2905000000001,
+        "min": 510.492,
+        "max": 603.237
+      },
+      "device_us": {
+        "n": 10,
+        "mean": 1192.2119,
+        "median": 1183.1565,
+        "min": 1154.155,
+        "max": 1253.989
+      }
+    }
+  },
+  "comparisons": {
+    "l2_vs_l0": {
+      "before_us": {
+        "ratio": 3.2808442860396703,
+        "change_percent": 228.084428603967
+      },
+      "aicore_us": {
+        "ratio": 1.0619816784725893,
+        "change_percent": 6.1981678472589286
+      },
+      "after_us": {
+        "ratio": 11.78606996920561,
+        "change_percent": 1078.606996920561
+      },
+      "device_us": {
+        "ratio": 2.5272236751194264,
+        "change_percent": 152.72236751194265
+      }
+    },
+    "l3_vs_l0": {
+      "before_us": {
+        "ratio": 3.4741064869321407,
+        "change_percent": 247.41064869321409
+      },
+      "aicore_us": {
+        "ratio": 1.4383925199063183,
+        "change_percent": 43.83925199063184
+      },
+      "after_us": {
+        "ratio": 12.878117548076354,
+        "change_percent": 1187.8117548076355
+      },
+      "device_us": {
+        "ratio": 2.9503126478606116,
+        "change_percent": 195.03126478606117
+      }
+    },
+    "l3_vs_l2": {
+      "before_us": {
+        "ratio": 1.0589062399928033,
+        "change_percent": 5.890623999280331
+      },
+      "aicore_us": {
+        "ratio": 1.354441935359099,
+        "change_percent": 35.4441935359099
+      },
+      "after_us": {
+        "ratio": 1.0926557861716435,
+        "change_percent": 9.26557861716435
+      },
+      "device_us": {
+        "ratio": 1.167412555092177,
+        "change_percent": 16.7412555092177
+      }
+    }
+  },
+  "representatives": {
+    "l2": {
+      "group": "l2-b",
+      "level": 2,
+      "variant": "l2",
+      "iteration": 3,
+      "warmup": false,
+      "pid": 3637870,
+      "inv": 4,
+      "frequency_hz": 1000000000,
+      "t0": 696056994228830,
+      "t1": 696056994431296,
+      "t2": 696056994750213,
+      "t3": 696056995258102,
+      "before_us": 202.466,
+      "aicore_us": 318.917,
+      "after_us": 507.889,
+      "device_us": 1029.272,
+      "capture": "artifacts/26-11-17_aicore_cost_analyze/runs/r003-swa-levels/l2-b/rank0/run3/chip_swimlane_records.json.gz"
+    },
+    "l3": {
+      "group": "l3-a",
+      "level": 3,
+      "variant": "l3",
+      "iteration": 3,
+      "warmup": false,
+      "pid": 3616324,
+      "inv": 4,
+      "frequency_hz": 1000000000,
+      "t0": 696035329472731,
+      "t1": 696035329691919,
+      "t2": 696035330121538,
+      "t3": 696035330654556,
+      "before_us": 219.188,
+      "aicore_us": 429.619,
+      "after_us": 533.018,
+      "device_us": 1181.825,
+      "capture": "artifacts/26-11-17_aicore_cost_analyze/runs/r003-swa-levels/l3-a/rank0/run3/chip_swimlane_records.json.gz"
+    }
+  },
+  "all_outputs_validated": true
+}

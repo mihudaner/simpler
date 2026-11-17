@@ -1,0 +1,21 @@
+Obtaining file://<workspace-parent>/%E9%AA%8C%E8%AF%81%E8%84%9A%E6%9C%AC/2026-11-16_hbg_graph_analysis/runtime-main
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: cloudpickle>=2.2 in ./.venv/lib64/python3.11/site-packages (from simpler==0.1.0) (3.1.2)
+Building wheels for collected packages: simpler
+  Building editable for simpler (pyproject.toml): started
+  Building editable for simpler (pyproject.toml): finished with status 'done'
+  Created wheel for simpler: filename=simpler-0.1.0-cp311-cp311-linux_aarch64.whl size=132285756 sha256=dae5d7ef1d9c98f2ad8a223ccc3a9ce64746598bbf1aeb805a860e2c1176d1fe
+  Stored in directory: /tmp/pip-ephem-wheel-cache-z1ziho5g/wheels/c6/8b/a3/4c64882c16e679c3097bb30ce223aaa80e0a65e04c0ea201df
+Successfully built simpler
+Installing collected packages: simpler
+  Attempting uninstall: simpler
+    Found existing installation: simpler 0.1.0
+    Uninstalling simpler-0.1.0:
+      Successfully uninstalled simpler-0.1.0
+Successfully installed simpler-0.1.0
+
+[notice] A new release of pip is available: 25.0.1 -> 26.3
+[notice] To update, run: pip install --upgrade pip

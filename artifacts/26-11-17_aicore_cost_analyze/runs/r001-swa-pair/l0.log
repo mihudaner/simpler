@@ -1,0 +1,12 @@
+run=0 scheduler_mode=1 profiling=0 warmup=1
+run=1 scheduler_mode=1 profiling=0 warmup=0
+run=2 scheduler_mode=1 profiling=0 warmup=0
+run=3 scheduler_mode=1 profiling=0 warmup=0
+run=4 scheduler_mode=1 profiling=0 warmup=0
+run=5 scheduler_mode=1 profiling=0 warmup=0
+run=6 scheduler_mode=1 profiling=0 warmup=0
+run=7 scheduler_mode=1 profiling=0 warmup=0
+run=8 scheduler_mode=1 profiling=0 warmup=0
+run=9 scheduler_mode=1 profiling=0 warmup=0
+run=10 scheduler_mode=1 profiling=0 warmup=0
+AICore L0 wall: 0.298785 ms (10 rounds, per-round rank maximum)

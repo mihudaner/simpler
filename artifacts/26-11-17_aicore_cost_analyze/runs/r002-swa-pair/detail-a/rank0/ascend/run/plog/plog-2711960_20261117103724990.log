@@ -1,0 +1,139 @@
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:24.989.582 [package_worker_factory.cpp:38][RegisterPackageWorkerCreator][tid:2711960] Register[2] package worker was created successfully
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:24.989.711 [package_worker_factory.cpp:38][RegisterPackageWorkerCreator][tid:2711960] Register[3] package worker was created successfully
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:24.990.794 [task_fail_callback_data_manager.cc:89] 2711960 TaskFailCallBackManager: Constructor.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:24.990.803 [xpu_task_fail_callback_data_manager.cc:59] 2711960 XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Constructor.
+[INFO] HCCL(2711960,native-runner):2026-11-17-10:37:25.100.074 [adapter_rts.cc:3089] [2711960][adapter_rts.cc][CallBackInitRts] g_deviceType [9] g_deviceLogicId [-1] g_devicePhyId [-1]
+[INFO] HCCL(2711960,native-runner):2026-11-17-10:37:25.153.628 [aicpu_task_cache.cc:24] [2711960][AicpuTaskCache][AicpuTaskCache] create aicpu task cache at 0x0000ffff8b2dcf40: maxCacheBytes[10485760]
+[INFO] HCCL(2711960,native-runner):2026-11-17-10:37:25.163.859 [op_base.cc:4599] [2711960][HcclCommRegCommStateCallback]Register commStateCallBack success, regName[aicpu_task_cache_callback], args[(nil)].
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:25.192.280 [runtime_keeper.cc:205] 2711960 CreateRuntimeImpl: Open libruntime_v200.so successfully
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:25.193.515 [runtime.cc:5053] 2711960 GetVisibleDevices: ASCEND_RT_VISIBLE_DEVICES param was not set
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:25.212.312 [hdc_ub_common.c:229][ascend][curpid:2711960,2711960][drv][hdc][hdc_get_urma_init_time_cost]hdc urma_cost info.(dev_id=0; l_id=53; type=5; ctx_c=0; get_token=108; attr_c:3; dev_info=7001; urma_ctx=1884; alloc_id=0; share_seg=0; lock_wait=3; urma_init=8888; own_reg_re=0; alloc_tid=1386; own_reg(new)=38; reg_dmp=0; jfc=491; jfs=194; jfr:109; post_wr=1; res_init=2226; get_tp=0; import=26)
+[INFO] ATRACE(2711960,native-runner):2026-11-17-10:37:25.222.111 [atrace_client_core.c:160](tid:2711960) start to receive device[0] trace log.
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.222.161 [client_manager.cpp:148][GetInstance][tid:2711960] [ClientManager] Current mode:1
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.222.260 [process_mode_manager.cpp:168][GetLogLevel][tid:2711960] [TsdClient] get ASCEND_GLOBAL_LOG_LEVEL [] ASCEND_GLOBAL_EVENT_ENABLE [] ASCEND_MODULE_LOG_LEVEL []
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.222.283 [tsd_process_controller.cpp:58][OpenProcess][tid:2711960] [ProcessModeManager] enter into open process deviceId[0] rankSize[0]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.222.320 [capability_manager.cpp:401][IsSupportCommonSink][tid:2711960] mutexFile[/usr/local/Ascend/driver/lib64/driver/sink_file_mutex_0.cfg] found means supporting common sink
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.222.451 [device_comm_agent.cpp:41][InitTsdClient][tid:2711960] [TsdClient] deviceId[0] begin to init hdc client
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.231.207 [version_verify.cpp:39][SetVersionInfo][tid:2711960] VersionVerify: send client version to server
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.243.089 [version_verify.cpp:71][PeerVersionCheck][tid:2711960] VersionVerify: Check client version info, server[1230], client[1230]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.243.098 [version_verify.cpp:92][ParseVersionInfo][tid:2711960] VersionVerify: pass client version info success
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.243.100 [hdc_client.cpp:243][CheckHdcConnection][tid:2711960] Service create hdc successfully.
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.510 [package_env_info.cpp:136][GetShortSocVersion][tid:2711960] get short_soc_version:Ascend950
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.585 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:Ascend-aicpu_legacy.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.594 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:Ascend910-aicpu_legacy.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.601 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:Ascend310P-aicpu_legacy.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.611 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:aicpu_hccl.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.619 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:mc2_server.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.626 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:aicpu_hcomm.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.633 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:cann-hixl-compat.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.640 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:cann-hcomm-compat.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.647 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:cann-hccd-compat.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.653 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:cann-udf-compat.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.664 [package_process_config.cpp:265][SetConfigDataOnHost][tid:2711960] insert package:cann-tsch-compat.tar.gz config
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.677 [package_process_config.cpp:331][RefreshHostPluginVersions][tid:2711960] host plugin pkg:cann-hcomm-compat.tar.gz ini parsed, version:9.2.0 timestamp:20260923_000324205
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.686 [package_process_config.cpp:331][RefreshHostPluginVersions][tid:2711960] host plugin pkg:cann-tsch-compat.tar.gz ini parsed, version:9.2.0 timestamp:20260923_000324205
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.689 [hdc_message_builder.cpp:54][SetProcSignPid][tid:2711960] [HdcMessageBuilder] tsd get process sign successfully, procpid[2711960]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.244.712 [version_verify.cpp:117][SpecialFeatureCheck][tid:2711960] VersionVerify: previous type[69], supported
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.683 [plugin_version_manager.cpp:111][HandleDevicePluginVersionRsp][tid:2711960] device plugin pkg:cann-hcomm-compat.tar.gz version:9.2.0 timestamp:20260923_000324205
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.689 [plugin_version_manager.cpp:114][HandleDevicePluginVersionRsp][tid:2711960] device plugin info rsp, pkgCount:1
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.694 [package_loader.cpp:427][LoadPackageConfigInfoToDevice][tid:2711960] Receive load package config response result:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.718 [capability_manager.cpp:401][IsSupportCommonSink][tid:2711960] mutexFile[/usr/local/Ascend/driver/lib64/driver/sink_file_mutex_0.cfg] found means supporting common sink
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.722 [package_loader.cpp:133][ShouldLoadLegacyPackage][tid:2711960] [TsdClient][logicDeviceId_=0] use legacy package
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.832 [package_env_info.cpp:227][CheckPackageExistsOnce][tid:2711960] [TsdClient][deviceId=0] pkg size[0] in path[/usr/local/Ascend/cann-9.3.0/opp/built-in/] must be only one, skip send package, packageType[6]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.836 [package_loader.cpp:102][LoadSysOpKernel][tid:2711960] [TsdClient][logicDeviceId_=0] cannot find aicpu packages
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.849 [capability_manager.cpp:401][IsSupportCommonSink][tid:2711960] mutexFile[/usr/local/Ascend/driver/lib64/driver/sink_file_mutex_0.cfg] found means supporting common sink
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.861 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:Ascend-aicpu_legacy.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.253.866 [package_process_config.cpp:396][GetPkgHostAndDeviceDstPath][tid:2711960] get orgFile:/usr/local/Ascend/cann-9.3.0/opp/Ascend/aicpu/Ascend-aicpu_legacy.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2711960_Ascend-aicpu_legacy.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.417.848 [package_loader.cpp:491][LoadSinglePackageToDevice][tid:2711960] current package:Ascend-aicpu_legacy.tar.gz is same as device, skip load
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.417.860 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:Ascend310P-aicpu_legacy.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.417.865 [package_loader.cpp:481][LoadSinglePackageToDevice][tid:2711960] cannot find package:Ascend310P-aicpu_legacy.tar.gz, optional is true skip
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.417.867 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:Ascend910-aicpu_legacy.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.417.869 [package_loader.cpp:481][LoadSinglePackageToDevice][tid:2711960] cannot find package:Ascend910-aicpu_legacy.tar.gz, optional is true skip
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.417.871 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:aicpu_hccl.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.417.876 [package_process_config.cpp:396][GetPkgHostAndDeviceDstPath][tid:2711960] get orgFile:/usr/local/Ascend/cann-9.3.0/opp/built-in/op_impl/aicpu/kernel/aicpu_hccl.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2711960_aicpu_hccl.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.420.838 [package_loader.cpp:491][LoadSinglePackageToDevice][tid:2711960] current package:aicpu_hccl.tar.gz is same as device, skip load
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.420.842 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:aicpu_hcomm.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.420.846 [package_process_config.cpp:396][GetPkgHostAndDeviceDstPath][tid:2711960] get orgFile:/usr/local/Ascend/cann-9.3.0/opp/built-in/op_impl/aicpu/kernel/aicpu_hcomm.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2711960_aicpu_hcomm.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.431.183 [package_loader.cpp:491][LoadSinglePackageToDevice][tid:2711960] current package:aicpu_hcomm.tar.gz is same as device, skip load
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.431.190 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:cann-hccd-compat.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.431.193 [package_loader.cpp:467][LoadSinglePackageToDevice][tid:2711960] current package:cann-hccd-compat.tar.gz does not need to load to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.431.195 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:cann-hcomm-compat.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.431.199 [package_process_config.cpp:396][GetPkgHostAndDeviceDstPath][tid:2711960] get orgFile:/usr/local/Ascend/cann-9.3.0/compat/cann-hcomm-compat.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2711960_cann-hcomm-compat.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.265 [plugin_version_manager.cpp:51][GetPluginUpdateStrategy][tid:2711960] [TsdClient][deviceId=0] plugin update strategy from DRV = 1
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.270 [plugin_version_manager.cpp:64][ShouldLoadCompatPluginPkg][tid:2711960] plugin update strategy is PLUGIN_FORCE_UPDATE, fallback to checkcode compare pkg:cann-hcomm-compat.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.274 [package_loader.cpp:487][LoadSinglePackageToDevice][tid:2711960] skip load compat plugin package:cann-hcomm-compat.tar.gz by version/strategy check
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.276 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:cann-hixl-compat.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.281 [package_process_config.cpp:396][GetPkgHostAndDeviceDstPath][tid:2711960] get orgFile:/usr/local/Ascend/cann-9.3.0/opp/built-in/op_impl/aicpu/kernel/cann-hixl-compat.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2711960_cann-hixl-compat.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.393 [package_loader.cpp:491][LoadSinglePackageToDevice][tid:2711960] current package:cann-hixl-compat.tar.gz is same as device, skip load
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.396 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:cann-tsch-compat.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.398 [package_loader.cpp:454][SupportLoadPkg][tid:2711960] current device chip:15 does not support package:cann-tsch-compat.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.400 [package_loader.cpp:467][LoadSinglePackageToDevice][tid:2711960] current package:cann-tsch-compat.tar.gz does not need to load to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.401 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:cann-udf-compat.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.403 [package_loader.cpp:467][LoadSinglePackageToDevice][tid:2711960] current package:cann-udf-compat.tar.gz does not need to load to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.405 [package_loader.cpp:464][LoadSinglePackageToDevice][tid:2711960] begin to load package:mc2_server.tar.gz to device:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.435.408 [package_process_config.cpp:396][GetPkgHostAndDeviceDstPath][tid:2711960] get orgFile:/usr/local/Ascend/cann-9.3.0/opp/built-in/op_impl/aicpu/kernel/mc2_server.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2711960_mc2_server.tar.gz
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.436.242 [package_loader.cpp:491][LoadSinglePackageToDevice][tid:2711960] current package:mc2_server.tar.gz is same as device, skip load
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.436.251 [hdc_message_builder.cpp:54][SetProcSignPid][tid:2711960] [HdcMessageBuilder] tsd get process sign successfully, procpid[2711960]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.436.260 [version_verify.cpp:117][SpecialFeatureCheck][tid:2711960] VersionVerify: previous type[6], supported
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.436.536 [tsd_process_controller.cpp:110][WaitOpenRsp][tid:2711960] [ProcessModeManager] deviceId[0] sessionId[1] rankSize[0], wait subprocess start response
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.829.144 [tsd_process_controller.cpp:473][ProcessQueueForAdc][tid:2711960] [TsdClient] it is unnecessary for current mode[0] to grant queue auth to aicpusd
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:25.829.156 [tsd_process_controller.cpp:133][LogOpenProcessDuration][tid:2711960] [TsdClient][deviceId=0] [sessionId=1] start hccp and computer process success,phase4:[214]ms send open message to device,phase5:[392]ms receive open message to device,phase6:[0]ms process for adc on host,whole duration:[606]ms
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:25.829.204 [event_sched.c:1560][ascend][curpid:2711960,2711960][drv][event-sche][esched_device_open]The dev_id has opened. (dev_id=0)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:25.829.789 [drv_share_log.c:233][ascend][curpid:2711960,2711960][drv][devmm][share_log_read_in_single_module]Open. (udevid=65; tgid=2711960)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:25.830.123 [va_dev_default_allocator.c:89][ascend][curpid:2711960,2711960][drv][devmm][va_dev_default_host_va_expand_with_retry]Reserve va success. (va=0x100000000000; size=2199023255552)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:25.830.458 [drv_share_log.c:233][ascend][curpid:2711960,2711960][drv][devmm][share_log_read_in_single_module]Open. (udevid=0; tgid=2711960)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:26.075.333 [queue_interface.c:999][ascend][curpid:2711960,2711960][drv][queuemng][queue_device_open]queue open finish. (dev_id=0)
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:26.075.473 [raw_device.cc:640] 2711960 Init: isAddrFlat:0
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.078.930 [tsd_client.cpp:189][TsdCapabilityGet][tid:2711960] TsdCapabilityGet Begin.
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.078.938 [capability_manager.cpp:489][CapabilityGet][tid:2711960] [CapabilityManager] enter into CapabilityGet process deviceId[0] type[0].
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.078.944 [hdc_message_builder.cpp:54][SetProcSignPid][tid:2711960] [HdcMessageBuilder] tsd get process sign successfully, procpid[2711960]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.078.949 [version_verify.cpp:117][SpecialFeatureCheck][tid:2711960] VersionVerify: previous type[38], supported
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.078.992 [capability_manager.cpp:514][CapabilityGet][tid:2711960] [CapabilityManager][deviceId=0] [sessionId=1] [type=0]send capability successfully.
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.085.658 [capability_manager.cpp:564][HandlePidQosRsp][tid:2711960] [TsdClient] PidQosMsgProc recvMsg realDeviceId[0] msgType[39] localDevId[0] rspCode[0],pidqos[1]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.085.660 [capability_manager.cpp:520][CapabilityGet][tid:2711960] [CapabilityManager][logicDeviceId_=0][type=0][pidQos=1][ret=0]recv capability response finished.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:26.085.676 [engine.cc:99] 2711960 Engine: Constructor.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:26.085.680 [stars_engine.cc:53] 2711960 StarsEngine: Constructor.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:26.176.863 [runtime.cc:5628] 2711960 CreateReportRasThread: Start report ras thread success!
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:26.177.090 [npu_driver_res.cc:389] 2713153 GetDeviceStatus: GetDeviceStatus status=1.
+[INFO] ATRACE(2711960,native-runner):2026-11-17-10:37:26.186.144 [tracer_mgr_operate.c:67](tid:2711960) create object RUNTIME_ATRACE_DEV0_TS0 successfully, exitSave(false), noLock(false).
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:26.186.167 [client_manager.cpp:202][SetProfilingCallback][tid:2711960] [TsdClient] set profiling callback successfully
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:27.206.917 [runtime.cc:5834] 2713154 ReportPageFaultProc: pageFaultSupportFlag_=0.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:30.024.303 [task_fail_callback_data_manager.cc:62] 2711960 RegTaskFailCallback: Unregister task fail callback finish, name:ASCENDCL.
+[INFO] ATRACE(2711960,native-runner):2026-11-17-10:37:30.053.202 [tracer_mgr_operate.c:250](tid:2711960) destroy object RUNTIME_ATRACE_DEV0_TS0, exitSave(false).
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:30.072.953 [stars_engine.cc:60] 2711960 ~StarsEngine: Destructor.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:30.072.963 [engine.cc:105] 2711960 ~Engine: Destructor.
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.073.099 [queue_interface.c:1014][ascend][curpid:2711960,2711960][drv][queuemng][queue_device_close]queue close finish. (dev_id=0)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.270.953 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_HOST Mem stats (Bytes). (module_name=UNKNOWN; module_id=0; current_alloced_size=0; allocated_peak_size=3457024; alloc_cnt=1; free_cnt=1)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.270.979 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_HOST Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=8400896; alloc_cnt=5; free_cnt=5)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.270.984 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_HOST Mem stats (Bytes). (module_name=DEVMM; module_id=22; current_alloced_size=524288; allocated_peak_size=589824; alloc_cnt=17; free_cnt=16)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.270.987 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_HOST Mem stats (Bytes). (module_name=TSDRV; module_id=23; current_alloced_size=0; allocated_peak_size=81920; alloc_cnt=4; free_cnt=4)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.270.993 [svm_mem_stats_show.c:71][ascend][curpid:2711960,2711960][drv][devmm][cache_mem_stats_show]MEM_HOST Cached_size:15069184Bytes
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.270.996 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_DEV_SMALL_HBM dev0 Mem stats (Bytes). (module_name=UNKNOWN; module_id=0; current_alloced_size=0; allocated_peak_size=44851200; alloc_cnt=1250; free_cnt=1250)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.270.999 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_DEV_SMALL_HBM dev0 Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=114688; alloc_cnt=15; free_cnt=15)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.271.002 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_DEV_SMALL_HBM dev0 Mem stats (Bytes). (module_name=TSDRV; module_id=23; current_alloced_size=0; allocated_peak_size=4096; alloc_cnt=6; free_cnt=6)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.271.004 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_DEV_SMALL_HBM dev0 Mem stats (Bytes). (module_name=APP; module_id=33; current_alloced_size=0; allocated_peak_size=28672; alloc_cnt=4; free_cnt=4)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.271.008 [svm_mem_stats_show.c:71][ascend][curpid:2711960,2711960][drv][devmm][cache_mem_stats_show]MEM_DEV_SMALL_HBM dev0 Cached_size:33554432Bytes
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.271.010 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_DEV_HUGE_HBM dev0 Mem stats (Bytes). (module_name=UNKNOWN; module_id=0; current_alloced_size=0; allocated_peak_size=1151336448; alloc_cnt=45; free_cnt=45)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.271.013 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_DEV_HUGE_HBM dev0 Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=205520896; alloc_cnt=9; free_cnt=9)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.271.015 [svm_mem_stats_show.c:36][ascend][curpid:2711960,2711960][drv][devmm][module_mem_stats_show]MEM_DEV_HUGE_HBM dev0 Mem stats (Bytes). (module_name=APP; module_id=33; current_alloced_size=0; allocated_peak_size=4194304; alloc_cnt=1; free_cnt=1)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.271.018 [svm_mem_stats_show.c:71][ascend][curpid:2711960,2711960][drv][devmm][cache_mem_stats_show]MEM_DEV_HUGE_HBM dev0 Cached_size:44040192Bytes
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.291.911 [drv_share_log.c:233][ascend][curpid:2711960,2711960][drv][devmm][share_log_read_in_single_module]Release. (udevid=0; tgid=2711960; ret=0)
+[INFO] DRV(2711960,native-runner):2026-11-17-10:37:30.302.522 [event_sched.c:1543][ascend][curpid:2711960,2711960][drv][event-sche][esched_device_close]Close success. (dev_id=0)
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:30.302.550 [tsd_process_controller.cpp:463][ParseTsdCloseFlag][tid:2711960] Parse tsd close flag [0]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:30.302.554 [tsd_process_controller.cpp:154][Close][tid:2711960] [TsdClient] Close [deviceId=0][sessionId=1] hccp and computer enter
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:30.302.558 [hdc_message_builder.cpp:54][SetProcSignPid][tid:2711960] [HdcMessageBuilder] tsd get process sign successfully, procpid[2711960]
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:30.302.574 [version_verify.cpp:117][SpecialFeatureCheck][tid:2711960] VersionVerify: previous type[7], supported
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:30.302.802 [tsd_process_controller.cpp:159][Close][tid:2711960] [TsdClient][deviceId=0] [sessionId=1] wait hccp and computer process close response
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:33.266.657 [tsd_process_controller.cpp:164][Close][tid:2711960] [TsdClient][logicDeviceId_=0] has recv close hccp and computer process response
+[INFO] TDT(2711960,native-runner):2026-11-17-10:37:33.271.832 [tsd_process_controller.cpp:178][Close][tid:2711960] [TsdClient][deviceId=0] [sessionId=1] close hccp and computer process success
+[INFO] ATRACE(2711960,native-runner):2026-11-17-10:37:34.729.460 [atrace_client_core.c:127](tid:2712367) atrace receive thread exited, devId=0.
+[INFO] ATRACE(2711960,native-runner):2026-11-17-10:37:34.729.767 [atrace_client_core.c:176](tid:2711960) stop to receive device[0] trace log.
+[INFO] HCCL(2711960,native-runner):2026-11-17-10:37:34.840.843 [aicpu_task_cache.cc:45] [2711960][AicpuTaskCache][~AicpuTaskCache] release aicpu task cache at 0x0000ffff8b2dcf40: entryCnt[0], cacheBytes_[0]
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:34.946.389 [tprt.cc:21][TPRT]TID[2711960] ~TprtManage: ~TprtManage
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:34.946.405 [runtime_adapt.cc:58] 2711960 ~Runtime: runtime destructor.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:35.411.012 [runtime.cc:5668] 2713154 ReportRasRun: Report ras thread exits normally!
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:35.411.586 [runtime.cc:5638] 2711960 DestroyReportRasThread: Join report ras thread OK.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:35.411.598 [runtime.cc:1738] 2711960 WaitMonitorExit: wait monitor success, used count=0.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:35.470.762 [xpu_task_fail_callback_data_manager.cc:64] 2711960 ~XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Destructor.
+[INFO] RUNTIME(2711960,native-runner):2026-11-17-10:37:35.470.773 [task_fail_callback_data_manager.cc:91] 2711960 ~TaskFailCallBackManager: Destructor.
+[INFO] ATRACE(2711960,native-runner):2026-11-17-10:37:35.618.380 [stacktrace_signal.c:229](tid:2711960) unregister all signal handlers, can not capture signal.

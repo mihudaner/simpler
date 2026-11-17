@@ -1,0 +1,99 @@
+[WARNING] FE(3628460,native-runner):2026-11-17-10:52:24.343.635 [platform_manager_v2.cpp:267]3628460 GetSocSpec:Failed to get platform info, label[SoCInfo], key[io_die_num].
+[WARNING] FE(3628460,native-runner):2026-11-17-10:52:24.343.649 [platform_manager_v2.cpp:267]3628460 GetSocSpec:Failed to get platform info, label[SoCInfo], key[model_schedule_software].
+[WARNING] TDT(3628460,native-runner):2026-11-17-10:52:24.369.485 [env_internal_api.cpp:21][GetEnvFromMmSys][tid:3628460] Get env[ASCEND_RT_VISIBLE_DEVICES] failed
+[WARNING] TDT(3628460,native-runner):2026-11-17-10:52:24.369.569 [env_internal_api.cpp:21][GetEnvFromMmSys][tid:3628460] Get env[AICPU_PROFILING_MODE] failed
+[WARNING] TDT(3628460,native-runner):2026-11-17-10:52:24.369.607 [env_internal_api.cpp:21][GetEnvFromMmSys][tid:3628460] Get env[ASCEND_GLOBAL_LOG_LEVEL] failed
+[WARNING] TDT(3628460,native-runner):2026-11-17-10:52:24.369.610 [env_internal_api.cpp:21][GetEnvFromMmSys][tid:3628460] Get env[ASCEND_GLOBAL_EVENT_ENABLE] failed
+[WARNING] TDT(3628460,native-runner):2026-11-17-10:52:24.369.612 [env_internal_api.cpp:21][GetEnvFromMmSys][tid:3628460] Get env[ASCEND_MODULE_LOG_LEVEL] failed
+[WARNING] TDT(3628460,native-runner):2026-11-17-10:52:24.379.920 [tsd_util_func.cpp:152][GetScheduleEnv][tid:3628460] Get env[DATAMASTER_RUN_MODE] failed
+[WARNING] TDT(3628460,native-runner):2026-11-17-10:52:24.585.148 [env_internal_api.cpp:21][GetEnvFromMmSys][tid:3628460] Get env[ASAN_RUN_MODE] failed
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.169 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=1, head=0, tail=1, taskResAHead=0, taskResATail=1, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.177 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=1, head=0, tail=1, taskResAHead=0, taskResATail=1, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.185 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=1
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.188 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=1
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.483 [raw_device.cc:1215] 3628460 Start: Driver does not support FEATURE_DMS_GET_QOS_MASTER_CONFIG.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.572 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=189, taskId=1, head=0, tail=1, taskResAHead=0, taskResATail=1, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.580 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=1
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.572 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=189, taskId=1, head=0, tail=1, taskResAHead=0, taskResATail=1, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.586 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=1
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.588 [task_res_da.cc:75] 3628460 GetTaskInfo: head==tail, device_id=1, stream_id=189, taskId=0, head=1, tail=1, taskResAHead=1, taskResATail=1, taskInfo_id=65535.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.338.590 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=0
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.342.140 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=2, head=1, tail=2, taskResAHead=1, taskResATail=2, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.342.146 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=2
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.342.211 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=2, head=1, tail=2, taskResAHead=1, taskResATail=2, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.342.219 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=2
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.343.772 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=3, head=2, tail=3, taskResAHead=2, taskResATail=3, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.343.778 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=3
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.343.906 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=3, head=2, tail=3, taskResAHead=2, taskResATail=3, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.343.912 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=3
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.345.533 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=4, head=3, tail=4, taskResAHead=3, taskResATail=4, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.345.541 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=4
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.345.653 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=4, head=3, tail=4, taskResAHead=3, taskResATail=4, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.345.660 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=4
+[WARNING] ASCENDCL(3628460,native-runner):2026-11-17-10:52:25.360.139 [callback.cpp:51]3628460 operator(): aclrtSetExceptionInfoCallback is deprecated since 9.2.0, Will be removed after 2027/9/30, use aclrtExceptionInfoCallbackRegister and aclrtExceptionInfoCallbackUnregister instead.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.369.920 [heterogenous.cc:22] 3628460 ReadHeterogenousModeFromConfigIni: can not read ASCEND_LATEST_INSTALL_PATH! isHeterogenous=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.384.440 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=1, head=0, tail=1, taskResAHead=0, taskResATail=1, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.384.446 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=1, head=0, tail=1, taskResAHead=0, taskResATail=1, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.384.459 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=1
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.384.449 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=1
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.384.478 [task_res_da.cc:75] 3628460 GetTaskInfo: head==tail, device_id=1, stream_id=188, taskId=0, head=1, tail=1, taskResAHead=1, taskResATail=1, taskInfo_id=65535.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.384.482 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=0
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.406.283 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=2, head=1, tail=2, taskResAHead=1, taskResATail=2, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.406.289 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=2
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.406.288 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=2, head=1, tail=2, taskResAHead=1, taskResATail=2, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.406.295 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=2
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.542.982 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=3, head=2, tail=3, taskResAHead=2, taskResATail=3, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.543.003 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=3
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.543.143 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=3, head=2, tail=3, taskResAHead=2, taskResATail=3, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.543.152 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=3
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.717.249 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=187, taskId=4, head=2, tail=4, taskResAHead=2, taskResATail=4, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.717.261 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=4
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.717.813 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=14, head=12, tail=14, taskResAHead=12, taskResATail=14, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.717.824 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=14
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.717.925 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=14, head=12, tail=14, taskResAHead=12, taskResATail=14, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:25.717.932 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=14
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.162 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=187, taskId=8, head=6, tail=8, taskResAHead=6, taskResATail=8, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.175 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=8
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.673 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=25, head=23, tail=25, taskResAHead=23, taskResATail=25, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.676 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=25
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.675 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=25, head=23, tail=25, taskResAHead=23, taskResATail=25, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.686 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=25
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.689 [task_res_da.cc:75] 3628460 GetTaskInfo: head==tail, device_id=1, stream_id=188, taskId=24, head=25, tail=25, taskResAHead=25, taskResATail=25, taskInfo_id=65535.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.331.694 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=24
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.343.625 [npu_driver.cc:1506] 3629077 GetPageFaultCount: [drv api] halCheckProcessStatusEx does not exist
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.253 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=36, head=34, tail=36, taskResAHead=34, taskResATail=36, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.267 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=36
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.264 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=187, taskId=12, head=10, tail=12, taskResAHead=10, taskResATail=12, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.275 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=12
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.280 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=187, taskId=12, head=10, tail=12, taskResAHead=10, taskResATail=12, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.283 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=12
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.286 [task_res_da.cc:75] 3628460 GetTaskInfo: head==tail, device_id=1, stream_id=187, taskId=11, head=12, tail=12, taskResAHead=12, taskResATail=12, taskInfo_id=65535.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.287 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=36, head=34, tail=36, taskResAHead=34, taskResATail=36, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.289 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=11
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:26.908.293 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=36
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:27.601.048 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=187, taskId=16, head=14, tail=16, taskResAHead=14, taskResATail=16, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:27.601.064 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=16
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:27.601.416 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=47, head=45, tail=47, taskResAHead=45, taskResATail=47, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:27.601.429 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=47
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:27.601.611 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=47, head=45, tail=47, taskResAHead=45, taskResATail=47, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:27.601.619 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=47
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.271.610 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=187, taskId=20, head=18, tail=20, taskResAHead=18, taskResATail=20, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.272.301 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=20
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.271.745 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=58, head=56, tail=58, taskResAHead=56, taskResATail=58, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.272.311 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=58
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.272.313 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=58, head=56, tail=58, taskResAHead=56, taskResATail=58, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.272.317 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=58
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.787.793 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=187, taskId=24, head=22, tail=24, taskResAHead=22, taskResATail=24, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.788.172 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=24
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.788.255 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=69, head=67, tail=69, taskResAHead=67, taskResATail=69, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.788.265 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=69
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.788.381 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=69, head=67, tail=69, taskResAHead=67, taskResATail=69, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:28.788.386 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=69
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.332.461 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=70, head=69, tail=70, taskResAHead=69, taskResATail=70, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.332.467 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=70
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.332.610 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=188, taskId=70, head=69, tail=70, taskResAHead=69, taskResATail=70, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.332.621 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=70
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.345.155 [task_res_da.cc:100] 3628460 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=5, head=4, tail=5, taskResAHead=4, taskResATail=5, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.345.163 [stream_david.cc:1483] 3628460 GetTaskIdByPos: taskInfo is null, pos=5
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.345.224 [task_res_da.cc:100] 3629078 GetTaskInfo: taskId is invalid, device_id=1, stream_id=191, taskId=5, head=4, tail=5, taskResAHead=4, taskResATail=5, taskInfo_id=0.
+[WARNING] RUNTIME(3628460,native-runner):2026-11-17-10:52:29.345.231 [stream_david.cc:1483] 3629078 GetTaskIdByPos: taskInfo is null, pos=5

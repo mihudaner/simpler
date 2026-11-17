@@ -1,0 +1,1677 @@
+{
+  "format": "experiment-artifact-inventory",
+  "schema_version": 1,
+  "scope": "归档根目录下的普通文件；不计算内容校验和",
+  "excluded": [
+    {
+      "path": "artifact-manifest.json",
+      "reason": "清单不收录自身"
+    }
+  ],
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 70
+    },
+    {
+      "path": "README.md",
+      "bytes": 185
+    },
+    {
+      "path": "README.zh-CN.md",
+      "bytes": 10621
+    },
+    {
+      "path": "analysis/r001/current.host.log",
+      "bytes": 2074
+    },
+    {
+      "path": "analysis/r001/detail.host.log",
+      "bytes": 2079
+    },
+    {
+      "path": "analysis/r001/lifecycle-samples.json",
+      "bytes": 197748
+    },
+    {
+      "path": "analysis/r001/lifecycle-summary.json",
+      "bytes": 13059
+    },
+    {
+      "path": "analysis/r001/samples.csv",
+      "bytes": 8711
+    },
+    {
+      "path": "analysis/r001/summary.json",
+      "bytes": 4541
+    },
+    {
+      "path": "analysis/r002/current.host.log",
+      "bytes": 2078
+    },
+    {
+      "path": "analysis/r002/detail.host.log",
+      "bytes": 2078
+    },
+    {
+      "path": "analysis/r002/lifecycle-samples.json",
+      "bytes": 205583
+    },
+    {
+      "path": "analysis/r002/lifecycle-summary.json",
+      "bytes": 14257
+    },
+    {
+      "path": "analysis/r002/samples.csv",
+      "bytes": 8711
+    },
+    {
+      "path": "analysis/r002/summary.json",
+      "bytes": 4560
+    },
+    {
+      "path": "analysis/r002/trace-validation.json",
+      "bytes": 449
+    },
+    {
+      "path": "analysis/r003/l2.host.log",
+      "bytes": 2077
+    },
+    {
+      "path": "analysis/r003/l3.host.log",
+      "bytes": 2073
+    },
+    {
+      "path": "analysis/r003/lifecycle-samples.json",
+      "bytes": 308710
+    },
+    {
+      "path": "analysis/r003/lifecycle-summary.json",
+      "bytes": 22897
+    },
+    {
+      "path": "analysis/r003/samples.csv",
+      "bytes": 8461
+    },
+    {
+      "path": "analysis/r003/summary.json",
+      "bytes": 4503
+    },
+    {
+      "path": "evidence/archive-validation.json",
+      "bytes": 1737
+    },
+    {
+      "path": "evidence/converter-tests.log",
+      "bytes": 260
+    },
+    {
+      "path": "evidence/install-detail-r2.log",
+      "bytes": 1359
+    },
+    {
+      "path": "evidence/ir-check.log",
+      "bytes": 180
+    },
+    {
+      "path": "evidence/markdownlint.log",
+      "bytes": 80
+    },
+    {
+      "path": "evidence/provenance.json",
+      "bytes": 4541
+    },
+    {
+      "path": "evidence/runtime-detail.patch.gz",
+      "bytes": 6712
+    },
+    {
+      "path": "inputs/swa-bundle.tar.gz",
+      "bytes": 478297
+    },
+    {
+      "path": "labels.zh-CN.json",
+      "bytes": 196
+    },
+    {
+      "path": "render.py",
+      "bytes": 6424
+    },
+    {
+      "path": "run_pair.py",
+      "bytes": 4551
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/ascend/debug/device-0/device-2436036_20261117103156364.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/ascend/debug/plog/plog-2436036_20261117103152530.log",
+      "bytes": 17193
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/ascend/run/device-0/device-2436036_20261117103156365.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/ascend/run/plog/plog-2436036_20261117103152328.log",
+      "bytes": 27605
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/host/host.2436036.log",
+      "bytes": 49567
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/result.json",
+      "bytes": 393
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1605142
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1562613
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1544012
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1595621
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1553254
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1546547
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-a/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/ascend/debug/device-0/device-2473459_20261117103240395.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/ascend/debug/plog/plog-2473459_20261117103236516.log",
+      "bytes": 16829
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/ascend/run/device-0/device-2473459_20261117103240395.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/ascend/run/plog/plog-2473459_20261117103236313.log",
+      "bytes": 27608
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/host/host.2473459.log",
+      "bytes": 49624
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/result.json",
+      "bytes": 390
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1596070
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1562843
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1569128
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1562662
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1545386
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1552508
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/current-b/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/ascend/debug/device-0/device-2447347_20261117103212377.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/ascend/debug/plog/plog-2447347_20261117103208815.log",
+      "bytes": 17929
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/ascend/run/device-0/device-2447347_20261117103212378.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/ascend/run/plog/plog-2447347_20261117103208408.log",
+      "bytes": 27604
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/host/host.2447347.log",
+      "bytes": 49564
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/result.json",
+      "bytes": 392
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1589782
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1557595
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1553160
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1555261
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1552983
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1558990
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-a/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/ascend/debug/device-0/device-2462855_20261117103227386.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/ascend/debug/plog/plog-2462855_20261117103223554.log",
+      "bytes": 17565
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/ascend/run/device-0/device-2462855_20261117103227386.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/ascend/run/plog/plog-2462855_20261117103223350.log",
+      "bytes": 27603
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/host/host.2462855.log",
+      "bytes": 49624
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/result.json",
+      "bytes": 393
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1651256
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1550826
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1625425
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1565367
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1550161
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1590107
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r001-swa-pair/detail-b/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0.log",
+      "bytes": 549
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/l0-timing.json",
+      "bytes": 583
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/ascend/debug/device-0/device-2427691_20261117103144357.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/ascend/debug/plog/plog-2427691_20261117103140793.log",
+      "bytes": 24251
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/ascend/run/device-0/device-2427691_20261117103144357.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/ascend/run/plog/plog-2427691_20261117103140591.log",
+      "bytes": 27459
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/console.log",
+      "bytes": 485
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/host/host.2427691.log",
+      "bytes": 70586
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/result.json",
+      "bytes": 473
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run10/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run6/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run7/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run8/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/l0/rank0/run9/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r001-swa-pair/run.json",
+      "bytes": 4206
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/ascend/debug/device-0/device-2701018_20261117103717671.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/ascend/debug/plog/plog-2701018_20261117103713312.log",
+      "bytes": 17565
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/ascend/run/device-0/device-2701018_20261117103717672.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/ascend/run/plog/plog-2701018_20261117103713109.log",
+      "bytes": 27602
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/host/host.2701018.log",
+      "bytes": 49569
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/result.json",
+      "bytes": 393
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1573154
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1572598
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1563972
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1553628
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1555426
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1541163
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-a/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/ascend/debug/device-0/device-2729317_20261117103752757.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/ascend/debug/plog/plog-2729317_20261117103749036.log",
+      "bytes": 17945
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/ascend/run/device-0/device-2729317_20261117103752758.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/ascend/run/plog/plog-2729317_20261117103748833.log",
+      "bytes": 27602
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/host/host.2729317.log",
+      "bytes": 49606
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/result.json",
+      "bytes": 394
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1699882
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1583836
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1629747
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1565449
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1583188
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1567418
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/current-b/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/ascend/debug/device-0/device-2711960_20261117103729742.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/ascend/debug/plog/plog-2711960_20261117103725193.log",
+      "bytes": 17559
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/ascend/run/device-0/device-2711960_20261117103728741.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/ascend/run/plog/plog-2711960_20261117103724990.log",
+      "bytes": 27603
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/host/host.2711960.log",
+      "bytes": 49561
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/result.json",
+      "bytes": 394
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1612412
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1557822
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1534151
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1557095
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1560757
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1543346
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-a/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/ascend/debug/device-0/device-2720635_20261117103740749.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/ascend/debug/plog/plog-2720635_20261117103737065.log",
+      "bytes": 16823
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/ascend/run/device-0/device-2720635_20261117103740749.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/ascend/run/plog/plog-2720635_20261117103736863.log",
+      "bytes": 27602
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/host/host.2720635.log",
+      "bytes": 49620
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/result.json",
+      "bytes": 394
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1608600
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1575233
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1557011
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1580395
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1575128
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1568514
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r002-swa-pair/detail-b/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0.log",
+      "bytes": 549
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/l0-timing.json",
+      "bytes": 581
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/ascend/debug/device-0/device-2693941_20261117103708652.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/ascend/debug/plog/plog-2693941_20261117103704432.log",
+      "bytes": 24991
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/ascend/run/device-0/device-2693941_20261117103708653.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/ascend/run/plog/plog-2693941_20261117103704230.log",
+      "bytes": 27455
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/console.log",
+      "bytes": 485
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/host/host.2693941.log",
+      "bytes": 70693
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/result.json",
+      "bytes": 474
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run10/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run6/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run7/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run8/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/l0/rank0/run9/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r002-swa-pair/run.json",
+      "bytes": 4206
+    },
+    {
+      "path": "runs/r003-swa-levels/l0.log",
+      "bytes": 549
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/l0-timing.json",
+      "bytes": 585
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/ascend/debug/device-1/device-3598327_20261117105158160.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/ascend/debug/plog/plog-3598327_20261117105154609.log",
+      "bytes": 24284
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/ascend/run/device-1/device-3598327_20261117105158161.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/ascend/run/plog/plog-3598327_20261117105154407.log",
+      "bytes": 27457
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/console.log",
+      "bytes": 485
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/host/host.3598327.log",
+      "bytes": 70697
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/result.json",
+      "bytes": 474
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run10/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run6/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run7/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run8/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l0/rank0/run9/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/ascend/debug/device-1/device-3606691_20261117105206169.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/ascend/debug/plog/plog-3606691_20261117105202481.log",
+      "bytes": 17438
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/ascend/run/device-1/device-3606691_20261117105206170.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/ascend/run/plog/plog-3606691_20261117105202279.log",
+      "bytes": 27463
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/host/host.3606691.log",
+      "bytes": 49602
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/result.json",
+      "bytes": 392
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 25404
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 25370
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 25216
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 25310
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 25365
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 25442
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-a/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/ascend/debug/device-1/device-3637870_20261117105240212.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/ascend/debug/plog/plog-3637870_20261117105236306.log",
+      "bytes": 18567
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/ascend/run/device-1/device-3637870_20261117105240213.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/ascend/run/plog/plog-3637870_20261117105236104.log",
+      "bytes": 27464
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/host/host.3637870.log",
+      "bytes": 49607
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/result.json",
+      "bytes": 392
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 25306
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 25264
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 25255
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 25200
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 25263
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 25344
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l2-b/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/ascend/debug/device-1/device-3616324_20261117105217177.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/ascend/debug/plog/plog-3616324_20261117105211318.log",
+      "bytes": 18334
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/ascend/run/device-1/device-3616324_20261117105217177.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/ascend/run/plog/plog-3616324_20261117105211115.log",
+      "bytes": 27609
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/host/host.3616324.log",
+      "bytes": 49563
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/result.json",
+      "bytes": 390
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1621618
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1559891
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1543777
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1612678
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1615302
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1618375
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-a/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/ascend/debug/device-1/device-3628460_20261117105228186.log",
+      "bytes": 1902
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/ascend/debug/plog/plog-3628460_20261117105224491.log",
+      "bytes": 18344
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/ascend/run/device-1/device-3628460_20261117105228186.log",
+      "bytes": 13598
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/ascend/run/plog/plog-3628460_20261117105224057.log",
+      "bytes": 27603
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/console.log",
+      "bytes": 264
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/host/host.3628460.log",
+      "bytes": 49627
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/result.json",
+      "bytes": 392
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run0/chip_swimlane_records.json.gz",
+      "bytes": 1592273
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run0/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run0/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run1/chip_swimlane_records.json.gz",
+      "bytes": 1569485
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run1/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run1/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run2/chip_swimlane_records.json.gz",
+      "bytes": 1572230
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run2/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run2/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run3/chip_swimlane_records.json.gz",
+      "bytes": 1549914
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run3/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run3/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run4/chip_swimlane_records.json.gz",
+      "bytes": 1619637
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run4/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run4/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run5/chip_swimlane_records.json.gz",
+      "bytes": 1560553
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run5/deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "runs/r003-swa-levels/l3-b/rank0/run5/source-task-map.txt",
+      "bytes": 156
+    },
+    {
+      "path": "runs/r003-swa-levels/run.json",
+      "bytes": 4295
+    },
+    {
+      "path": "summarize.py",
+      "bytes": 10356
+    },
+    {
+      "path": "traces/name_map.json",
+      "bytes": 2504
+    },
+    {
+      "path": "traces/swa-current-L3.deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "traces/swa-current-L3.json.gz",
+      "bytes": 861188
+    },
+    {
+      "path": "traces/swa-current-L3.raw.json.gz",
+      "bytes": 1422106
+    },
+    {
+      "path": "traces/swa-detail-L3.deps.json",
+      "bytes": 30031
+    },
+    {
+      "path": "traces/swa-detail-L3.json.gz",
+      "bytes": 853770
+    },
+    {
+      "path": "traces/swa-detail-L3.raw.json.gz",
+      "bytes": 1406992
+    }
+  ]
+}

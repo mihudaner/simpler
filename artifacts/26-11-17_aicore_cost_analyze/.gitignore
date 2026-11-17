@@ -1,0 +1,2 @@
+# Large trace captures stay local and are not published.
+**/*.json.gz

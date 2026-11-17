@@ -1123,6 +1123,13 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
     for record in lifecycle_raw:
         for field in lifecycle_cycle_fields:
             _track(int(record.get(field, 0)))
+        for interval in record.get("detail_intervals", []):
+            start = int(interval["start_cycles"])
+            end = int(interval["end_cycles"])
+            if start <= 0 or end < start:
+                raise ValueError("AICPU lifecycle detail has invalid interval bounds")
+            _track(start)
+            _track(end)
 
     if base_time_cycles is None:
         base_time_cycles = 0
@@ -1300,6 +1307,15 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
             if cycles > 0:
                 converted[field.removesuffix("_cycles") + "_time_us"] = _to_us(cycles)
         converted["record_index"] = record_index
+        if "detail_intervals" in record:
+            converted["detail_intervals"] = [
+                {
+                    "name": interval["name"],
+                    "start_time_us": _to_us(int(interval["start_cycles"])),
+                    "end_time_us": _to_us(int(interval["end_cycles"])),
+                }
+                for interval in record["detail_intervals"]
+            ]
         aicpu_lifecycle_records.append(converted)
 
     host_device_uploads = []
@@ -2462,6 +2478,21 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
                 }
             )
             identity = {"aicpu_thread_id": thread_id}
+            for interval in record.get("detail_intervals", []):
+                start = float(interval["start_time_us"])
+                end = float(interval["end_time_us"])
+                events.append(
+                    {
+                        "args": identity,
+                        "cat": "aicpu_lifecycle",
+                        "name": interval["name"],
+                        "ph": "X",
+                        "pid": 6,
+                        "tid": tid,
+                        "ts": start,
+                        "dur": end - start,
+                    }
+                )
             for name, start_field, end_field in lifecycle_intervals:
                 start = float(record.get(start_field, 0.0))
                 end = float(record.get(end_field, 0.0))

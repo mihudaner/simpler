@@ -1,0 +1,9 @@
+[WARNING] CCECPU(12818,aicpu_scheduler):2026-11-17-10:37:25.651.196 [ae_so_manager.cc:186][OpenSo][tid:12818][AICPU_PROCESSER] Format to realpath failed:[], path:[]
+[WARNING] CCECPU(12818,aicpu_scheduler):2026-11-17-10:37:26.158.871 [hwts_kernel_register.cpp:60][GetTsKernelTaskProcess][tid:12833] The kernel[CloseAicpuMonitor] is not registered
+[WARNING] CCECPU(12818,aicpu_scheduler):2026-11-17-10:37:26.158.880 [hwts_kernel_register.cpp:46][CheckTsKernelSupported][tid:12833] check hwts kernel[CloseAicpuMonitor] is not supported.
+[WARNING] CCECPU(12818,aicpu_scheduler):2026-11-17-10:37:26.159.006 [hwts_kernel_register.cpp:60][GetTsKernelTaskProcess][tid:12833] The kernel[SetAicpuDfx] is not registered
+[WARNING] CCECPU(12818,aicpu_scheduler):2026-11-17-10:37:26.159.014 [hwts_kernel_register.cpp:46][CheckTsKernelSupported][tid:12833] check hwts kernel[SetAicpuDfx] is not supported.
+[ERROR] HCCL(12818,aicpu_scheduler):2026-11-17-10:37:26.198.017 [simpler-dispatcher] Init: complete /usr/lib64/aicpu_kernels/0/aicpu_kernels_device/2711960_0/simpler_inner_33fb878b3ef86eb0_0.so (requested=2683048 written=2683048 bytes)
+[WARNING] CCECPU(12818,aicpu_scheduler):2026-11-17-10:37:26.198.919 [ae_so_manager.cc:124][CheckSoFile][tid:12833][AICPU_PROCESSER] Format to realpath failed:/usr/lib64/aicpu_kernels/0/aicpu_kernels_device/simpler_inner_33fb878b3ef86eb0_0.so, path:/usr/lib64/aicpu_kernels/0/aicpu_kernels_device/simpler_inner_33fb878b3ef86eb0_0.so
+[WARNING] CCECPU(12818,aicpu_scheduler):2026-11-17-10:37:26.198.953 [ae_so_manager.cc:124][CheckSoFile][tid:12833][AICPU_PROCESSER] Format to realpath failed:/usr/lib64/aicpu_kernels/simpler_inner_33fb878b3ef86eb0_0.so, path:/usr/lib64/aicpu_kernels/simpler_inner_33fb878b3ef86eb0_0.so
+[WARNING] TDT(12818,aicpu_scheduler):2026-11-17-10:37:30.279.395 [internal_api.cpp:101][GetScheduleEnv][tid:12818] Get env[REGISTER_TO_ASCENDMONITOR] failed

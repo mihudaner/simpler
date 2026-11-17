@@ -1,0 +1,4 @@
+incomplete: 1 TU(s) skipped, so this is not a clean result
+SKIP kernel.cpp: llvm-dis: ['#15 0x0000aaaad82540f0 (/usr/bin/llvm-dis+0x40f0)']
+
+0 finding(s) across 15/16 device TU(s)
