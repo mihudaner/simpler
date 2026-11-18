@@ -210,6 +210,8 @@ class CCECToolchain(Toolchain):
         if self.platform in ("a5", "a6"):
             # The text-only loader cannot retain CANN's switch jump tables in .rodata.
             flags.extend(["-fno-jump-tables", "-mllvm", "-cce-vf-aa-between-iters=true"])
+        if self.platform == "a6":
+            flags.append("-DSIMPLER_PLATFORM_A6=1")
         return flags
 
     def get_cmake_args(self) -> list[str]:

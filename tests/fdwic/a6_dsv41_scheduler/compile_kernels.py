@@ -33,9 +33,7 @@ def compile_kernel_set(platform, pto_isa, output, jobs, kernel_ids):
     from simpler_setup.kernel_compiler import KernelCompiler  # noqa: PLC0415
     from simpler_setup.toolchain import CCECToolchain  # noqa: PLC0415
 
-    # Reuse the captured kernel argument ABI headers, not the A5 target or runtime.
-    # A6 HBG must separately establish compatibility before these kernels can run.
-    headers = KernelCompiler("a5")
+    headers = KernelCompiler(platform)
     includes = [str(pto_isa.resolve() / name) for name in ("include", "include/pto", "pkg_inc")]
     includes += headers.get_incore_include_dirs() + headers.get_orchestration_include_dirs("host_build_graph")
     includes += headers.get_ascend_incore_include_dirs()
@@ -96,7 +94,7 @@ def compile_kernel_set(platform, pto_isa, output, jobs, kernel_ids):
     summary = {
         "platform": platform,
         "runtime_executed": False,
-        "kernel_argument_headers": "src/a5/runtime/host_build_graph/common (compatibility unverified on A6)",
+        "kernel_argument_headers": "src/a5/runtime/host_build_graph/common (shared HBG argument headers)",
         "source_commit": subprocess.check_output(["git", "-C", str(REPO), "rev-parse", "HEAD"], text=True).strip(),
         "pto_isa_commit": subprocess.check_output(["git", "-C", str(pto_isa), "rev-parse", "HEAD"], text=True).strip(),
         "compiler": subprocess.check_output([toolchain.cxx_path, "--version"], text=True).strip(),

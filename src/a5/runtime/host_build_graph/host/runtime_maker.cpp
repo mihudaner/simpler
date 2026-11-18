@@ -1275,7 +1275,8 @@ bool prepare_scheduler_calls(
 ) {
     if (layout.prepared_layout_offset == 0) return true;
     const char *platform = get_platform();
-    if (std::strcmp(platform, "a5") != 0 && std::strcmp(platform, "a5sim") != 0) return false;
+    if (std::strcmp(platform, "a5") != 0 && std::strcmp(platform, "a6") != 0 && std::strcmp(platform, "a5sim") != 0)
+        return false;
     const auto address_space = std::strcmp(platform, "a5sim") == 0 ? SchedulerCallableAddressSpace::HOST :
                                                                      SchedulerCallableAddressSpace::DEVICE;
     const uint64_t host_image = reinterpret_cast<uint64_t>(uploaded_sm);

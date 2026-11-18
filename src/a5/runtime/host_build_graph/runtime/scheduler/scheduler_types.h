@@ -445,7 +445,15 @@ struct alignas(SCHEDULER_GM_ATOMIC_SECTOR_BYTES) SchedulerGroupMailbox {
 inline constexpr uint64_t SCHEDULER_BOOTSTRAP_CLUSTER_INIT = 1;
 inline constexpr uint64_t SCHEDULER_BOOTSTRAP_AIV0_DONE = 2;
 inline constexpr uint64_t SCHEDULER_BOOTSTRAP_AIV1_DONE = 4;
-inline constexpr uint64_t SCHEDULER_BOOTSTRAP_CLUSTER_DONE = 7;
+static_assert(PLATFORM_AIV_CORES_PER_BLOCKDIM == 1 || PLATFORM_AIV_CORES_PER_BLOCKDIM == 2);
+inline constexpr uint64_t SCHEDULER_BOOTSTRAP_CLUSTER_DONE =
+    SCHEDULER_BOOTSTRAP_CLUSTER_INIT | SCHEDULER_BOOTSTRAP_AIV0_DONE |
+    (PLATFORM_AIV_CORES_PER_BLOCKDIM == 2 ? SCHEDULER_BOOTSTRAP_AIV1_DONE : 0);
+#if defined(SIMPLER_PLATFORM_A6)
+static_assert(SCHEDULER_BOOTSTRAP_CLUSTER_DONE == 3);
+#else
+static_assert(SCHEDULER_BOOTSTRAP_CLUSTER_DONE == 7);
+#endif
 
 // Host initializes this line before launch; workers access it only atomically.
 struct alignas(SCHEDULER_GM_ATOMIC_SECTOR_BYTES) SchedulerBootstrapCluster {

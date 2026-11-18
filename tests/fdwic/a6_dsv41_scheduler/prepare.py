@@ -181,6 +181,7 @@ def build(args):
             "-DCMAKE_BUILD_TYPE=Release",
             f"-DCMAKE_CXX_COMPILER={args.cxx}",
             f"-DSIMPLER_ROOT={REPO}",
+            f"-DSIMPLER_PLATFORM_A6={int(args.platform == 'a6')}",
         ],
         check=True,
     )
