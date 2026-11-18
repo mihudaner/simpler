@@ -32,7 +32,7 @@ python -I tests/fdwic/a6_dsv41_scheduler/run.py \
 | 查看结果 | 输出目录的 `summary.json`；各调度子目录保留原生结果、console 和 Host 端点日志 |
 | 离线检查输入包 | `python -I tests/fdwic/a6_dsv41_scheduler/test_fixture.py`，不占设备 |
 
-`prepare.py export` 供维护者从已有 SWA 快照更新夹具，正常构建无需执行；参数见 `prepare.py export --help`。当前脚本只接受 `--platform a5`。
+`prepare.py export` 供维护者从已有 SWA 快照更新夹具，正常构建无需执行；参数见 `prepare.py export --help`。构建入口同时接受 `--platform a5` 和 `--platform a6`。
 
 ## 修改后要重做哪些步骤
 
@@ -49,7 +49,7 @@ python -I tests/fdwic/a6_dsv41_scheduler/run.py \
 
 ## A6 复现前的构建环境
 
-**本页前面的运行命令目前仅适用于 A5；A6 平台适配和正式命令尚未完成。** 首轮 A6 只构建／运行 HBG，不默认连跑 percounter。
+**本页前面的运行命令目前仅适用于 A5；A6 用下文的单卡入口，设备执行还需要 A6 HBG 运行库。** 首轮 A6 只构建／运行 HBG，不默认连跑 percounter。
 
 远端报告的系统 CMake 为 3.16.3。原生工具的 [CMakeLists.txt](../../dsv41_scheduler/production/CMakeLists.txt) 声明最低 3.20；现有 [AICore 运行时构建](../../../../src/a5/platform/onboard/aicore/CMakeLists.txt) 还实际使用了 Makefile 生成器的 `DEPFILE` 支持，要求 CMake 3.20。因此沿用这条构建路径时，不能只调低版本声明。
 
@@ -57,37 +57,22 @@ python -I tests/fdwic/a6_dsv41_scheduler/run.py \
 
 Host 的 x86_64 C++ 工具、AICPU 的 aarch64 交叉编译器、AICore 的 `dav-920r1-*` ccec 目标分别配置。没有 task-submit 的 A6 机器按实际设备占用方式提供执行入口，不能直接复用本页的 A5 队列命令。已核实环境见 [迁移说明](a6-migration.zh-CN.md#环境与证据)，待补验证见 [当前 A6 任务单](a6-environment.zh-CN.md)。
 
-## A6 计算核编译检查
+## 单卡 A6 SWA
 
-在仓库根目录、已加载 CANN 环境的项目 venv 中执行：
-
-```bash
-python tests/fdwic/a6_dsv41_scheduler/compile_kernels.py \
-  --pto-isa build/pto-isa \
-  --output tests/fdwic/a6_dsv41_scheduler/build/a6-kernels
-```
-
-只编译夹具选中的 19 个核，不安装 PyPTO／PTOAS，不需要设备，也不构建运行时。
-每个核依次执行 ccec → ld.lld → `.text` 合法性检查；任何失败都会返回非零。
-`summary.json` 保存逐核阶段、工具版本、目标参数及源码／机器码指纹；逐核 `.log` 和 `.commands.json` 保留详细诊断。
-输出目录必须是新目录，防止旧二进制混入。
-
-**这里复用的是现有核参数 ABI 头文件，不是 A5 运行时。A6 HBG 的平台启动、ABI 与上板正确性仍需单独验证。**
-`prepare.py build` 和 `run.py` 当前仍只提供已验证的 A5 运行入口。
-
-## A6 任务描述转换
-
-以下命令在 A6 的 x86_64 Host 上用本机 `g++` 执行；不使用 AICPU 交叉编译器，不需要 CANN 或设备：
+在仓库根目录加载目标 CANN 和项目 venv。构建不占卡，重新编译 19 个目标核，用本机 C++ 工具转换 plan 并组装回放包。
 
 ```bash
-python tests/fdwic/a6_dsv41_scheduler/prepare_plan.py \
-  --output tests/fdwic/a6_dsv41_scheduler/build/a6-plan
+case_dir=tests/fdwic/a6_dsv41_scheduler
+python -I "$case_dir/prepare.py" build --platform a6 --pto-isa build/pto-isa
 ```
 
-脚本先编译两个 Host 小工具，解包原始夹具，核对 2735 条记录的语义指纹；通过后生成 `plan-a6-rank0.bin`。
-仅 t22 改为 48 个 1C1V block，t28 改为 32 个 1C1V block；保留全部输入、标量和依赖，原始 plan 留在 `bundle/`。
-任何非预期变化都会报错。转换后的计划必须配合同分支 A6 核使用，不能交给 A5 运行时。
+有匹配的 A6 HBG 运行库后，用已分配的一张卡直接运行。下例用逻辑设备 0；如有 `TASK_DEVICE`，也可省略 `--device`。
 
-**以上两条是离线检查命令，不是当前优先查证项。** 执行后将两个 `summary.json` 的关键字段贴进 [任务单回答区](a6-environment.zh-CN.md#本轮回答区)；失败时附关键 `.log` 片段，只返回这一份 MD，不另传文件。
-核编译成功和 Host 解码成功之后，仍需接入 A6 HBG 平台才能生成可执行运行包。
-所缺平台资料列在 [运行时还缺什么](a6-migration.zh-CN.md#运行时还缺什么)，不需要对方先跑通模型。
+```bash
+python -I "$case_dir/run.py" --build-dir "$case_dir/build/a6" --device 0 \
+  --runtime-lib build/lib/a6/onboard --output outputs/swa-a6-001
+```
+
+A6 默认单卡、HBG、零预热、一次执行。C++ runner 对固定快照的 30 个可写 Device buffer 比对参考，结果在 `rank0/result.json`，失败位置看 `rank0/console.log`。本地已生成回放包；A6 运行库尚待接通。[仍缺的平台接口](a6-environment.zh-CN.md)
+
+单独定位构建失败时，可用 [compile_kernels.py](../compile_kernels.py) 查看逐核诊断，或用 [prepare_plan.py](../prepare_plan.py) 检查 Host 对 2735 条记录的解码与两处 MIX 转换。

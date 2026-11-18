@@ -1,14 +1,14 @@
 # SWA 独立用例
 
-**A5 的独立 SWA 已跑通；已有 C++ 和输入足以完成构建、执行与校验，全流程不调用 PyPTO／PTOAS。A6 核与 plan 已完成离线适配，独立硬件探针已有结果；完整 HBG／SWA 仍待接通。首轮只跑 HBG，percounter 与性能后续再考虑。**
+**A5 的独立 SWA 已跑通；已有 C++ 和输入足以完成构建、执行与校验，全流程不调用 PyPTO／PTOAS。A6 原生 SWA 回放包已生成，1C1V 组队与 SSBUF 布局已改；完整 HBG／SWA 仍待接通。首轮只跑 HBG，percounter 与性能后续再考虑。**
 
 | 问题 | 当前结论 |
 | ---- | -------- |
 | 测什么 | DSV4.1 的 SWA 注意力子层，含 mHC、量化、Q/KV 投影、缓存更新、Attention 和输出投影 |
-| 规模 | 19 个核、16 个计算任务；A5 为 578 个执行实例，A6 转换为 570 个；独立切片单卡运行 |
+| 规模 | 16 个计算任务：13 个单核任务、3 个 MIX 任务各用 C/V 两段程序，合计 19 段不同的计算核代码。按 block 展开后，A5 为 578 个执行实例，A6 为 570 个 |
 | A5 结果 | HBG／percounter 均逐轮校验通过；L0 AICore 均值分别为 0.267843／0.185173 ms |
 | 已完成的提取 | 只编 SWA 所需核，随目录保存固定输入和参考，复用生产 runner 与原 PR 统计器 |
-| A6 状态 | 两个 MIX 核已改为 1C1V，19／19 通过本地编译／链接／机器码提取；plan 转换通过离线检查。独立 MIX 启动、SSBUF 边界与计时已有探针结果；核映射、寄存器和 SSBUF 共享仍待补，尚无完整 HBG／SWA 结果 |
+| A6 状态 | 两个 MIX 核已改为 1C1V，19／19 通过本地编译／链接／机器码提取；plan 转换通过离线检查。偏移 1792 的 C/V 握手和镜像内子核调用已通过。当前只向 A6 端补问核身份到 CP1 窗口的映射和窗内握手协议；接通平台后直接跑 SWA |
 | 依赖边界 | 仍需 CANN、PTO-ISA 和匹配的 Simpler；解除的是 PyPTO／PTOAS 的代码生成依赖 |
 
 SWA 包含 MIX／sync_start 协同，但本切片没有跨卡通信和 deferred 等待。因此它适合验证计算与调度，双卡 MoE／defer_wait 需要后续独立验证。
@@ -32,7 +32,7 @@ SWA 包含 MIX／sync_start 协同，但本切片没有跨卡通信和 deferred 
 | [prepare.py](prepare.py) | 解包输入，编译 SWA 核与原生工具，组装运行包 |
 | [compile_kernels.py](compile_kernels.py) | 独立检查 A6 的 19 个核：编译、链接、提取机器码；不启动设备 |
 | [prepare_plan.py](prepare_plan.py)、[adapt_plan.cpp](adapt_plan.cpp) | 校验原 plan 的 Host 解码结果，只转换两处 MIX 任务描述 |
-| [run.py](run.py) | 当前 A5 入口：申请单卡，运行 HBG／percounter，校验并统计 |
+| [run.py](run.py) | A5 单卡性能复测；A6 单卡 HBG 功能验收入口 |
 | [test_fixture.py](test_fixture.py) | 离线检查输入包与参考覆盖 |
 | [fixtures/](fixtures/) | 固定输入、plan、参考与来源清单 |
 | [results/2026-11-17-a5/](results/2026-11-17-a5/) | A5 逐轮数据、日志和校验和清单 |
