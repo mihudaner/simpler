@@ -16,7 +16,8 @@
 - [x] [完成多 block 身份采样](#8-核编号控制窗口与握手)。blockDim 1／2／4／27／54 各收到 2 × blockDim 条记录。
 - [x] [校准 AICore 的 SYS_CNT](#9-计时采用-sys_cnt不使用-cube-主频)。此次实测约 1 GHz。
 - [x] [核对 A6 参考实现的寄存器和握手](#8-核编号控制窗口与握手)。任务通道使用 64 位 IPC0/4，HELLO 与 GOODBYE 使用每核 GM 槽。
-- [ ] [接入物理核到 CP1 窗口的映射](#运行时还缺什么)。已知 V 在窗内偏移 1 MiB，需从建表代码确定每个核对应的 `res_id`。
+- [x] [确认物理核到 CP1 窗口的公式](#8-核编号控制窗口与握手)。A6 首跑建出 140 项窗口表，108 个活跃 worker 已报到。
+- [ ] [通过 HBG 启动与退出](#单卡-swa-首跑)。当前组内就绪掩码仍编译为 7，退出确认另有一处直写旧寄存器。
 - [x] [适配 HBG 的双 lane 状态](#7-ssbuf调度区必须重排)。双 lane 状态为 120 B，使用偏移 1792；生产设备行为随 SWA 验收。
 - [x] [生成 A6 原生回放包](#5-tensorplan-abi只改两处-mix-描述)。同一入口配套组装目标核、转换后的 plan、固定输入和参考。
 - [ ] [接通 A6 HBG 并验收 SWA](#验收要求)：直接执行单卡 SWA，检查完整输出和正常退出。
@@ -158,7 +159,7 @@ C wait_intra_block(PIPE_S, 12) → 校验 ack、response
 
 每行列出 27 个 local，共 54 对。报告按同一 block 配对后列出 `V=C+35`、跨 die 编号区间相差 70。HAL 数据为 54 AIC、54 AIV、`DIE_NUM=2`、`IN_USED=54`、`ERROR_MAP=0`，AICPU 8、`OCCUPY=0x7f8`、`ts_num=1`。这批 local 的跳号不提供屏蔽原因或 `res_id` 对应关系。
 
-**身份取法。** 回执给出的 HELLO 解码为 `physical_id = (hello >> 32) & 0x0FFF`。原探针汇总同时出现“108 个不同 coreid”和“C 读 0”，缺少同次运行的逐槽记录。物理号 0 是合法值。SWA 首跑应关注不同活跃 worker 是否重复上报同一物理核号，以及能否据此找到各自的窗口。
+**身份取法。** 回执给出的 HELLO 解码为 `physical_id = (hello >> 32) & 0x0FFF`。原探针汇总同时出现“108 个不同 coreid”和“C 读 0”，缺少同次运行的逐槽记录。物理号 0 是合法值。后续 SWA 回执记录了 108 个 worker 完成报到，未报告重复身份错误。
 
 **窗口大小和入口。** 当前驱动用 `halResMap(RES_AICORE, PROCESS_CP1)` 成功映射资源 0–69，每窗 2 MiB，A3 式 Host 直映射请求返回 `0xfffe NOT_SUPPORT`。按 A6 参考实现，C 使用窗首，V 使用窗首 + 1 MiB。140 是两块 die 的物理编号槽位数，当前可执行的是 54 对 C/V，共 108 个 worker。
 
@@ -173,11 +174,19 @@ C wait_intra_block(PIPE_S, 12) → 校验 ack、response
 
 **对 HBG 的影响。** A5 resident HBG 通过 `DATA_MAIN_BASE` 放行，退出时 CP1 读 `COND` 确认本轮退出值。A6 参考实现的 GOODBYE 走 GM；IPC4 的 ACK／FIN 属于任务通道。把 A5 两个偏移直接改成 `0x5500/0x5520` 会混用退出和任务完成协议。参考实现的 `NEED_WRITE_REG_FOR_FAST_PATH=false`；本仓 A5 的独立开窗函数本身也是空操作。HBG 的普通计算任务继续由 AICore 调度器推进，SWA 无需移植参考实现的逐任务 AICPU 派发队列。[A5 放行与退出](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) · [HBG 的任务完成路径](../../../../src/a5/runtime/host_build_graph/aicore/resident_scheduler_impl.h)
 
-### 运行时还缺什么
+**从核号到控制窗口的公式已取得。** A6 参考实现 `373856cd828a0154173585bc8bffa8410ffacd53` 的 `GetAicoreRegInfoForDAVID` 按每 die 35 个资源建表。对上报的物理编号，`die = id / 70`、`local = id % 35`、`res_id = die * 35 + local`（整数除法）。当 `id % 70 >= 35`，使用该资源基址 + 1 MiB 的 V 窗口，其余使用窗首的 C 窗口。例如日志的 `core=68` 对应 die 0、V、资源 33。参考实现的任务与退出编码见上表，HBG 仍由 AICore 推进图中的计算任务。
 
-本仓的 A6 SWA 核和回放包已就绪。接平台层还要把每个 worker 的物理号与实际 CP1 窗口对应起来。例如 die 1 的 local 3 对应 C73/V108；若建表源码按 `res_id = die * 35 + local` 编号，两者应使用资源 38 的两个子窗口。第 2 节回执列出了窗口数与间距，未给出资源号排列公式；直接引用其第 1 节或建表循环即可补齐。[本轮待补项](a6-environment.zh-CN.md)
+### 单卡 SWA 首跑
 
-映射明确后，本仓需接入 A6 平台构建、MIX 外层、dispatcher 与 GM 启动／退出处理，再用现有包直接跑 SWA；任务完成仍走 HBG。已适配的逻辑组队按 block 和 lane 定位，独立于 CP1 地址表。例如 54 个 block 紧凑启动时，组 7 对应逻辑 C worker 7 和 V worker 61。[逻辑组队](../../../../src/a5/runtime/host_build_graph/aicpu/aicore_lifecycle.cpp) · [单卡 SWA 命令](usage.zh-CN.md#单卡-a6-swa)
+A6 端回执与工作树 diff 基于 `8fef3c1`（2026-11-18）。在该工作树上，19 个核已完成编译和提取，Host 已提交 28 个任务。`prepare_scheduler_calls` 放行平台名 `a6` 后，Host prepare 通过，AICPU inner SO 已加载，108 个 worker 已报到。窗口表 140 项非零。完整 SWA 输出与正常退出仍待设备复跑。
+
+| 对应现象 | 源码定位与结论 |
+| -------- | -------------- |
+| `workers=108 dispatch_arrived=0 bootstrap_complete=0` | 每组 C 完成初始化后置位 1，V 准备首批任务槽后加 2。A6 的 1C1V 应在状态 3 时由 C 给全卡到达数加 2。A6 端补丁用 `#if PLATFORM_CORES_PER_BLOCKDIM == 2` 判定，参与判断的是 C++ 的 `constexpr`，预处理器将此标识符按 0 处理，实际选择 7。即使 C/V 都准备好了，该条件仍无法正常成立。[组内准备与全卡计数](../../../../src/a5/runtime/host_build_graph/aicore/resident_scheduler_impl.h) |
+| `site=94`，最后一次 IPC 读数记录为 0 | V 发布本组的就绪位后即可等待放行。CP1 要先看到全卡准备完成才发布启动值。这次启动写尚未执行，0 不能检验 IPC 写入后的可见性。临时诊断还在首错发布之后另写共享 `error_order_key`，并发时无法将该值可靠归属到报错 worker。[CP1 的放行顺序](../../../../src/a5/runtime/host_build_graph/aicpu/aicpu_executor.cpp) |
+| `0 of 108 cores proved retirement` | 退出路径另有一处读写目标不一致。CP1 已改读 IPC4，AICore 的 `acknowledge_aicore_cond_nonce_and_wait` 仍直接调用 `set_cond(request)`。若沿用本仓的逐核退出确认，可通过 `write_reg(RegId::COND, request)` 让 A6 回写 IPC4，并保留本轮确认值以及 CP1 放行返回的顺序。参考实现的 GM GOODBYE 是另一套完整协议。设备尚未验证本次退出失败的全部原因。[AICore 退出回执](../../../../src/a5/platform/onboard/aicore/inner_kernel.h) · [CP1 等待回执](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) |
+
+本地用 C++17 最小编译对照核实了掩码选择。原条件在 2、3 lane 配置下都得到 7，`-Wundef` 给出未定义标识符警告。换用 C++ 常量表达式后，两种配置分别得到 3、7。该对照验证语言行为，A6 上的修复效果以同一 SWA 的组到达计数、执行返回和输出校验为准。[本轮任务单](a6-environment.zh-CN.md)
 
 ### 9. 计时：采用 SYS_CNT，不使用 Cube 主频
 

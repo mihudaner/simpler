@@ -73,6 +73,6 @@ python -I "$case_dir/run.py" --build-dir "$case_dir/build/a6" --device 0 \
   --runtime-lib build/lib/a6/onboard --output outputs/swa-a6-001
 ```
 
-A6 默认单卡、HBG、零预热、一次执行。C++ runner 对固定快照的 30 个可写 Device buffer 比对参考，结果在 `rank0/result.json`，失败位置看 `rank0/console.log`。本地已生成回放包；A6 运行库尚待接通。[仍缺的平台接口](a6-environment.zh-CN.md)
+A6 默认单卡、HBG、零预热、一次执行。C++ runner 对固定快照的 30 个可写 Device buffer 比对参考，结果在 `rank0/result.json`，失败位置看 `rank0/console.log`。A6 端使用适配中的 HBG 运行库已执行到设备初始化。当前复跑关注组内就绪、放行和退出。[首跑结果](a6-migration.zh-CN.md#单卡-swa-首跑)
 
 单独定位构建失败时，可用 [compile_kernels.py](../compile_kernels.py) 查看逐核诊断，或用 [prepare_plan.py](../prepare_plan.py) 检查 Host 对 2735 条记录的解码与两处 MIX 转换。
