@@ -389,9 +389,11 @@ uses MIX, its AIC clears the local signal and publishes INIT; AIV lanes confirm
 INIT before touching that signal. Without MIX, Host seeds INIT and the AIC does
 not overwrite it. Workers initialize two FREE local slots, service bounded
 control-node scans and prepare their first executions. Each AIV publishes its
-DONE bit once; after its own successful first fill, the AIC confirms both bits
-and contributes three workers to the global bootstrap count. The final cluster
-publishes `bootstrap_complete`; AICPU then opens the DMB launch gate. A failed
+DONE bit once; after its own successful first fill, the AIC confirms all active AIV bits
+and contributes its cluster size to the global bootstrap count. A5 waits for two
+AIV bits (mask 7, three workers); A6 waits for one (mask 3, two workers). The
+final cluster publishes `bootstrap_complete`; AICPU then releases each core
+through DATA_MAIN_BASE on A5 or IPC0 on A6. A failed
 lane contributes no success, and no kernel may enter before this gate opens.
 
 ENTER, EXIT and inline control nodes use bounded scans rather than a ready inbox.

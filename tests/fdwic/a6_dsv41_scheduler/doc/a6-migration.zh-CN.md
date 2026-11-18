@@ -4,7 +4,7 @@
 
 ## 完成状态索引
 
-**目标：单卡、生产 HBG 路线跑通独立 SWA，全流程不调用 PyPTO／PTOAS。当前已生成目标核和转换后的单卡回放包，组内拓扑与 SSBUF 已按 1C1V 修改；A6 HBG 和完整 SWA 尚未运行通过。** percounter、跨卡通信和性能优化不在首轮范围内。
+**目标：单卡、生产 HBG 路线跑通独立 SWA，全流程不调用 PyPTO／PTOAS。A6 的 HBG 运行库、19 个计算核和单卡回放包已构建。旧版板上首跑停在组内启动。修正后，54 组 1C1V 的启动测试已在 CPU 上通过，完整 SWA 等待 A6 真机验收。** percounter、跨卡通信和性能优化不在首轮范围内。
 
 - [x] [提取独立 SWA 与 A5 基线](#1-独立用例与依赖边界)：固定输入、参考、19 个核和生产回放入口已具备，A5 校验通过。
 - [x] [接入 A6 核编译](#2-目标编译与构建隔离)：19／19 个核通过本地编译、链接和机器码提取；A5 机器码不变。
@@ -17,10 +17,11 @@
 - [x] [校准 AICore 的 SYS_CNT](#9-计时采用-sys_cnt不使用-cube-主频)。此次实测约 1 GHz。
 - [x] [核对 A6 参考实现的寄存器和握手](#8-核编号控制窗口与握手)。任务通道使用 64 位 IPC0/4，HELLO 与 GOODBYE 使用每核 GM 槽。
 - [x] [确认物理核到 CP1 窗口的公式](#8-核编号控制窗口与握手)。A6 首跑建出 140 项窗口表，108 个活跃 worker 已报到。
-- [ ] [通过 HBG 启动与退出](#单卡-swa-首跑)。当前组内就绪掩码仍编译为 7，退出确认另有一处直写旧寄存器。
+- [x] [修正 HBG 启动与退出](#本分支的修正与验证)。A6 组内就绪掩码为 3，退出确认统一写 IPC4。
+- [x] [接入 A6 HBG 构建](#本分支的修正与验证)。Host、AICPU、AICore 与 dispatcher 均已生成，最终 MIX ELF 的 `e_flags=0xa60000`。
 - [x] [适配 HBG 的双 lane 状态](#7-ssbuf调度区必须重排)。双 lane 状态为 120 B，使用偏移 1792；生产设备行为随 SWA 验收。
 - [x] [生成 A6 原生回放包](#5-tensorplan-abi只改两处-mix-描述)。同一入口配套组装目标核、转换后的 plan、固定输入和参考。
-- [ ] [接通 A6 HBG 并验收 SWA](#验收要求)：直接执行单卡 SWA，检查完整输出和正常退出。
+- [ ] [在 A6 验收 SWA](#验收要求)：直接执行单卡 SWA，检查完整输出和正常退出。
 
 本页按适配点维护结论、改动和证据，更新至 **2026-11-18**。A6 端只在 [任务单的回答区](a6-environment.zh-CN.md#本轮回答区) 填写并返回一份 MD，关键代码／命令／日志以内嵌片段提供。收到结果后归入本页对应条目，更新勾选状态，再清空回答区、刷新未解决任务。勾选“代码／离线适配完成”不代表设备验收完成。
 
@@ -172,7 +173,15 @@ C wait_intra_block(PIPE_S, 12) → 校验 ack、response
 
 以上偏移、编码和 GM 协议来自 A6 参考实现的回执。本地 CANN 对 `dav-920r1-cube` 和 `dav-920r1-vec` 都编出了 `MOV X0, IPC_REG_0` 和 `MOV IPC_REG_4, X0`。CP1 窗口基址加偏移后的真实设备访问、以及本仓 SWA 的执行结果仍待验证。
 
-**对 HBG 的影响。** A5 resident HBG 通过 `DATA_MAIN_BASE` 放行，退出时 CP1 读 `COND` 确认本轮退出值。A6 参考实现的 GOODBYE 走 GM；IPC4 的 ACK／FIN 属于任务通道。把 A5 两个偏移直接改成 `0x5500/0x5520` 会混用退出和任务完成协议。参考实现的 `NEED_WRITE_REG_FOR_FAST_PATH=false`；本仓 A5 的独立开窗函数本身也是空操作。HBG 的普通计算任务继续由 AICore 调度器推进，SWA 无需移植参考实现的逐任务 AICPU 派发队列。[A5 放行与退出](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) · [HBG 的任务完成路径](../../../../src/a5/runtime/host_build_graph/aicore/resident_scheduler_impl.h)
+**同一条控制通道的两端。** AICPU 在目标核的窗口中按偏移读写，AICore 通过本核指令访问对应的寄存器。本仓 HBG 将“开始执行”和“本轮退出确认”约定为控制字，普通计算任务继续由 AICore 调度。两端的实现如下。
+
+| HBG 操作 | A5 平台 | A6 平台 |
+| -------- | ------- | ------- |
+| 放行计算 | CP1 写窗内 `+0xD0`，核读 `DATA_MAIN_BASE` | CP1 以 64 位写 `+0x5500`，核读 IPC0，低 32 位匹配 `0x7FFFFFFD` 后开始执行 |
+| 退出与确认 | CP1 在 GM 给出本轮确认值，通过同一命令寄存器发 EXIT。核完成收尾后把确认值写 COND，CP1 从 `+0x5108` 读回 | HBG 保留同一流程。CP1 通过 IPC0 发 EXIT，核把本轮确认值写 IPC4，CP1 从 `+0x5520` 以 64 位读回 |
+| 允许核返回 | CP1 核对本次确认、关窗并读回，再通过每核 GM 放行返回 | 沿用相同的退出安全顺序 |
+
+前一张表中的 GM GOODBYE 属于 A6 平台参考实现。本分支选择保留 HBG 的逐核退出确认和返回顺序。A6 上此协议端到端的验证随 SWA 完成。[CP1 放行与退出](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) · [AICore 回执](../../../../src/a5/platform/onboard/aicore/inner_kernel.h)
 
 **从核号到控制窗口的公式已取得。** A6 参考实现 `373856cd828a0154173585bc8bffa8410ffacd53` 的 `GetAicoreRegInfoForDAVID` 按每 die 35 个资源建表。对上报的物理编号，`die = id / 70`、`local = id % 35`、`res_id = die * 35 + local`（整数除法）。当 `id % 70 >= 35`，使用该资源基址 + 1 MiB 的 V 窗口，其余使用窗首的 C 窗口。例如日志的 `core=68` 对应 die 0、V、资源 33。参考实现的任务与退出编码见上表，HBG 仍由 AICore 推进图中的计算任务。
 
@@ -180,13 +189,21 @@ C wait_intra_block(PIPE_S, 12) → 校验 ack、response
 
 A6 端回执与工作树 diff 基于 `8fef3c1`（2026-11-18）。在该工作树上，19 个核已完成编译和提取，Host 已提交 28 个任务。`prepare_scheduler_calls` 放行平台名 `a6` 后，Host prepare 通过，AICPU inner SO 已加载，108 个 worker 已报到。窗口表 140 项非零。完整 SWA 输出与正常退出仍待设备复跑。
 
-| 对应现象 | 源码定位与结论 |
-| -------- | -------------- |
+| 首跑现象 | 原工作树的源码定位 |
+| -------- | ------------------ |
 | `workers=108 dispatch_arrived=0 bootstrap_complete=0` | 每组 C 完成初始化后置位 1，V 准备首批任务槽后加 2。A6 的 1C1V 应在状态 3 时由 C 给全卡到达数加 2。A6 端补丁用 `#if PLATFORM_CORES_PER_BLOCKDIM == 2` 判定，参与判断的是 C++ 的 `constexpr`，预处理器将此标识符按 0 处理，实际选择 7。即使 C/V 都准备好了，该条件仍无法正常成立。[组内准备与全卡计数](../../../../src/a5/runtime/host_build_graph/aicore/resident_scheduler_impl.h) |
 | `site=94`，最后一次 IPC 读数记录为 0 | V 发布本组的就绪位后即可等待放行。CP1 要先看到全卡准备完成才发布启动值。这次启动写尚未执行，0 不能检验 IPC 写入后的可见性。临时诊断还在首错发布之后另写共享 `error_order_key`，并发时无法将该值可靠归属到报错 worker。[CP1 的放行顺序](../../../../src/a5/runtime/host_build_graph/aicpu/aicpu_executor.cpp) |
 | `0 of 108 cores proved retirement` | 退出路径另有一处读写目标不一致。CP1 已改读 IPC4，AICore 的 `acknowledge_aicore_cond_nonce_and_wait` 仍直接调用 `set_cond(request)`。若沿用本仓的逐核退出确认，可通过 `write_reg(RegId::COND, request)` 让 A6 回写 IPC4，并保留本轮确认值以及 CP1 放行返回的顺序。参考实现的 GM GOODBYE 是另一套完整协议。设备尚未验证本次退出失败的全部原因。[AICore 退出回执](../../../../src/a5/platform/onboard/aicore/inner_kernel.h) · [CP1 等待回执](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) |
 
 本地用 C++17 最小编译对照核实了掩码选择。原条件在 2、3 lane 配置下都得到 7，`-Wundef` 给出未定义标识符警告。换用 C++ 常量表达式后，两种配置分别得到 3、7。该对照验证语言行为，A6 上的修复效果以同一 SWA 的组到达计数、执行返回和输出校验为准。[本轮任务单](a6-environment.zh-CN.md)
+
+#### 本分支的修正与验证
+
+- **构建。** 显式选择 `a6/host_build_graph`，复用平台源码，在独立的 A6 缓存和输出目录构建。Host、AICPU、AICore、回放工具与业务核使用一致的平台配置，C/V 目标分别为 `dav-920r1-cube`、`dav-920r1-vec`。Host 已识别 A6 的设备函数地址，回放沿用同一份固定输入与参考。
+- **启动。** C++ 常量表达式按实际 V 数组合完成位，A6 掩码 3、A5 掩码 7 都有编译期检查。CPU 回归调用生产 `bootstrap_ready_graph()`，验证 54 组、108 个 worker 中仅 C 累加本组到达数，最后一组发布 `bootstrap_complete=1`。该用例使用 Host 预置 INIT，不覆盖 MIX 在设备 SSBUF 的握手。[启动回归](../../../ut/cpp/a5/runtime/host_build_graph/test_hbg_paired_bootstrap.cpp)
+- **退出。** 正常退出和异常收尾共用的 nonce 回执已改走平台写接口。A6 的 C/V 执行器反汇编均包含读 IPC0、写 IPC4。在 Host 内存模拟的窗口里，用实际 A6 CP1 产物验证了两个偏移的 64 位读写，高、低 32 位均能读回。真机上的跨核可见性由 SWA 验证。A5 的原启动与退出回归通过。
+- **离线验证结果。** 构建与工具链 Python 测试 133 项通过，SWA 固定夹具 2 项通过。A6 配对启动和 A5 调度、启动、退出共 4 个 CTest 目标通过。
+- **当前验证边界。** 本次在 aarch64 Host 上构建了 A6 HBG 三端、dispatcher 以及 19／19 个 SWA 核。最终目标机为 x86_64 Host，按分支源码在目标机重建。组间就绪、IPC 实际可见性、退出收尾及 30 个可写 buffer 的数值验证以真机结果为准。[单卡复跑步骤](usage.zh-CN.md#单卡-a6-swa)
 
 ### 9. 计时：采用 SYS_CNT，不使用 Cube 主频
 

@@ -59,20 +59,28 @@ Host 的 x86_64 C++ 工具、AICPU 的 aarch64 交叉编译器、AICore 的 `dav
 
 ## 单卡 A6 SWA
 
-在仓库根目录加载目标 CANN 和项目 venv。构建不占卡，重新编译 19 个目标核，用本机 C++ 工具转换 plan 并组装回放包。
+在 A6 机器上进入本分支仓库根目录，加载 CANN、激活项目 venv。如需在新 worktree 安装 Simpler，可用 `python -m pip install --no-build-isolation -e . -Cbuild.targets=build_package_a6` 选择 A6 的构建目标。以下命令在同一个 shell 中执行。每次创建独立的回放目录和输出目录，可与原工作树并存。构建不占卡。
 
 ```bash
 case_dir=tests/fdwic/a6_dsv41_scheduler
-python -I "$case_dir/prepare.py" build --platform a6 --pto-isa build/pto-isa
+mkdir -p "$case_dir/build"
+swa_verify_dir=$(mktemp -d "$case_dir/build/verify-a6-XXXXXXXX")
+git rev-parse HEAD
+python simpler_setup/build_runtimes.py --platforms a6 --runtime host_build_graph \
+  --profiling-dfx 1 --profiling-orch 0 --profiling-sched 0 --profiling-tensormap 0
+python -I "$case_dir/prepare.py" build --platform a6 --pto-isa build/pto-isa \
+  --build-dir "$swa_verify_dir/replay"
 ```
 
-有匹配的 A6 HBG 运行库后，用已分配的一张卡直接运行。下例用逻辑设备 0；如有 `TASK_DEVICE`，也可省略 `--device`。
+用已分配的单卡启动。下例使用逻辑设备 0，按实际分配调整。独立的 CANN 日志目录方便失败时定位最早的设备报错。
 
 ```bash
-python -I "$case_dir/run.py" --build-dir "$case_dir/build/a6" --device 0 \
-  --runtime-lib build/lib/a6/onboard --output outputs/swa-a6-001
+mkdir -p "$swa_verify_dir/ascend-log"
+ASCEND_PROCESS_LOG_PATH="$(realpath "$swa_verify_dir/ascend-log")" \
+  python -I "$case_dir/run.py" --build-dir "$swa_verify_dir/replay" --device 0 \
+  --runtime-lib build/lib/a6/onboard --output "$swa_verify_dir/run"
 ```
 
-A6 默认单卡、HBG、零预热、一次执行。C++ runner 对固定快照的 30 个可写 Device buffer 比对参考，结果在 `rank0/result.json`，失败位置看 `rank0/console.log`。A6 端使用适配中的 HBG 运行库已执行到设备初始化。当前复跑关注组内就绪、放行和退出。[首跑结果](a6-migration.zh-CN.md#单卡-swa-首跑)
+默认零预热、执行一次 HBG。通过时 runner 正常返回，`run/rank0/result.json` 记录 `passed`、`snapshot_inputs`、`validated_against_fused_prefix` 为 true，包含对固定参考的 30 个可写 Device buffer 检查。失败时先看 `run/rank0/console.log` 及本次 `ascend-log` 中最早的异常。[当前任务单](a6-environment.zh-CN.md)
 
 单独定位构建失败时，可用 [compile_kernels.py](../compile_kernels.py) 查看逐核诊断，或用 [prepare_plan.py](../prepare_plan.py) 检查 Host 对 2735 条记录的解码与两处 MIX 转换。
