@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import shlex
 import subprocess
 import sys
@@ -122,59 +123,14 @@ def unpack_fixture(directory):
     return metadata
 
 
-def build(args):
+def compile_a5(args, sources, kernels, binary_dir):
     # Compiler helpers are imported only for building, never for fixture checks.
     sys.path[:0] = [str(REPO), str(REPO / "python")]
     from simpler_setup.compile_pool import compile_slot, compile_worker_budget  # noqa: PLC0415
     from simpler_setup.elf_parser import extract_text_section  # noqa: PLC0415
     from simpler_setup.kernel_compiler import KernelCompiler  # noqa: PLC0415
 
-    if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
-        raise ValueError("Need positive --jobs and --pto-isa containing include/pto")
-    build_dir = args.build_dir.resolve()
-    bundle, tools = build_dir / "bundle", build_dir / "host"
-    if bundle.exists():
-        raise ValueError("Bundle already exists; use a new --build-dir for another build")
-    build_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "cmake",
-            "-S",
-            str(SUITE / "production"),
-            "-B",
-            str(tools),
-            "-G",
-            "Ninja",
-            "-DCMAKE_BUILD_TYPE=Release",
-            f"-DSIMPLER_ROOT={REPO}",
-        ],
-        check=True,
-    )
-    subprocess.run(
-        [
-            "cmake",
-            "--build",
-            str(tools),
-            "--target",
-            "native-runner",
-            "replay",
-            "record-tool",
-            "--parallel",
-            str(args.jobs),
-        ],
-        check=True,
-    )
-    metadata = unpack_fixture(bundle)
-    if selected_records(tools, bundle / "plan-rank0.bin") != metadata["kernel_ids"]:
-        raise ValueError("Captured plan does not match the selected SWA kernels")
     compiler = KernelCompiler(args.platform)
-    sources = SUITE / "kernels" / FLAVOR
-    manifest = json.loads((sources / "manifest.json").read_text())
-    kernels = [k for k in manifest["kernels"] if k["func_id"] in metadata["kernel_ids"]]
-    if sorted(k["func_id"] for k in kernels) != metadata["kernel_ids"]:
-        raise ValueError("SWA kernel sources are incomplete")
-    binary_dir = build_dir / "kernels"
-    binary_dir.mkdir(exist_ok=True)
 
     def compile_one(kernel):
         source = sources / kernel["source"]
@@ -202,7 +158,86 @@ def build(args):
         }
 
     with compile_worker_budget(args.jobs), ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        compiled = list(pool.map(compile_one, kernels))
+        return list(pool.map(compile_one, kernels))
+
+
+def build(args):
+    if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
+        raise ValueError("Need positive --jobs and --pto-isa containing include/pto")
+    build_dir = (args.build_dir or HERE / "build" / args.platform).resolve()
+    bundle, tools = build_dir / "bundle.preparing", build_dir / "host"
+    if bundle.exists() or (build_dir / "bundle").exists():
+        raise ValueError("Bundle already exists; use a new --build-dir for another build")
+    bundle.mkdir(parents=True)
+    subprocess.run(
+        [
+            "cmake",
+            "-S",
+            str(SUITE / "production"),
+            "-B",
+            str(tools),
+            "-G",
+            "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DCMAKE_CXX_COMPILER={args.cxx}",
+            f"-DSIMPLER_ROOT={REPO}",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "cmake",
+            "--build",
+            str(tools),
+            "--target",
+            "native-runner",
+            "replay",
+            "record-tool",
+            "--parallel",
+            str(args.jobs),
+        ],
+        check=True,
+    )
+    metadata = unpack_fixture(bundle)
+    if selected_records(tools, bundle / "plan-rank0.bin") != metadata["kernel_ids"]:
+        raise ValueError("Captured plan does not match the selected SWA kernels")
+    sources = SUITE / "kernels" / FLAVOR
+    manifest = json.loads((sources / "manifest.json").read_text())
+    kernels = [k for k in manifest["kernels"] if k["func_id"] in metadata["kernel_ids"]]
+    if sorted(k["func_id"] for k in kernels) != metadata["kernel_ids"]:
+        raise ValueError("SWA kernel sources are incomplete")
+    binary_dir = build_dir / "kernels"
+    binary_dir.mkdir(exist_ok=True)
+    if args.platform == "a6":
+        sys.path.insert(0, str(HERE))
+        from compile_kernels import compile_kernel_set  # noqa: PLC0415
+        from prepare_plan import convert_plan  # noqa: PLC0415
+
+        compiled = compile_kernel_set("a6", args.pto_isa, binary_dir, args.jobs, metadata["kernel_ids"])["kernels"]
+        if not all(record["passed"] for record in compiled):
+            raise RuntimeError("A6 kernel compilation failed; see kernels/summary.json")
+        converter = tools / "adapt-plan"
+        subprocess.run(
+            [
+                args.cxx,
+                "-std=c++17",
+                "-O2",
+                f"-I{SUITE / 'production'}",
+                f"-I{REPO / 'src/common'}",
+                f"-I{REPO / 'src/common/task_interface'}",
+                str(HERE / "adapt_plan.cpp"),
+                "-o",
+                str(converter),
+            ],
+            check=True,
+        )
+        plan = bundle / "plan-rank0.bin"
+        converted = build_dir / "plan-a6.bin"
+        _, executions = convert_plan(tools / "record-tool", converter, plan, converted)
+        converted.replace(plan)
+    else:
+        compiled = compile_a5(args, sources, kernels, binary_dir)
+        executions = 578
 
     def signature(values):
         return f"{len(values)} " + " ".join(map(str, values))
@@ -225,6 +260,12 @@ def build(args):
         ],
         check=True,
     )
+    expected = {
+        "signature": metadata["signature"],
+        "kernels": [{"id": k["func_id"], "signature": k["signature"]} for k in kernels],
+    }
+    if json.loads(capture([tools / "native-runner", "--describe-callable", bundle / "callable.bin"])) != expected:
+        raise ValueError("Assembled replay callable differs from the SWA signatures")
     save(
         build_dir / "build.json",
         {
@@ -235,14 +276,16 @@ def build(args):
             "callable_sha256": digest((bundle / "callable.bin").read_bytes()),
             "kernels": compiled,
             "tasks": 16,
-            "executions": 578,
+            "executions": executions,
+            "plan_sha256": digest((bundle / "plan-rank0.bin").read_bytes()),
             "replay_sha256": digest((tools / "libreplay.so").read_bytes()),
             "runner_sha256": digest((tools / "native-runner").read_bytes()),
         },
     )
     if any(name in {"torch", "pypto"} or name.startswith(("torch.", "pypto.")) for name in sys.modules):
         raise RuntimeError("Unexpected model Python dependency during SWA build")
-    print(f"Ready: {bundle}")
+    bundle.rename(build_dir / "bundle")
+    print(f"Built {args.platform} replay bundle: {build_dir / 'bundle'} (offline)")
 
 
 def main():
@@ -253,9 +296,12 @@ def main():
     export.add_argument("--tools", type=Path, required=True)
     export.add_argument("--output", type=Path, default=FIXTURE)
     compile_case = commands.add_parser("build", help="Compile only SWA and the native replay tools")
-    compile_case.add_argument("--platform", choices=["a5"], default="a5")
+    compile_case.add_argument("--platform", choices=["a5", "a6"], default="a5")
     compile_case.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
-    compile_case.add_argument("--build-dir", type=Path, default=HERE / "build/a5")
+    compile_case.add_argument("--build-dir", type=Path)
+    compile_case.add_argument(
+        "--cxx", default=os.environ.get("CXX", "c++"), help="Host compiler for CMake and the A6 plan converter"
+    )
     compile_case.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()
     if args.command == "export":

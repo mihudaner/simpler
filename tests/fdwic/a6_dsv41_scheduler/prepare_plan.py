@@ -45,6 +45,17 @@ def check_conversion(before, after):
     return executions
 
 
+def convert_plan(record_tool, converter, original, converted):
+    before = read_records(record_tool, original)
+    golden = json.loads((FIXTURE / "plan-semantics.json").read_text())
+    if len(before) != golden["records"] or semantic_hash(before) != golden["semantic_sha256"]:
+        raise ValueError("Host ABI decoded the fixture differently; do not run or convert this capture")
+    subprocess.run([str(converter), str(original), str(converted)], check=True)
+    after = read_records(record_tool, converted)
+    executions = check_conversion(before, after)
+    return semantic_hash(before), executions
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -71,19 +82,13 @@ def main():
     bundle = output / "bundle"
     unpack_fixture(bundle)
     original, converted = bundle / "plan-rank0.bin", output / "plan-a6-rank0.bin"
-    before = read_records(tools / "record-tool", original)
-    golden = json.loads((FIXTURE / "plan-semantics.json").read_text())
-    if len(before) != golden["records"] or semantic_hash(before) != golden["semantic_sha256"]:
-        raise ValueError("Host ABI decoded the fixture differently; do not run or convert this capture")
-    subprocess.run([str(tools / "adapt-plan"), str(original), str(converted)], check=True)
-    after = read_records(tools / "record-tool", converted)
-    executions = check_conversion(before, after)
+    original_semantics, executions = convert_plan(tools / "record-tool", tools / "adapt-plan", original, converted)
     # Keep the original capture intact; the A6 plan stays separately named.
     summary = {
         "runtime_executed": False,
         "host_compiler": subprocess.check_output([args.cxx, "--version"], text=True).splitlines()[0],
         "original_plan_sha256": hashlib.sha256(original.read_bytes()).hexdigest(),
-        "original_semantic_sha256": semantic_hash(before),
+        "original_semantic_sha256": original_semantics,
         "a6_plan_sha256": hashlib.sha256(converted.read_bytes()).hexdigest(),
         "tasks": 16,
         "a5_executions": 578,

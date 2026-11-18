@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Run the single-device SWA L0 benchmark using the PR runner and timing rules."""
+"""Run the single-device SWA snapshot with its native runner."""
 
 import argparse
 import hashlib
@@ -64,26 +64,71 @@ def allocated_device(parser, requested):
     return int(device)
 
 
+def set_run_defaults(parser, args, platform):
+    if platform == "a5" and args.device is not None and not os.environ.get("TASK_DEVICE"):
+        parser.error("--device must come from task-submit on A5")
+    if args.runtime is None:
+        args.runtime = "host_build_graph" if platform == "a6" else "both"
+    if args.warmup is None:
+        args.warmup = 0 if platform == "a6" else 1
+    if args.rounds is None:
+        args.rounds = 1 if platform == "a6" else 10
+    if args.warmup < (0 if platform == "a6" else 1) or args.rounds < 1:
+        parser.error("Invalid warmup or round count")
+    if platform == "a6" and args.runtime != "host_build_graph":
+        parser.error("The A6 SWA case uses host_build_graph")
+
+
+def run_a6(parser, args, build, bundle, runner, libraries, output):
+    if build["plan_sha256"] != hashlib.sha256((bundle / "plan-rank0.bin").read_bytes()).hexdigest():
+        parser.error("A6 plan differs from the plan paired with this callable")
+    device = allocated_device(parser, args.device) if os.environ.get("TASK_DEVICE") else args.device
+    if device is None or device < 0:
+        parser.error("Supply the allocated A6 device via --device or TASK_DEVICE")
+    rank = output / "rank0"
+    rank.mkdir(parents=True)
+    command = [
+        str(runner),
+        str(bundle),
+        str(libraries),
+        str(device),
+        "0",
+        str(output / "rootinfo"),
+        str(rank),
+        "0",
+        str(args.warmup),
+        str(args.rounds),
+        "--runtime=host_build_graph",
+    ]
+    with (rank / "console.log").open("w") as log:
+        result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False)
+    if result.returncode:
+        raise SystemExit(f"SWA failed (exit {result.returncode}); see {rank / 'console.log'}")
+    validation = json.loads((rank / "result.json").read_text())
+    if not (validation["snapshot_inputs"] and validation["validated_against_fused_prefix"]):
+        raise RuntimeError("Native runner did not validate the SWA snapshot")
+    print(f"SWA output check passed. Results: {rank / 'result.json'}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, default=HERE / "build/a5")
-    parser.add_argument("--runtime-lib", type=Path, default=REPO / "build/lib/a5/onboard")
-    parser.add_argument("--runtime", choices=["host_build_graph", "percounter", "both"], default="both")
+    parser.add_argument("--runtime-lib", type=Path)
+    parser.add_argument("--runtime", choices=["host_build_graph", "percounter", "both"])
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--warmup", type=int, default=1)
-    parser.add_argument("--rounds", type=int, default=10)
-    parser.add_argument("--device", type=int, help="Assigned by task-submit inside its allocation")
+    parser.add_argument("--warmup", type=int)
+    parser.add_argument("--rounds", type=int)
+    parser.add_argument("--device", type=int, help="Allocated logical device ID")
     args = parser.parse_args()
-    if args.device is not None and not os.environ.get("TASK_DEVICE"):
-        parser.error("--device must come from task-submit, not a manual device selection")
-    build_dir, output, libraries = args.build_dir.resolve(), args.output.resolve(), args.runtime_lib.resolve()
-    if args.warmup < 1 or args.rounds < 1:
-        parser.error("Require at least one warmup and one measured round")
+    build_dir, output = args.build_dir.resolve(), args.output.resolve()
     if output.exists():
         parser.error("Output already exists; select a new directory")
     build = json.loads((build_dir / "build.json").read_text())
-    if build["platform"] != "a5":
-        parser.error("This entry currently validates A5 only; A6 adaptation is pending")
+    platform = build["platform"]
+    if platform not in ("a5", "a6"):
+        parser.error(f"Unknown bundle platform: {platform}")
+    libraries = (args.runtime_lib or REPO / "build/lib" / platform / "onboard").resolve()
+    set_run_defaults(parser, args, platform)
     bundle, runner = build_dir / "bundle", build_dir / "host/native-runner"
     for path, expected in ((runner, build["runner_sha256"]), (bundle / "callable.bin", build["callable_sha256"])):
         if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
@@ -95,9 +140,12 @@ def main():
             libraries / runtime / name for name in ("libhost_runtime.so", "libaicpu_kernel.so", "aicore_kernel.o")
         ]
     if any(not path.is_file() for path in runtime_files):
-        parser.error("Build the selected A5 runtimes and dispatcher first")
+        parser.error(f"Missing {platform} runtime artifact: {next(p for p in runtime_files if not p.is_file())}")
     if not os.environ.get("ASCEND_HOME_PATH"):
         parser.error("Source the CANN environment first")
+    if platform == "a6":
+        run_a6(parser, args, build, bundle, runner, libraries, output)
+        return
     if not os.environ.get("TASK_DEVICE"):
         command = [
             sys.executable,

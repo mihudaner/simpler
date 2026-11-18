@@ -26,17 +26,7 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--platform", choices=("a5", "a6"), default="a6")
-    parser.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--jobs", type=int, default=4)
-    args = parser.parse_args()
-    if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
-        parser.error("Need positive --jobs and --pto-isa containing include/pto")
-    output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=False)
+def compile_kernel_set(platform, pto_isa, output, jobs, kernel_ids):
     sys.path[:0] = [str(REPO), str(REPO / "python")]
     from simpler_setup.compile_paths import compiler_visible_path  # noqa: PLC0415
     from simpler_setup.elf_parser import extract_text_section  # noqa: PLC0415
@@ -46,14 +36,13 @@ def main():
     # Reuse the captured kernel argument ABI headers, not the A5 target or runtime.
     # A6 HBG must separately establish compatibility before these kernels can run.
     headers = KernelCompiler("a5")
-    includes = [str(args.pto_isa.resolve() / name) for name in ("include", "include/pto", "pkg_inc")]
+    includes = [str(pto_isa.resolve() / name) for name in ("include", "include/pto", "pkg_inc")]
     includes += headers.get_incore_include_dirs() + headers.get_orchestration_include_dirs("host_build_graph")
     includes += headers.get_ascend_incore_include_dirs()
-    toolchain = CCECToolchain(args.platform)
-    fixture = json.loads((HERE / "fixtures/fixture.json").read_text())
+    toolchain = CCECToolchain(platform)
     manifest = json.loads((SOURCES / "manifest.json").read_text())
-    kernels = [k for k in manifest["kernels"] if k["func_id"] in fixture["kernel_ids"]]
-    if sorted(k["func_id"] for k in kernels) != fixture["kernel_ids"]:
+    kernels = [k for k in manifest["kernels"] if k["func_id"] in kernel_ids]
+    if sorted(k["func_id"] for k in kernels) != kernel_ids:
         raise ValueError("Selected SWA kernels differ from the fixture")
 
     def compile_one(kernel):
@@ -71,6 +60,7 @@ def main():
         result = {
             "id": kernel["func_id"],
             "name": kernel["name"],
+            "file": binary_path.name,
             "core": kernel["core_type"],
             "source": source.relative_to(REPO).as_posix(),
             "source_sha256": sha256(source),
@@ -98,19 +88,17 @@ def main():
         )
         return result
 
-    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
         results = list(pool.map(compile_one, kernels))
     forbidden = [n for n in sys.modules if n.split(".")[0] in ("pypto", "torch")]
     if forbidden:
         raise RuntimeError(f"Unexpected model dependencies: {forbidden}")
     summary = {
-        "platform": args.platform,
+        "platform": platform,
         "runtime_executed": False,
         "kernel_argument_headers": "src/a5/runtime/host_build_graph/common (compatibility unverified on A6)",
         "source_commit": subprocess.check_output(["git", "-C", str(REPO), "rev-parse", "HEAD"], text=True).strip(),
-        "pto_isa_commit": subprocess.check_output(
-            ["git", "-C", str(args.pto_isa), "rev-parse", "HEAD"], text=True
-        ).strip(),
+        "pto_isa_commit": subprocess.check_output(["git", "-C", str(pto_isa), "rev-parse", "HEAD"], text=True).strip(),
         "compiler": subprocess.check_output([toolchain.cxx_path, "--version"], text=True).strip(),
         "flags": {core: toolchain.get_compile_flags(core_type=core) for core in ("aic", "aiv")},
         "fixture_sha256": sha256(HERE / "fixtures/swa.tar.gz"),
@@ -119,7 +107,23 @@ def main():
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     passed = sum(r["passed"] for r in results)
     print(f"{passed}/{len(results)} kernels compiled, linked and extracted; no device execution.")
-    return 0 if passed == len(results) else 1
+    return summary
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--platform", choices=("a5", "a6"), default="a6")
+    parser.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--jobs", type=int, default=4)
+    args = parser.parse_args()
+    if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
+        parser.error("Need positive --jobs and --pto-isa containing include/pto")
+    output = args.output.resolve()
+    output.mkdir(parents=True, exist_ok=False)
+    fixture = json.loads((HERE / "fixtures/fixture.json").read_text())
+    summary = compile_kernel_set(args.platform, args.pto_isa, output, args.jobs, fixture["kernel_ids"])
+    return 0 if all(kernel["passed"] for kernel in summary["kernels"]) else 1
 
 
 if __name__ == "__main__":
