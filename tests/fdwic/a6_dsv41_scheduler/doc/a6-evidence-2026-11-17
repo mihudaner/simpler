@@ -1,7 +1,7 @@
 # A6 environment and interface query data
 
 Environment values, compiler checks and interface query data.
-Verified conclusions and open questions: a6-environment.zh-CN.md.
+Verified conclusions: a6-migration.zh-CN.md. Current verification tasks: a6-environment.zh-CN.md.
 
 ## uname/os
 x86_64

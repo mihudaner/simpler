@@ -55,7 +55,7 @@ python -I tests/fdwic/a6_dsv41_scheduler/run.py \
 
 建议在项目 `.venv` 提供 `cmake>=3.20` 和当前入口使用的 Ninja，不升级系统 CMake，也不改用户全局环境；复现时记录 `command -v cmake ninja` 和各自版本。3.20 是当前构建链要求，不是 A6 芯片本身的硬要求。若选择其他生成器或兼容旧版本，需要验证依赖追踪和重编行为。
 
-Host 的 x86_64 C++ 工具、AICPU 的 aarch64 交叉编译器、AICore 的 `dav-920r1-*` ccec 目标分别配置。没有 task-submit 的 A6 机器按实际设备占用方式提供执行入口，不能直接复用本页的 A5 队列命令。环境依据与剩余资料见 [环境核对](a6-environment.zh-CN.md)。
+Host 的 x86_64 C++ 工具、AICPU 的 aarch64 交叉编译器、AICore 的 `dav-920r1-*` ccec 目标分别配置。没有 task-submit 的 A6 机器按实际设备占用方式提供执行入口，不能直接复用本页的 A5 队列命令。已核实环境见 [迁移说明](a6-migration.zh-CN.md#环境与证据)，待补验证见 [当前 A6 任务单](a6-environment.zh-CN.md)。
 
 ## A6 计算核编译检查
 
@@ -88,6 +88,6 @@ python tests/fdwic/a6_dsv41_scheduler/prepare_plan.py \
 仅 t22 改为 48 个 1C1V block，t28 改为 32 个 1C1V block；保留全部输入、标量和依赖，原始 plan 留在 `bundle/`。
 任何非预期变化都会报错。转换后的计划必须配合同分支 A6 核使用，不能交给 A5 运行时。
 
-**A6 端现在可以先执行这两条离线命令。** 返回两个 `summary.json`；失败时加上相应 `.log`。
+**以上两条是离线检查命令，不是当前优先查证项。** 执行后将两个 `summary.json` 的关键字段贴进 [任务单回答区](a6-environment.zh-CN.md#本轮回答区)；失败时附关键 `.log` 片段，只返回这一份 MD，不另传文件。
 核编译成功和 Host 解码成功之后，仍需接入 A6 HBG 平台才能生成可执行运行包。
 所缺平台资料列在 [运行时还缺什么](a6-migration.zh-CN.md#运行时还缺什么)，不需要对方先跑通模型。
