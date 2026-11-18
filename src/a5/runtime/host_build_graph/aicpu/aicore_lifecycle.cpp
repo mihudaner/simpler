@@ -271,8 +271,9 @@ int32_t AicoreLifecycle::post_handshake_init(Runtime *runtime) {
         }
         cluster_workers[cluster][lane] = worker;
     }
-    static_assert(PLATFORM_CORES_PER_BLOCKDIM == 3, "Scheduler selection assumes one AIC and two AIV lanes");
-    static_assert(PLATFORM_AIV_CORES_PER_BLOCKDIM == 2, "Scheduler selection assumes two AIV lanes per cluster");
+    static_assert(PLATFORM_AIC_CORES_PER_BLOCKDIM == 1);
+    static_assert(PLATFORM_AIV_CORES_PER_BLOCKDIM == 1 || PLATFORM_AIV_CORES_PER_BLOCKDIM == 2);
+    static_assert(PLATFORM_CORES_PER_BLOCKDIM == 1 + PLATFORM_AIV_CORES_PER_BLOCKDIM);
     for (int32_t cluster = 0; cluster < aic_count; ++cluster) {
         for (int32_t lane = 0; lane < PLATFORM_CORES_PER_BLOCKDIM; ++lane) {
             if (cluster_workers[cluster][lane] < 0) {

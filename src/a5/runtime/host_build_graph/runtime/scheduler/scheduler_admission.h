@@ -35,7 +35,7 @@ static inline __aicore__ bool scheduler_admission_validate_topology(
         return false;
     if (admission->topology_worker_count != 0) return admission->topology_worker_count == workers;
     uint64_t cube_words[(SCHEDULER_WORKER_CAPACITY + 63) / 64]{};
-    uint64_t vector_words[2][(SCHEDULER_WORKER_CAPACITY + 63) / 64]{};
+    uint64_t vector_words[(SCHEDULER_WORKER_CAPACITY + 63) / 64]{};
     uint64_t observed_cubes = 0;
     uint64_t observed_clusters = 0;
     static_assert(SCHEDULER_CLUSTER_CAPACITY <= 64);
@@ -51,20 +51,20 @@ static inline __aicore__ bool scheduler_admission_validate_topology(
             cube_words[worker / 64] |= UINT64_C(1) << (worker % 64);
             scheduler_invalidate_cache_line(&context->cluster_index);
             scheduler_invalidate_cache_line(&context->cluster_worker_ids[0]);
-            scheduler_invalidate_cache_line(&context->cluster_worker_ids[2]);
+            scheduler_invalidate_cache_line(&context->cluster_worker_ids[PLATFORM_CORES_PER_BLOCKDIM - 1]);
             scheduler_cache_barrier();
             if (context->cluster_index >= cubes || context->cluster_worker_ids[0] != worker ||
                 (observed_clusters & (UINT64_C(1) << context->cluster_index)) != 0)
                 return false;
             observed_clusters |= UINT64_C(1) << context->cluster_index;
-            for (uint32_t lane = 1; lane < 3; ++lane) {
+            for (uint32_t lane = 1; lane < PLATFORM_CORES_PER_BLOCKDIM; ++lane) {
                 const uint64_t peer = context->cluster_worker_ids[lane];
                 if (peer >= workers || peer == worker) return false;
                 auto *peer_context = scheduler_worker_context_at(base, local, peer);
                 scheduler_invalidate_cache_line(peer_context);
                 scheduler_invalidate_cache_line(&peer_context->cluster_index);
                 scheduler_invalidate_cache_line(&peer_context->cluster_worker_ids[0]);
-                scheduler_invalidate_cache_line(&peer_context->cluster_worker_ids[2]);
+                scheduler_invalidate_cache_line(&peer_context->cluster_worker_ids[PLATFORM_CORES_PER_BLOCKDIM - 1]);
                 scheduler_cache_barrier();
                 if (peer_context->worker_index != peer ||
                     peer_context->core_type != static_cast<int32_t>(CoreType::AIV) ||
@@ -74,8 +74,8 @@ static inline __aicore__ bool scheduler_admission_validate_topology(
                     if (peer_context->cluster_worker_ids[member_lane] != context->cluster_worker_ids[member_lane])
                         return false;
                 const uint64_t bit = UINT64_C(1) << (peer % 64);
-                if (((vector_words[0][peer / 64] | vector_words[1][peer / 64]) & bit) != 0) return false;
-                vector_words[lane - 1][peer / 64] |= bit;
+                if ((vector_words[peer / 64] & bit) != 0) return false;
+                vector_words[peer / 64] |= bit;
             }
         }
     }
@@ -84,7 +84,7 @@ static inline __aicore__ bool scheduler_admission_validate_topology(
     for (uint64_t word = 0; word < words; ++word) {
         const uint64_t remaining = workers - word * 64;
         const uint64_t valid = remaining >= 64 ? UINT64_MAX : (UINT64_C(1) << remaining) - 1;
-        const uint64_t vectors = vector_words[0][word] | vector_words[1][word];
+        const uint64_t vectors = vector_words[word];
         if ((vectors & cube_words[word]) != 0 || (vectors | cube_words[word]) != valid) return false;
     }
     admission->topology_worker_count = workers;
@@ -155,12 +155,14 @@ scheduler_initialize_admission(__gm__ void *base, const SchedulerLocalState *loc
         if (local->config.self_lane >= PLATFORM_CORES_PER_BLOCKDIM) return false;
         const uint64_t worker = local->worker_id();
         if (worker >= workers) return false;
-        const uint64_t cluster = worker < clusters ? worker : (worker - clusters) / 2;
-        const uint32_t lane = worker < clusters ? 0U : 1U + static_cast<uint32_t>((worker - clusters) % 2);
+        constexpr uint32_t vectors = PLATFORM_AIV_CORES_PER_BLOCKDIM;
+        const uint64_t cluster = worker < clusters ? worker : (worker - clusters) / vectors;
+        const uint32_t lane = worker < clusters ? 0U : 1U + static_cast<uint32_t>((worker - clusters) % vectors);
         if (local->config.self_lane != lane || local->config.self_core_type != (lane == 0 ? 0U : 1U) ||
-            local->config.worker_ids[0] != cluster || local->config.worker_ids[1] != clusters + 2 * cluster ||
-            local->config.worker_ids[2] != clusters + 2 * cluster + 1)
+            local->config.worker_ids[0] != cluster)
             return false;
+        for (uint32_t subblock = 0; subblock < vectors; ++subblock)
+            if (local->config.worker_ids[1 + subblock] != clusters + vectors * cluster + subblock) return false;
         // Discovery validated this compact topology before READY.
         next.topology_worker_count = workers;
     } else if (!scheduler_admission_validate_topology(base, local, &next)) {

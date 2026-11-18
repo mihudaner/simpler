@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <type_traits>
 
+#include "host_build_graph/cluster_signal_layout.h"
 #include "scheduler_scalar_record.h"
 
 #if defined(__CCE_AICORE__)
@@ -23,40 +24,16 @@
 #define SCHEDULER_CLUSTER_SSBUF
 #endif
 
-inline constexpr uint32_t SCHEDULER_CLUSTER_REGION_OFFSET = 2 * 1024;
-inline constexpr uint32_t SCHEDULER_CLUSTER_REGION_BYTES = 1024;
-static_assert(SCHEDULER_CLUSTER_REGION_OFFSET + SCHEDULER_CLUSTER_REGION_BYTES == PLATFORM_SSBUF_SIZE);
-
-// The coordinator owns publication; each active lane owns its acknowledgement.
-// Preparation and formal resource arbitration use independent generations.
-struct SchedulerClusterSignal {
-    volatile uint64_t run_epoch;
-    volatile int64_t prepare_task_ref;
-    volatile uint32_t prepare_block;
-    volatile uint32_t prepare_mask;
-    volatile uint32_t prepare_generation;
-    volatile uint32_t prepared[PLATFORM_CORES_PER_BLOCKDIM];
-    volatile uint32_t sync_frontier[PLATFORM_CORES_PER_BLOCKDIM];
-    volatile uint32_t sync_hold[PLATFORM_CORES_PER_BLOCKDIM];
-    volatile uint32_t staged_mask;
-    volatile uint32_t armed_generation;
-    volatile int64_t task_ref;
-    volatile uint64_t anchor_state;
-    volatile uint32_t sync_tail;
-    volatile uint32_t block_idx;
-    volatile uint32_t active_mask;
-    volatile uint32_t arrived[PLATFORM_CORES_PER_BLOCKDIM];
-    volatile uint32_t finished[PLATFORM_CORES_PER_BLOCKDIM];
-    volatile uint64_t gm_arrival_seq;
-};
-static_assert(sizeof(SchedulerClusterSignal) <= SCHEDULER_CLUSTER_REGION_BYTES);
-static_assert(sizeof(SchedulerClusterSignal) == 136 && offsetof(SchedulerClusterSignal, anchor_state) == 80);
+using SchedulerClusterRegion = SchedulerClusterSsbufRegion<PLATFORM_CORES_PER_BLOCKDIM>;
+using SchedulerClusterSignal = SchedulerClusterSignalLayout<PLATFORM_CORES_PER_BLOCKDIM>;
+static_assert(SchedulerClusterRegion::capacity == PLATFORM_SSBUF_SIZE);
+static_assert(SchedulerClusterRegion::offset + sizeof(SchedulerClusterSignal) <= PLATFORM_SSBUF_SIZE);
 static_assert(alignof(SchedulerClusterSignal) <= 8);
 static_assert(std::is_standard_layout_v<SchedulerClusterSignal>);
 
 inline __aicore__ SCHEDULER_CLUSTER_SSBUF SchedulerClusterSignal *scheduler_cluster_signal_at(uint64_t hardware_base) {
     return reinterpret_cast<SCHEDULER_CLUSTER_SSBUF SchedulerClusterSignal *>(
-        hardware_base + SCHEDULER_CLUSTER_REGION_OFFSET
+        hardware_base + SchedulerClusterRegion::offset
     );
 }
 
