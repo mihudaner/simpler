@@ -6,7 +6,7 @@
 | ---- | ---------- | ---------: | -------------------: | ---------- |
 | [00 优化前基线](../results/00-baseline/) | A6 已完成 1C1V 迁移，A5 保留 1C2V。A5 对照窗口为 269.286 µs | 370.307 µs | 463.159 µs | [阶段报告](../results/00-baseline/README.zh-CN.md) · [指标 JSON](../results/00-baseline/metrics.json) · [A5 L3 泳道](../results/00-baseline/swa-a5-hbg-L3-detail.json.xz) |
 | [001 合入主线 HBG](../results/001-hbg-main-merge-swa/) | 同一张 A5 上，纯主线 219.287 µs，合并版 218.050 µs。A6 使用 GM 完成计数，待单卡回填 | | | [阶段报告](../results/001-hbg-main-merge-swa/README.zh-CN.md) · [指标 JSON](../results/001-hbg-main-merge-swa/metrics.json) · [A5 L3 泳道](../results/001-hbg-main-merge-swa/swa-a5-hbg-L3-detail.json.xz) |
-| [002 同址访问](../results/002-hbg-same-address-access/README.zh-CN.md) | 单卡 96 核比较 GM、GM atomic 和 CntNotify。A5 已测，A6 待回填 | | | [测试步骤与回填表](../results/002-hbg-same-address-access/README.zh-CN.md#a6-回填区) · [A5 逐名次数据](../results/002-hbg-same-address-access/a5-ranks.json) |
+| [002 同址访问](../results/002-hbg-same-address-access/README.zh-CN.md) | A5 已测六组同址读写。A6 待测同址访问、96 核完成计数加一与 SWA L0 收益 | | | [测试步骤与回填表](../results/002-hbg-same-address-access/README.zh-CN.md#a6-回填区) · [A5 逐名次数据](../results/002-hbg-same-address-access/a5-ranks.json) |
 
 **待测的分片改动**是把输出量化（回放 t17／源码 t25）的工作从 64 个 V block 重新分给 54 个。基线下至少 10 个 block 要等 V 核空出。是否值得改，取决于每个 block 多做的工作和省下的等待，可用同卡 L0 及 30 个缓冲区的输出校验判定。[基线分片与空隙统计](../results/00-baseline/README.zh-CN.md#54-个-v-的影响有多大)
 

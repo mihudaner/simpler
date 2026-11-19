@@ -29,7 +29,7 @@ Ascend950DT_9581，设备 2，32C＋64V，2026-11-19，任务 `task_20261119_171
 
 两次 A5 测量里，读和写的最后完成名次均为 CntNotify 最早、GM atomic 最晚。原图未附实现，本次选择的 atomic 和 SET 操作以上表为准。每轮取最早开始 tick 为零点，按结束 tick 从小到大排序，再跨轮对同一名次求均值、P10 和 P90。平均相邻间距为每轮 `(第 96 名 − 第 1 名) / 95` 的均值。完整 96 个名次及两份可重算的原始记录已归档。[逐名次 JSON](a5-ranks.json) · [GM 原始 CSV](a5-gm.csv.xz) · [CntNotify 原始 CSV](a5-cnt-notify.csv.xz)
 
-## A6 怎么跑
+## A6 怎么跑已有六组测试
 
 在仓库根目录加载对应的 CANN 环境，准备与仓库 pin 一致的 PTO-ISA，仅编译这个小用例。两端的构建目标分别是 A5 的 `dav-c310` 和 A6 的 `dav-920r1`。下面的 A6 目标已在本地交叉编译。
 
@@ -57,6 +57,14 @@ python3 "$p/ranks.py" "${captures[@]}" --blocks 48 --vectors 48 \
 
 单独启动 CntNotify 进程，只申请一个资源，并访问 API 返回的 32 位 SET/read 基址。记录创建、取 ID、映射及读写校验中首个失败步骤和返回码。该组失败时仍可汇总四组 GM 数据，CntNotify 的计时格留空。计时采用已有 A6 SYS_CNT 约 1 GHz 的实测结论。[计时依据](../../doc/a6-migration.zh-CN.md#10-设备计时)
 
+## A6 补测目标：用 CntNotify 累计整轮任务完成数
+
+**要回答两个问题：96 个核各报告一次完成，AICPU 能否读到 96？若可以，替换这个计数器能否缩短 SWA 的设备用时？** HBG 每完成一个逻辑任务，由负责该任务的核上报一次，AICPU 轮询整轮计数。上面的六组命令中，96 次 SET(1) 的终值为 1。下面两组需要给探针补充 ADD 操作；生产 A6 目前走 GM。[完成数上报](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_ready.h) · [AICPU 读取计数](../../../../../src/a5/runtime/host_build_graph/aicpu/aicore_scheduler_state.h)
+
+1. **确定 A6 的 ADD 入口。** 对同一个 CntNotify 资源，用 `rtGetDevResAddress` 查 SET/read 和 ADD（`RT_RES_TYPE_STARS_CNT_NOTIFY_RECORD`、`RT_RES_TYPE_STARS_CNT_NOTIFY_ADD`），记录返回码。若驱动不支持单独映射 ADD，可用有 A6 实现或文档依据的别名，回填来源。A5 的 `SET + 0x08` 已在 A5 验证；缺少 A6 对应依据时，回填已取得的映射结果，ADD 性能栏留空。[A5 的映射与实测](../../../../../docs/investigations/2026-11-a5-hbg-cnt-notify-add-deferred.md)
+2. **测 96 次真实加一。** 在同一张 A6 上复用 48C＋48V、1 轮预热＋192 轮正式、硬件同步起跑。每轮清零后，GM 组每核执行一次 64 位 `atomicAdd(counter, 1)` 并丢弃返回值；CntNotify 组每核向 **ADD** 地址写一次 32 位命令 `1`。两组均在写后执行 `dsb(DSB_DDR)` 再记结束。同步后由一个核读 GM 或 SET/read，逐轮校验终值为 96。另做一次读端校验：AICPU 清零、放行 96 个核，在下次清零前由 AICPU 自己读到 96，超时记录最后读值。清零、读回和正确性检查均在访问计时区间外。
+3. **核对 SWA 的实际收益。** 上述校验通过后，同卡同包只切换整轮完成计数，固定每任务完成通知和其他调度设置。按 L0 各预热 1 次、正式 10 次；核对 Host 日志分别出现 `run progress backend=GM-FAA` 和 `run progress backend=CntNotify-INC`，两组均正常退出并通过 30 个缓冲区校验。比较 AICore 窗口和 Device wall 均值。第 96 名耗时只回答同址并发加一的成本，SWA 两组的差值才回答用例收益。[后端选择日志](../../../../../src/a5/runtime/host_build_graph/host/runtime_maker.cpp) · [SWA L0 跑法](../../doc/a6-environment.zh-CN.md)
+
 ## A6 回填区
 
 只需回传本节 Markdown。前三个名次列均填 192 轮均值；第 96 名的 P10、P90 取自 `ranks.json` 各场景的最后一项。原始 CSV 留在本地。
@@ -76,3 +84,16 @@ python3 "$p/ranks.py" "${captures[@]}" --blocks 48 --vectors 48 \
 | 日志中的可用 C/V 数和实际启动 C/V 数？各场景是否通过 193 轮 × 96 核校验（含预热）？ | |
 | CntNotify 是否能申请、映射、读回 1、写入并读回 1？失败时贴首条错误和返回码。 | |
 | 相比 A5，哪条路径的第 96 名变化最大？平均相邻间距和起跑偏差分别是多少？ | |
+
+**完成计数补测**。下表回填同一张 A6 的数据。终值栏填“通过轮数／193、异常终值”，AICPU 栏填实际读值。若 ADD 映射失败，在表下写首个失败的 API 与返回码即可。
+
+| 每核加一 | 第 1 名 µs | 第 48 名 µs | 第 96 名 µs | 第 96 名 P10–P90 µs | 每轮终值校验 | AICPU 终值 |
+| -------- | ---------: | ----------: | ----------: | ------------------: | ------------ | ---------- |
+| GM 64 位 atomicAdd | | | | | | |
+| CntNotify 32 位 ADD | | | | | | |
+
+| 验证项 | A6 回填 |
+| ------ | ------- |
+| ADD 入口的接口或别名依据、SET/read 与 ADD 映射返回码 | |
+| SWA L0，GM-FAA：实际后端日志、30 个缓冲区校验、AICore 窗口／Device wall 均值（µs） | |
+| SWA L0，CntNotify-INC：实际后端日志、30 个缓冲区校验、AICore 窗口／Device wall 均值（µs） | |
