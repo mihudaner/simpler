@@ -43,6 +43,8 @@
 #include "common/platform_config.h"
 #include "aicpu/platform_aicpu_affinity.h"  // MAX_GATE_THREADS (aicpu_allowed_cpus bound)
 #include "callable_limits.h"
+#include "core_async_capability.h"
+#include "core_input_cache_proof.h"
 #include "task_args.h"
 #include "aicore_teardown.h"
 #include "common/launch_entry_args.h"     // LaunchEntryArgsPlan
@@ -485,6 +487,7 @@ private:
         // the first is a host pointer, and because the host lookup must not
         // reach for the device address `dev` carries.
         const uint64_t *callable_table_host_;
+        const CoreAsyncCapability *callable_async_capabilities_;
         uint64_t callable_entry_table_addr_;
 
         // Host-side tensor ledger for the run's H2D and D2H transfers.
@@ -523,9 +526,11 @@ private:
             uint64_t tensor_elems;
             uint64_t scalar_elems;
             std::vector<MetadataRegion> prerequisites;
+            std::vector<std::shared_ptr<const void>> resources;
         };
         RunImagePublication pending_publication_;
         std::shared_ptr<const RunImagePublication> prepared_publication_;
+        const CoreInputCacheProof *callable_input_cache_proofs_{nullptr};
     };
     HostOnlyState host_;
 
@@ -591,6 +596,9 @@ public:
         host_.pending_publication_.prerequisites.push_back(
             {target, source, bytes, phase, std::move(attributes), std::move(storage)}
         );
+    }
+    void retain_pending_resource(std::shared_ptr<const void> resource) {
+        host_.pending_publication_.resources.push_back(std::move(resource));
     }
     using RunImagePublication = HostOnlyState::RunImagePublication;
     void restore_pending_publication(RunImagePublication publication) {
@@ -707,6 +715,10 @@ public:
      * the descriptor carries is never dereferenced here.
      */
     uint64_t get_function_bin_addr(int func_id) const;
+    CoreAsyncCapability get_function_async_capability(int func_id) const;
+    bool bind_callable_async_capabilities(const struct HostApi &api);
+    const CoreInputCacheProof *get_function_input_cache_proof(int func_id) const;
+    friend void bind_registered_input_cache_proofs(Runtime &runtime, const std::vector<CoreInputCacheProof> &proofs);
 
     /**
      * Bind this run to one registration-owned function-table pair.

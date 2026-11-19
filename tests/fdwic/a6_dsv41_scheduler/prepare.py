@@ -126,6 +126,7 @@ def unpack_fixture(directory):
 def compile_a5(args, sources, kernels, binary_dir):
     # Compiler helpers are imported only for building, never for fixture checks.
     sys.path[:0] = [str(REPO), str(REPO / "python")]
+    from simpler_setup.a5_input_cache import annotate_a5_hbg_text  # noqa: PLC0415
     from simpler_setup.compile_pool import compile_slot, compile_worker_budget  # noqa: PLC0415
     from simpler_setup.elf_parser import extract_text_section  # noqa: PLC0415
     from simpler_setup.kernel_compiler import KernelCompiler  # noqa: PLC0415
@@ -147,6 +148,11 @@ def compile_a5(args, sources, kernels, binary_dir):
             )
         target = binary_dir / f"kernel-{kernel['func_id']}.bin"
         target.write_bytes(binary)
+        registration = target
+        annotated = annotate_a5_hbg_text(binary, kernel["core_type"])
+        if annotated != binary:
+            registration = target.with_suffix(".hbg")
+            registration.write_bytes(annotated)
         print(f"Compiled SWA kernel {kernel['func_id']}: {kernel['name']}", flush=True)
         return {
             "id": kernel["func_id"],
@@ -155,6 +161,7 @@ def compile_a5(args, sources, kernels, binary_dir):
             "binary_sha256": digest(binary),
             "bytes": len(binary),
             "file": target.name,
+            "registration_file": registration.name,
         }
 
     with compile_worker_budget(args.jobs), ThreadPoolExecutor(max_workers=args.jobs) as pool:
@@ -248,6 +255,9 @@ def build(args):
         compiled = compile_a5(args, sources, kernels, binary_dir)
         executions = 578
 
+    sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
+    from build_sources import capability_words  # noqa: PLC0415
+
     def signature(values):
         return f"{len(values)} " + " ".join(map(str, values))
 
@@ -255,7 +265,9 @@ def build(args):
     for kernel, record in zip(kernels, compiled, strict=True):
         rows.append(
             f"{kernel['func_id']} {signature(kernel['signature'])} "
-            + json.dumps(str(binary_dir / record["file"]), ensure_ascii=False)
+            + json.dumps(str(binary_dir / record.get("registration_file", record["file"])), ensure_ascii=False)
+            + " "
+            + " ".join(map(str, capability_words(kernel)))
         )
     assembly = build_dir / "assembly.txt"
     assembly.write_text("\n".join(rows) + "\n")

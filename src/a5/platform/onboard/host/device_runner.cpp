@@ -249,7 +249,34 @@ int DeviceRunner::prepare_kernel_arch_context(rtStream_t control_stream) {
     return query_aicpu_topology(topology, control_stream);
 }
 
+int DeviceRunner::acquire_scheduler_notifications(
+    uint32_t slot, SchedulerNotificationPurpose purpose, size_t count, SchedulerDoneNotifications *out
+) {
+    if (!can_accept_run()) return PTO_RUNTIME_ERR_INVALID_STATE;
+    const int context_rc = validate_current_context();
+    if (context_rc != 0) return context_rc;
+#if defined(SIMPLER_PLATFORM_A6)
+    // A5's STARS SET/INC register layout has not been established on A6.
+    if (out == nullptr) return PTO_RUNTIME_ERR_INVALID_ARGUMENT;
+    *out = {std::vector<uint64_t>(count, 0), std::vector<uint64_t>(count, 0), {}};
+    return 0;
+#else
+    aclrtContext context = nullptr;
+    const auto rc = aclrtGetCurrentContext(&context);
+    if (rc != ACL_SUCCESS) return rc;
+    return scheduler_notifications_.acquire(slot, purpose, context, count, make_scheduler_notification_storage, out);
+#endif
+}
+
 int DeviceRunner::release_arch_context_resources(bool abandon_device_resources) {
+    if (abandon_device_resources) scheduler_notifications_.abandon();
+    else {
+        const int notify_rc = scheduler_notifications_.release();
+        if (notify_rc != 0) {
+            LOG_ERROR("A5 CntNotify resource release failed: %d", notify_rc);
+            return notify_rc;
+        }
+    }
     if (abandon_device_resources) {
         aicpu_topology_query_result_ = nullptr;
         aicpu_topology_query_pending_ = false;

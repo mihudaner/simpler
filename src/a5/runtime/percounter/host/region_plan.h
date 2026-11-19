@@ -48,11 +48,14 @@ struct PercounterLayout {
     uint64_t orders_offset[PERCOUNTER_CORE_TYPE_COUNT];
     uint64_t fanin_offset;
     uint64_t fanin_addr_offset;
+    // One `(task << 1) | partitioned` reference per top-level sink, in the
+    // uploaded prefix because only the AICPU reads them. Reserved for every
+    // table task, which is the bound a graph with no edges reaches.
+    uint64_t sinks_offset;
     uint64_t counters_offset;
     uint64_t completion_sectors_offset;
-    uint64_t dispatch_payloads_offset;
-    // One deferred-completion record per lane and its entry slots, indexed the
-    // way the payloads are. Reserved for every graph, because whether a kernel
+    // One deferred-completion registration scratch per physical lane.
+    // Reserved for every graph, because whether a kernel
     // registers a condition is not visible at bind -- the record is what lets
     // the runtime see that one did. Placed past `upload_size`, so the bytes
     // cost no DMA and a lane writes its own record's header before its loop.
@@ -89,7 +92,9 @@ struct PercounterLayout {
     uint64_t task_records_offset;
     uint64_t task_record_stride;
     uint64_t scalar_records_offset;
+    uint64_t event_records_offset;
     uint32_t task_record_capacity;
+    uint32_t event_record_capacity;
     uint32_t profiling_level;
 };
 
@@ -200,6 +205,7 @@ inline bool plan_layout(
     PercounterLayout next{};
     next.profiling_level = profiling_level;
     next.task_record_capacity = static_cast<uint32_t>(std::min(block_total, uint64_t{65536}));
+    if (profiling_level >= 2) next.event_record_capacity = std::min(next.task_record_capacity * 8, 16384U);
     next.task_count = task_count;
     next.edge_count = edge_count;
     for (uint32_t t = 0; t < PERCOUNTER_CORE_TYPE_COUNT; ++t)
@@ -233,7 +239,7 @@ inline bool plan_layout(
         !PERCOUNTER_RESERVE(
             (boundary_task_count + PERCOUNTER_LIST_COUNT + 63) / 64, PercounterClaimSummary, claim_summary_offset
         ) ||
-        !PERCOUNTER_RESERVE(sync_cohort_count, PercounterTicket, sync_arrivals_offset) ||
+        !PERCOUNTER_RESERVE(sync_cohort_count, PercounterStartBarrier, sync_arrivals_offset) ||
         !PERCOUNTER_RESERVE(task_count, PercounterTaskMetadata, metadata_offset) ||
         !PERCOUNTER_RESERVE(task_count, uint64_t, metadata_ready_offset) ||
         !PERCOUNTER_RESERVE(boundary_task_count + PERCOUNTER_LIST_COUNT, PercounterSegment, segments_offset) ||
@@ -245,16 +251,13 @@ inline bool plan_layout(
           ))) ||
         !PERCOUNTER_RESERVE(table_task_count, PercounterFanin, fanin_offset) ||
         !PERCOUNTER_RESERVE(edge_count, uint64_t, fanin_addr_offset) ||
-        !PERCOUNTER_RESERVE(
-            static_cast<uint64_t>(SCHEDULER_WORKER_CAPACITY) * PERCOUNTER_PAYLOAD_SLOT_COUNT, DispatchPayload,
-            dispatch_payloads_offset
-        ) ||
+        !PERCOUNTER_RESERVE(table_task_count, uint64_t, sinks_offset) ||
         (profiling_level >= 2 &&
          !PERCOUNTER_RESERVE(SCHEDULER_WORKER_CAPACITY, PercounterProfileBuffer, profile_buffers_offset)) ||
         !PERCOUNTER_RESERVE(task_count, PercounterCounter, counters_offset) ||
         !PERCOUNTER_RESERVE(boundary_task_count, PercounterTaskClaim, task_claims_offset) ||
         !PERCOUNTER_RESERVE(completion_sectors, PercounterCompletionSector, completion_sectors_offset) ||
-        // After the counters, so the records fall outside `upload_size` below.
+        // After the completion sectors, so these records remain outside `upload_size`.
         // The entries follow the records for the reason `layout_valid` checks:
         // a record's entry span has to start after the record itself.
         !PERCOUNTER_RESERVE(SCHEDULER_WORKER_CAPACITY, pto2::resident::AsyncGroupData, async_groups_offset) ||
@@ -267,7 +270,7 @@ inline bool plan_layout(
         return false;
     }
 #undef PERCOUNTER_RESERVE
-    next.upload_size = next.counters_offset + task_count * sizeof(PercounterCounter);
+    next.upload_size = next.completion_sectors_offset + completion_sectors * sizeof(PercounterCompletionSector);
 
     cursor = next.total_size;
     if (profiling_level >= 2 &&
@@ -282,6 +285,12 @@ inline bool plan_layout(
                                      sizeof(SchedulerScalarRecord), &bytes
                                  ) ||
                                  !scheduler_layout_reserve(&cursor, bytes, 64, &next.scalar_records_offset)))
+        return false;
+    if (profiling_level >= 2 &&
+        (!scheduler_layout_checked_mul(
+             uint64_t{SCHEDULER_WORKER_CAPACITY} * next.event_record_capacity, sizeof(PercounterTaskEvent), &bytes
+         ) ||
+         !scheduler_layout_reserve(&cursor, bytes, 64, &next.event_records_offset)))
         return false;
     if (!scheduler_layout_checked_align(cursor, SCHEDULER_STATE_ALIGNMENT, &next.total_size)) return false;
     *layout = next;
@@ -475,11 +484,20 @@ inline bool build_tables(
     for (uint32_t l = 0; l < PERCOUNTER_LIST_COUNT; ++l)
         eligible[l].reserve(static_cast<size_t>(list_count[l]));
     uint64_t edge_cursor = 0;
+    // Set by the fanin walk below. What it leaves clear is a top-level sink:
+    // no task in the table waits on it, so nothing but its own completion
+    // reports that its branch of the graph is finished.
+    std::vector<bool> consumed(static_cast<size_t>(task_count), false);
+    // A multi-block task publishes into partitioned sectors; the forms that
+    // publish once do not. Fanin and sink references resolve the same producer
+    // the same way, so both ask here.
+    const auto partitioned = [](const TaskInput &source) {
+        return source.block_num > 1 && !source.inline_completed && !source.published_off_lane &&
+               source.graph_invocation < 0;
+    };
     // Entries, checked against the plan as the walk goes, so an overlong list
     // fails on the task that overran it.
     uint64_t entries[PERCOUNTER_LIST_COUNT] = {};
-    // SPMD boundaries allocate blocks through task-private counters.
-    uint64_t executable_blocks = 0;
     uint64_t boundary_tasks = 0;
     uint64_t mix_tasks = 0;
     uint64_t sync_cohorts = 0;
@@ -514,8 +532,10 @@ inline bool build_tables(
         if (task.fanin_count < 0 || (task.fanin_count > 0 && task.fanin_ids == nullptr))
             return fail(BuildStatus::INVALID_ARGUMENT, static_cast<int64_t>(id), -1);
 
-        fanin[id].count = task.fanin_count;
-        fanin[id].begin = static_cast<int32_t>(edge_cursor);
+        const uint64_t row_begin = edge_cursor;
+        auto &row = fanin[id];
+        row.count = 0;
+        row.begin = static_cast<int32_t>(row_begin);
         for (int32_t e = 0; e < task.fanin_count; ++e) {
             if (edge_cursor >= layout.edge_count)
                 return fail(BuildStatus::EDGE_COUNT_MISMATCH, static_cast<int64_t>(id), e);
@@ -524,12 +544,17 @@ inline bool build_tables(
                 return fail(BuildStatus::PRODUCER_OUT_OF_RANGE, static_cast<int64_t>(id), e);
             if (static_cast<uint64_t>(producer) >= id)
                 return fail(BuildStatus::PRODUCER_NOT_BEFORE_CONSUMER, static_cast<int64_t>(id), e);
-            fanin_addr[edge_cursor] =
-                device_base + layout.counters_offset + static_cast<uint64_t>(producer) * sizeof(PercounterCounter);
             const auto &source = tasks[producer];
-            if (source.block_num > 1 && !source.inline_completed && !source.published_off_lane &&
-                source.graph_invocation < 0)
-                fanin_addr[edge_cursor] |= PERCOUNTER_COMPLETION_PARTITIONED;
+            // The device row contains only dependencies that can block at run time.
+            if (!source.inline_completed) {
+                auto &ref = fanin_addr[row_begin + row.count];
+                ref =
+                    device_base + layout.counters_offset + static_cast<uint64_t>(producer) * sizeof(PercounterCounter);
+                if (partitioned(source)) ref |= PERCOUNTER_COMPLETION_PARTITIONED;
+                ++row.count;
+            }
+            // Edge validation and sink discovery use the input DAG.
+            consumed[static_cast<size_t>(producer)] = true;
             ++edge_cursor;
         }
 
@@ -553,7 +578,6 @@ inline bool build_tables(
             const HostGraphTemplate &tmpl = template_of(task);
             // Published by its body's sinks, one add per sink subtask.
             counters[id].value = percounter_counter_preset(static_cast<int64_t>(tmpl.sink_subtask_total));
-            executable_blocks += tmpl.executable_blocks;
             boundary_tasks += tmpl.boundary_task_count;
             mix_tasks += tmpl.mix_task_count;
             sync_cohorts += tmpl.sync_cohort_count;
@@ -566,8 +590,8 @@ inline bool build_tables(
         }
         if (task.published_off_lane) {
             // Preset and left unpublished: its consumers wait, and whatever runs
-            // it off-lane walks the counter up. It contributes no executable
-            // block, which is what the AICPU's progress watchdog counts.
+            // it off-lane walks the counter up. No lane carries it, so it is in
+            // no order list.
             counters[id].value = percounter_counter_preset(static_cast<int64_t>(task.block_num) * task.subtask_count);
             continue;
         }
@@ -582,7 +606,6 @@ inline bool build_tables(
         const uint64_t placed = 1;
         if (task.block_num > 1 || task.is_mix) ++boundary_tasks;
         if (task.is_mix) ++mix_tasks;
-        executable_blocks += static_cast<uint64_t>(task.block_num);
         if (task.sync_start) {
             ++sync_cohorts;
         }
@@ -594,6 +617,17 @@ inline bool build_tables(
         return fail(BuildStatus::ORDER_COUNT_MISMATCH, -1, -1);
     for (size_t k = 0; k < graph.invocation_count; ++k) {
         if (!invocation_seen[k]) return fail(BuildStatus::INVALID_ARGUMENT, graph.invocations[k].shell_task_id, -1);
+    }
+
+    // A Graph invocation is represented by its shell, whose counter is preset
+    // against every sink subtask of the body, so body tasks are not sinks of
+    // their own. An inline-completed sink is preset published and reads so at
+    // once.
+    auto *sinks = region_at<uint64_t>(base, layout.sinks_offset);
+    uint64_t sink_count = 0;
+    for (uint64_t id = 0; id < task_count; ++id) {
+        if (consumed[static_cast<size_t>(id)]) continue;
+        sinks[sink_count++] = (id << 1) | (partitioned(tasks[id]) ? PERCOUNTER_COMPLETION_PARTITIONED : uint64_t{0});
     }
 
     std::vector<ResourceOrderTask> order_tasks(task_count);
@@ -790,6 +824,10 @@ inline bool build_tables(
         auto *buffers = region_at<PercounterProfileBuffer>(base, layout.profile_buffers_offset);
         for (uint32_t worker = 0; worker < SCHEDULER_WORKER_CAPACITY; ++worker) {
             buffers[worker].task_capacity = layout.task_record_capacity;
+            buffers[worker].event_capacity = layout.event_record_capacity;
+            buffers[worker].event_records_offset = layout.event_records_offset + uint64_t{worker} *
+                                                                                     layout.event_record_capacity *
+                                                                                     sizeof(PercounterTaskEvent);
             buffers[worker].task_records_offset =
                 layout.task_records_offset + uint64_t{worker} * layout.task_record_stride;
             buffers[worker].scalar_records_offset =
@@ -802,7 +840,8 @@ inline bool build_tables(
     }
     control->task_count = layout.task_count;
     control->table_task_count = task_count;
-    control->executable_block_count = executable_blocks;
+    control->sink_count = sink_count;
+    control->sinks_offset = layout.sinks_offset;
     control->edge_count = layout.edge_count;
     control->tickets_offset = layout.tickets_offset;
     control->mix_task_count = layout.mix_task_count;
@@ -823,13 +862,36 @@ inline bool build_tables(
     control->fanin_addr_offset = layout.fanin_addr_offset;
     control->counters_offset = layout.counters_offset;
     control->completion_sectors_offset = layout.completion_sectors_offset;
-    control->dispatch_payloads_offset = layout.dispatch_payloads_offset;
+    control->image_bytes = layout.total_size;
     control->async_groups_offset = layout.async_groups_offset;
     control->async_entries_offset = layout.async_entries_offset;
     control->async_capacity = PERCOUNTER_ASYNC_CAPACITY;
     control->async_completions_offset = layout.async_completions_offset;
     control->async_completion_capacity = layout.async_completion_capacity;
     control->async_run_epoch = next_async_run_epoch();
+    // These initial values depend on task shape, not on physical lane placement.
+    // This run's uploaded image includes all completion and claim initial values.
+    auto *completion = region_at<PercounterCompletionSector>(base, layout.completion_sectors_offset);
+    for (uint64_t id = 0; id < layout.task_count; ++id) {
+        const uint32_t blocks = metadata[id].block_num;
+        const uint64_t total = PERCOUNTER_COUNTER_PUBLISHED - counters[id].value;
+        for (uint32_t sector = 0; sector < PERCOUNTER_COMPLETION_SECTOR_COUNT; ++sector) {
+            const uint64_t assigned =
+                (blocks + PERCOUNTER_COMPLETION_SECTOR_COUNT - 1U - sector) / PERCOUNTER_COMPLETION_SECTOR_COUNT;
+            const uint64_t count = blocks > 1 ? assigned * (total / blocks) : total;
+            completion[id * PERCOUNTER_COMPLETION_SECTOR_COUNT + sector].value =
+                percounter_counter_preset(static_cast<int64_t>(count));
+        }
+    }
+    auto *claims = region_at<PercounterTaskClaim>(base, layout.task_claims_offset);
+    const uint64_t aic_boundaries = control->segment_count[0] - 1;
+    for (uint64_t index = 0; index < layout.boundary_task_count; ++index) {
+        const uint64_t segment = index + (index >= aic_boundaries ? 1 : 0);
+        const uint32_t blocks = static_cast<uint32_t>(segments[segment].task_shape >> 48);
+        // The upload prefix was zeroed above, including every claim sector.
+        claims[index].closed_sectors =
+            blocks < PERCOUNTER_CLAIM_SECTOR_COUNT ? PERCOUNTER_CLAIM_SECTOR_COUNT - blocks : 0;
+    }
     control->scheduler_timeout_cycles = SCHEDULER_TIMEOUT_CYCLES;
     control->graph_storage_address = external.graph_storage;
     control->graph_storage_count = external.graph_storage_count;

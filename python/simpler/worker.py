@@ -85,6 +85,7 @@ import uuid
 import weakref
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
+from functools import cache
 from multiprocessing import resource_tracker
 from multiprocessing.shared_memory import SharedMemory
 from typing import Any, NamedTuple, NoReturn, cast
@@ -294,6 +295,8 @@ from .orchestrator import (
     direct_control,
 )
 from .remote_l3_protocol import HOST_TCP_TRANSPORT_PROFILE
+from .startup_artifacts import StartupArtifactSpec
+from .startup_preparation import NodeStartupHook, normalize_startup_artifacts, normalize_startup_hooks
 from .task_interface import (
     MAILBOX_ARGS_CAPACITY,
     MAILBOX_ERROR_MSG_SIZE,
@@ -963,16 +966,16 @@ _COMM_HOST_PREPARE_MARKER_RE = re.compile(
     + r"_alloc_[0-9]+_host_(?:ready|failed)_[0-9a-f]{1,16}_[0-9]+\.ready(?:\.tmp)?"
 )
 
-# Domain-allocation request shm layout: 40-byte header + buffer_nbytes (u64) +
+# Domain-allocation request shm layout: 48-byte header + buffer_nbytes (u64) +
 # rank_ids (u32).  Buffer specs first so they remain 8-byte aligned regardless
 # of rank_count parity; rank_ids come last (u32 has no alignment concern).
-_DOMAIN_REQ_HEADER = struct.Struct("<QIIQI12x")
+_DOMAIN_REQ_HEADER = struct.Struct("<QIIQI20x")
 # fields: allocation_id (u64), rank_count (u32), domain_rank (u32),
 #         window_size (u64), buffer_count (u32), workspace_mask (u32),
-#         urma_jetties_per_aiv (u32), urma_sq_depth (u32)
-assert _DOMAIN_REQ_HEADER.size == 40
-_DOMAIN_URMA_CONFIG_OFFSET = 32
-_DOMAIN_URMA_CONFIG = struct.Struct("<II")
+#         urma_jetties_per_aiv (u32), urma_sq_depth (u32), ccu_mode (u32), padding (4 bytes)
+assert _DOMAIN_REQ_HEADER.size == 48
+_DOMAIN_WORKSPACE_CONFIG_OFFSET = 32
+_DOMAIN_WORKSPACE_CONFIG = struct.Struct("<III")
 _DOMAIN_WORKSPACE_MASK_OFFSET = struct.calcsize("<QIIQI")
 
 # Domain-allocation reply shm layout: 40-byte header + buffer_ptrs (u64).
@@ -1150,6 +1153,8 @@ class MpiL3GroupSpec:
     mpirun_path: str = "mpirun"
     mpirun_args: tuple[str, ...] = ()
     python_executable: str = field(default_factory=lambda: sys.executable)
+    startup_artifacts: tuple[StartupArtifactSpec, ...] = ()
+    startup_hooks_by_rank: tuple[NodeStartupHook | None, ...] = ()
 
     def __post_init__(self) -> None:  # noqa: PLR0912 -- one place validates the public mpirun rank contract
         hosts = tuple(str(host) for host in self.hosts)
@@ -1234,6 +1239,10 @@ class MpiL3GroupSpec:
         object.__setattr__(self, "mpirun_path", str(self.mpirun_path))
         object.__setattr__(self, "mpirun_args", tuple(str(arg) for arg in self.mpirun_args))
         object.__setattr__(self, "python_executable", str(self.python_executable))
+        object.__setattr__(self, "startup_artifacts", normalize_startup_artifacts(self.startup_artifacts))
+        object.__setattr__(
+            self, "startup_hooks_by_rank", normalize_startup_hooks(self.startup_hooks_by_rank, len(hosts))
+        )
 
 
 @dataclass(frozen=True)
@@ -1256,6 +1265,7 @@ class _MpiL3RankSpec:
     transport: str
     comm_profile: str
     global_device_ranks: tuple[int, ...]
+    startup_hook: NodeStartupHook | None = None
 
 
 @dataclass(frozen=True)
@@ -2930,7 +2940,9 @@ def _handle_ctrl_alloc_domain(cw: _ChipWorker, buf: memoryview, *, base_comm_han
     try:
         (allocation_id, rank_count, domain_rank, window_size, buffer_count) = _DOMAIN_REQ_HEADER.unpack_from(req_buf, 0)
         workspace_mask = struct.unpack_from("<I", req_buf, _DOMAIN_WORKSPACE_MASK_OFFSET)[0]
-        urma_jetties, urma_sq_depth = _DOMAIN_URMA_CONFIG.unpack_from(req_buf, _DOMAIN_URMA_CONFIG_OFFSET)
+        urma_jetties, urma_sq_depth, ccu_mode = _DOMAIN_WORKSPACE_CONFIG.unpack_from(
+            req_buf, _DOMAIN_WORKSPACE_CONFIG_OFFSET
+        )
         # Layout: header | buffer_nbytes[buffer_count] (u64) | rank_ids[rank_count] (u32)
         nbytes_offset = _DOMAIN_REQ_HEADER.size
         nbytes_struct = struct.Struct(f"<{buffer_count}Q") if buffer_count else struct.Struct("")
@@ -2966,6 +2978,7 @@ def _handle_ctrl_alloc_domain(cw: _ChipWorker, buf: memoryview, *, base_comm_han
             **({"host_shm_name": host_shm_name} if host_shm_name else {}),
             urma_jetties_per_aiv=urma_jetties,
             urma_sq_depth=urma_sq_depth,
+            ccu_mode=ccu_mode,
         )
 
         # Carve buffer pointers sequentially inside the local window.
@@ -3497,13 +3510,64 @@ def _require_base_communicator(handle: int) -> int:
     return int(handle)
 
 
-def _ensure_prepared(cw, registry, prepared, cid: int, *, device_id: int) -> None:
+def _startup_input_cache_analysis_deadline(startup_deadline: float | None) -> float:
+    now = _monotonic()
+    # All optional discovery in a startup snapshot shares at most 15 seconds
+    # and leaves at least half of the remaining time for uploads and INIT_READY.
+    budget = 15.0 if startup_deadline is None else min(15.0, (startup_deadline - now) / 2)
+    return now + budget
+
+
+def _chip_callable_for_upload(
+    target: ChipCallable, platform: str, runtime: str, *, analysis_deadline: float | None = None
+) -> ChipCallable:
+    """Keep the registered identity bytes immutable while specializing the A5 HBG upload."""
+    if platform != "a5" or runtime != "host_build_graph" or not os.environ.get("ASCEND_HOME_PATH"):
+        return target
+    # Post-READY register and prepare are synchronous. Limit discovery for the
+    # entire upload to 250 ms, including every child kernel and decoder pass.
+    deadline = _monotonic() + 0.25 if analysis_deadline is None else analysis_deadline
+    try:
+        from simpler_setup.a5_input_cache import annotate_a5_hbg_text  # noqa: PLC0415
+    except ImportError:
+        return target
+    if _monotonic() >= deadline:
+        return target
+
+    # Many func_ids share the same code. Discard this cache after the upload
+    # so a later registration can use a newly installed or replaced decoder.
+    @cache
+    def annotate(text: bytes) -> bytes:
+        if _monotonic() >= deadline:
+            raise TimeoutError
+        return annotate_a5_hbg_text(text, deadline=deadline)
+
+    try:
+        derived = target._with_input_cache_proofs(annotate)  # noqa: SLF001
+    except TimeoutError:
+        return target
+    return target if derived is None or _monotonic() >= deadline else derived
+
+
+def _ensure_prepared(
+    cw,
+    registry,
+    prepared,
+    cid: int,
+    *,
+    device_id: int,
+    platform: str = "",
+    runtime: str = "",
+    analysis_deadline: float | None = None,
+) -> None:
     if cid in prepared:
         return
     callable_obj = registry.get(cid)
     if callable_obj is None:
         raise RuntimeError(f"chip_process dev={device_id}: cid {cid} not in registry")
-    cw.register_callable(cid, callable_obj)
+    cw.register_callable(
+        cid, _chip_callable_for_upload(callable_obj, platform, runtime, analysis_deadline=analysis_deadline)
+    )
     prepared.add(cid)
 
 
@@ -3681,7 +3745,9 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                     raise RuntimeError(
                         f"prepare chip={device_id}: callable hash {_format_digest(digest)} not registered"
                     )
-                _ensure_prepared(cw, registry, prepared, int(cid), device_id=device_id)
+                _ensure_prepared(
+                    cw, registry, prepared, int(cid), device_id=device_id, platform=chip_platform, runtime=chip_runtime
+                )
             elif sub_cmd == _CTRL_REGISTER:
                 digest = _read_control_digest(buf)
                 payload_size = struct.unpack_from("Q", buf, _CTRL_OFF_ARG0)[0]
@@ -3716,12 +3782,8 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                             except Exception:  # noqa: BLE001
                                 pass
                             prepared.discard(int(cid))
-                        exported = ctypes.c_char.from_buffer(shm_buf)
-                        try:
-                            addr = ctypes.addressof(exported)
-                            cw.register_callable_from_blob(int(cid), addr)
-                        finally:
-                            del exported
+                        upload = _chip_callable_for_upload(callable_obj, chip_platform, chip_runtime)
+                        cw.register_callable_from_blob(int(cid), upload.buffer_ptr())
                         prepared.add(int(cid))
                 finally:
                     shm_buf.release()
@@ -4587,6 +4649,7 @@ def _chip_process_loop(  # noqa: PLR0913 -- chip-child entry receives binaries, 
     collect_across_runs: bool = False,
     pipeline_depth_request: int = 0,
     automatic_admission: bool = False,
+    startup_deadline: float | None = None,
     fork_inherited: bool = True,
     expected_parent_pid: int | None = None,
     shared_heap_files: tuple[tuple[bytes, int, tuple[int, ...]], ...] = (),
@@ -4651,10 +4714,20 @@ def _chip_process_loop(  # noqa: PLR0913 -- chip-child entry receives binaries, 
     # before it dispatches. The parent therefore issues no post-READY
     # control_prepare for the initial snapshot.
     prepared: set[int] = set()
+    analysis_deadline = _startup_input_cache_analysis_deadline(startup_deadline)
     try:
         for cid, target in registry.items():
             if isinstance(target, ChipCallable):
-                _ensure_prepared(cw, registry, prepared, int(cid), device_id=device_id)
+                _ensure_prepared(
+                    cw,
+                    registry,
+                    prepared,
+                    int(cid),
+                    device_id=device_id,
+                    platform=platform,
+                    runtime=runtime,
+                    analysis_deadline=analysis_deadline,
+                )
     except Exception as e:
         _tb.print_exc()
         _write_error(buf, 1, _format_exc(f"chip_process dev={device_id} prepare", e))
@@ -6553,6 +6626,7 @@ class Worker:
                     transport=spec.transport,
                     comm_profile=spec.comm_profile,
                     global_device_ranks=spec.global_device_ranks_by_rank[rank],
+                    startup_hook=spec.startup_hooks_by_rank[rank],
                 )
                 runtime = _MpiL3RankRuntime(
                     group_id=group_id,
@@ -6980,6 +7054,7 @@ class Worker:
             "remote_task_dispatcher": self._remote_dispatcher_entries_for_worker(rank.worker_id),
             "inner_l3_worker": self._inner_registry_entries_for_spec(spec),
             "feature_flags": ["mpi-group-mailbox-v1"],
+            "startup_hook": spec.startup_hook.to_manifest() if spec.startup_hook is not None else None,
         }
 
     def _open_remote_session(
@@ -7175,6 +7250,7 @@ class Worker:
                 "worker_ids": [rank.worker_id for rank in group.ranks],
                 "mailbox": mailbox.manifest(),
                 "rank_manifests": rank_manifests,
+                "startup_artifacts": [artifact.to_manifest() for artifact in group.spec.startup_artifacts],
             }
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(group_manifest, f, sort_keys=True)
@@ -8699,7 +8775,10 @@ class Worker:
         with self._registry_lock:
             slot_id = self._identity_registry[handle.digest].slot_id
         try:
-            self._chip_worker.register_callable(slot_id, target)
+            self._chip_worker.register_callable(
+                slot_id,
+                _chip_callable_for_upload(target, self._config.get("platform", ""), self._config.get("runtime", "")),
+            )
         except Exception:
             with self._registry_lock:
                 self._rollback_handle_locked(handle)
@@ -9834,6 +9913,7 @@ class Worker:
         runtime = self._config["runtime"]
         device_id = self._config.get("device_id", 0)
 
+        startup_deadline = _monotonic() + self._startup_timeout_s
         builder = RuntimeBuilder(platform)
         binaries = builder.get_binaries(runtime)
 
@@ -9867,9 +9947,12 @@ class Worker:
         # Pre-warm any registered ChipCallable so the first run(handle, …)
         # does not pay the H2D upload cost.
         assert self._chip_worker is not None
+        analysis_deadline = _startup_input_cache_analysis_deadline(startup_deadline)
         for cid, target in self._callable_registry.items():
             if isinstance(target, ChipCallable):
-                self._chip_worker.register_callable(cid, target)
+                self._chip_worker.register_callable(
+                    cid, _chip_callable_for_upload(target, platform, runtime, analysis_deadline=analysis_deadline)
+                )
 
     def _uses_exec_chip(self) -> bool:
         return (
@@ -10082,11 +10165,14 @@ class Worker:
     def _start_hierarchical(self) -> None:  # noqa: PLR0912, PLR0915 -- local fork loops and remote activation share one startup deadline
         """Start every local child, await the subtree, register endpoints, start the scheduler.
 
-        Called only by init(), which owns the lifecycle state. Any failure here
+        Called by init(), which owns the lifecycle state. Repeated calls after
+        the hierarchy reaches READY have no effect. Any startup failure here
         propagates to init(), whose single rollback entry (_cleanup_partial_init)
         closes the C++ Worker (if the scheduler started) and tears the whole
         epoch down. The readiness barriers raise on any child failure/exit/hang.
         """
+        if self._hierarchical_started:
+            return
         if self._mpi_direct_session is not None:
             self._check_mpi_controller_children()
         device_ids = self._config.get("device_ids", [])
@@ -10219,6 +10305,7 @@ class Worker:
                             self._device_endpoint_identities[(idx, DEVICE_AICPU)][0],
                             self._device_endpoint_identities[(idx, DEVICE_AICORE)][0],
                             log_level=chip_log_level,
+                            startup_deadline=deadline,
                             platform=str(self._config["platform"]),
                             runtime=str(self._config["runtime"]),
                             prewarm_config=self._prewarm_config,
@@ -11145,20 +11232,23 @@ class Worker:
             members, window_size, buffers, retain_after_run, topology, workspace_engines, memory_source
         )
         if config.memory_source == AddressSpace.HOST:
-            if (
-                self.level != 3
-                or self._config.get("platform") not in ("a2a3", "a5")
-                or self._config.get("runtime") != "tensormap_and_ringbuffer"
-            ):
-                raise ValueError("Host-source domains require onboard L3 A2/A3 or A5 tensormap_and_ringbuffer")
+            if self.level != 3 or self._config.get("platform") not in ("a2a3", "a5"):
+                raise ValueError("Host-source domains require onboard L3 A2/A3 or A5")
+            runtime = self._config.get("runtime")
             if self._config.get("platform") == "a2a3":
+                if runtime != "tensormap_and_ringbuffer":
+                    raise ValueError("A2/A3 Host-source domains require tensormap_and_ringbuffer")
                 if config.workspace_engines not in ((), ("sdma",)):
                     raise ValueError("Host-source domains on a2a3 support only the SDMA workspace")
                 if config.workspace_engines and not self._config.get("enable_sdma", False):
                     raise ValueError("A2/A3 Host-domain SDMA requires Worker(enable_sdma=True)")
                 return config
+            if runtime not in ("tensormap_and_ringbuffer", "host_build_graph", "percounter"):
+                raise ValueError("A5 Host-source MTE requires tensormap_and_ringbuffer, host_build_graph or percounter")
             if any(engine != "urma" for engine in config.workspace_engines):
                 raise ValueError("Host-source domains support only the URMA workspace")
+            if config.workspace_engines and runtime != "tensormap_and_ringbuffer":
+                raise ValueError("Host-source URMA requires the A5 tensormap_and_ringbuffer runtime")
         if config.workspace_engines:
             if self.level != 3:
                 raise ValueError("workspace_engines selection is supported only on L3 domains")
@@ -11259,6 +11349,7 @@ class Worker:
                         ),
                         urma_jetties_per_aiv=config.urma_config().jetties_per_aiv,
                         urma_sq_depth=config.urma_config().sq_depth,
+                        ccu_mode=("ms", "sched").index(config.ccu_config().mode),
                     )
                     handle.retain_after_run = config.retain_after_run
                     handle.members = tuple(
@@ -11622,6 +11713,7 @@ class Worker:
         memory_source: AddressSpace = AddressSpace.DEVICE,
         urma_jetties_per_aiv: int = 1,
         urma_sq_depth: int = 0,
+        ccu_mode: int = 1,
     ) -> CommDomainHandle:
         # Admission is the run() lease that the driving orchestrator holds;
         # validation checks resource presence rather than the public lifecycle,
@@ -11690,8 +11782,8 @@ class Worker:
                         _DOMAIN_WORKSPACE_MASK_OFFSET,
                         workspace_mask,
                     )
-                    _DOMAIN_URMA_CONFIG.pack_into(
-                        req_buf, _DOMAIN_URMA_CONFIG_OFFSET, urma_jetties_per_aiv, urma_sq_depth
+                    _DOMAIN_WORKSPACE_CONFIG.pack_into(
+                        req_buf, _DOMAIN_WORKSPACE_CONFIG_OFFSET, urma_jetties_per_aiv, urma_sq_depth, ccu_mode
                     )
                     nbytes_off = _DOMAIN_REQ_HEADER.size
                     if buffer_count:

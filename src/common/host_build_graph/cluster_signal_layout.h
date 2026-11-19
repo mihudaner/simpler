@@ -11,33 +11,6 @@
 
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-
-// The coordinator owns publication; each active lane owns its acknowledgement.
-// Preparation and formal resource arbitration use independent generations.
-template <unsigned Lanes>
-struct SchedulerClusterSignalLayout {
-    volatile uint64_t run_epoch;
-    volatile int64_t prepare_task_ref;
-    volatile uint32_t prepare_block;
-    volatile uint32_t prepare_mask;
-    volatile uint32_t prepare_generation;
-    volatile uint32_t prepared[Lanes];
-    volatile uint32_t sync_frontier[Lanes];
-    volatile uint32_t sync_hold[Lanes];
-    volatile uint32_t staged_mask;
-    volatile uint32_t armed_generation;
-    volatile int64_t task_ref;
-    volatile uint64_t anchor_state;
-    volatile uint32_t sync_tail;
-    volatile uint32_t block_idx;
-    volatile uint32_t active_mask;
-    volatile uint32_t arrived[Lanes];
-    volatile uint32_t finished[Lanes];
-    volatile uint64_t gm_arrival_seq;
-};
-
 template <unsigned Lanes>
 struct SchedulerClusterSsbufRegion;
 
@@ -54,10 +27,3 @@ struct SchedulerClusterSsbufRegion<2> {
     static constexpr unsigned capacity = 2048;
     static_assert(offset >= 1748 && offset % 64 == 0);
 };
-
-static_assert(
-    sizeof(SchedulerClusterSignalLayout<3>) == 136 && offsetof(SchedulerClusterSignalLayout<3>, anchor_state) == 80
-);
-static_assert(
-    sizeof(SchedulerClusterSignalLayout<2>) == 120 && offsetof(SchedulerClusterSignalLayout<2>, anchor_state) == 72
-);

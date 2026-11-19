@@ -19,11 +19,13 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "scheduler/scheduler_graph.h"
-#include "scheduler/scheduler_types.h"
+#include "scheduler/scheduler_async_layout.h"
+#include "scheduler/scheduler_task_catalog.h"
 
 struct SchedulerProtocolTaskSpec {
     SchedulerTaskMetadata metadata;
@@ -32,7 +34,7 @@ struct SchedulerProtocolTaskSpec {
     uint64_t public_task_id{0};
     uint32_t original_task_id{0};
     uint32_t local_child_id{UINT32_MAX};
-    uint32_t schedule_rank{UINT32_MAX};
+    SchedulerTaskCatalogOrder order{};
     uint32_t topological_level{UINT32_MAX};
     uint32_t bottom_level{UINT32_MAX};
 };
@@ -204,6 +206,8 @@ inline void block_owner(JsonObject &parent, const SchedulerProtocolBlockOwner &r
     row.number("order_key", record.order_key);
     row.number("group_seq", record.group_seq);
     row.number("completion_ticket", record.completion_ticket);
+    row.number("completion_credits", record.completion_credits);
+    row.number("completion_worker", record.completion_worker);
     row.number("worker_index", record.worker_index);
     row.number("block_idx", record.block_idx);
     row.number("cluster_index", record.cluster_index);
@@ -211,10 +215,6 @@ inline void block_owner(JsonObject &parent, const SchedulerProtocolBlockOwner &r
     row.lane_mask("active_mask", record.active_mask);
     row.number("flags", record.flags);
     row.numbers("released_seq", record.released_seq, 3);
-    row.stamp("staged", record.staged);
-    row.number("sync_tail", record.sync_tail);
-    row.numbers("sync_frontier", record.sync_frontier, 3);
-    row.numbers("sync_hold", record.sync_hold, 3);
 }
 
 inline void claim_certificate(JsonObject &parent, const SchedulerProtocolClaimTrace &record) {
@@ -252,9 +252,9 @@ inline void lane(JsonObject &row, const SchedulerProtocolLaneTrace &record) {
     row.number("flags", record.flags);
     row.number("block_num", record.logical_block_num);
     row.lane_mask("resource_mask", record.resource_mask);
+    row.number("observed_self_floor", record.observed_self_floor);
     row.numbers("arrived_seq", record.arrived_seq, 3);
     row.numbers("lane_subtasks", record.lane_subtasks, 3);
-    row.numbers("previous_lane_seq", record.previous_lane_seq, 3);
 }
 
 inline void execution(JsonObject &row, const SchedulerProtocolExecutionTrace &record) {
@@ -268,10 +268,12 @@ inline void execution(JsonObject &row, const SchedulerProtocolExecutionTrace &re
     row.stamp("contribution_after", record.contribution_after);
     row.number("contribution_ticket", record.contribution_ticket);
     row.number("contribution_worker", record.contribution_worker);
+    row.number("contribution_credits", record.contribution_credits);
     row.number("run_epoch", record.run_epoch);
     row.number("task_ref", record.task_ref);
     row.number("order_key", record.order_key);
-    row.number("permit_tail", record.permit_tail);
+    row.number("observed_mix_floor", record.observed_mix_floor);
+    row.number("observed_self_floor", record.observed_self_floor);
     row.number("worker_index", record.worker_index);
     row.number("block_idx", record.block_idx);
     row.number("pending_slot", record.pending_slot);
@@ -295,46 +297,74 @@ inline void validate_layout(const Image &image, const AicoreSchedulerLayout &lay
         wire.task_count != plan.task_count || wire.worker_count != plan.worker_count ||
         wire.trace_count != plan.trace_count || wire.cooperative_task_count != plan.cooperative_task_count ||
         wire.member_count != plan.member_count || wire.tasks_offset != plan.tasks_offset ||
-        wire.members_offset != plan.members_offset || wire.blocks_offset != plan.blocks_offset ||
-        wire.executions_offset != plan.executions_offset || wire.workers_offset != plan.workers_offset)
+        wire.members_offset != plan.members_offset || wire.floor_count != plan.floor_count ||
+        wire.floors_offset != plan.floors_offset || wire.blocks_offset != plan.blocks_offset ||
+        wire.executions_offset != plan.executions_offset || wire.workers_offset != plan.workers_offset ||
+        wire.condition_contributions_offset != plan.condition_contributions_offset ||
+        wire.counter_observations_offset != plan.counter_observations_offset)
         throw std::invalid_argument("protocol header disagrees with Host plan or run epoch");
     const auto &summary = *image.array<SchedulerGraphSummary>(layout.graph_summary_offset, 1);
     if (summary.run_epoch != epoch || summary.protocol_layout_offset != layout.protocol_layout_offset ||
         summary.worker_count != layout.spmd.worker_count || summary.cluster_count != layout.spmd.cluster_count ||
         summary.cooperative_task_count != layout.spmd.cooperative_task_count ||
         summary.mix_task_count != layout.spmd.mix_task_count ||
-        summary.sync_mix_task_count != layout.spmd.sync_mix_task_count ||
-        summary.admission_records_offset != layout.admission_records_offset ||
-        summary.admission_log_offset != layout.admission_log_offset ||
-        summary.admission_control_offset != layout.admission_control_offset ||
-        summary.group_mailboxes_offset != layout.group_mailboxes_offset)
+        summary.sync_mix_task_count != layout.spmd.sync_mix_task_count)
         throw std::invalid_argument("protocol graph summary disagrees with Host plan");
 }
 
-inline void admissions(JsonObject &root, const Image &image, const AicoreSchedulerLayout &layout) {
-    const auto count = layout.spmd.cooperative_task_count;
-    const auto *control = image.array<SchedulerAdmissionControl>(layout.admission_control_offset, count != 0);
-    root.number("commit_tail", control == nullptr ? 0 : control->commit_tail);
-    root.number("commit_lock", control == nullptr ? 0 : control->commit_lock);
-    root.numbers("admission_log", image.array<int64_t>(layout.admission_log_offset, count), count);
-    auto &out = root.field("admissions");
+inline std::vector<uint64_t>
+completion_counters(JsonObject &root, const Image &image, const AicoreSchedulerLayout &layout) {
+    const auto *descriptors =
+        image.array<SchedulerTaskCompletionCounter>(layout.completion_counters_offset, layout.task_count);
+    const auto *observations = image.array<SchedulerProtocolCounterObservation>(
+        layout.protocol.counter_observations_offset, layout.task_count
+    );
+    std::unordered_map<uint64_t, uint64_t> indices;
+    std::vector<uint64_t> task_indices(layout.task_count, UINT64_MAX);
+    std::vector<uint64_t> representatives;
+    auto &out = root.field("completion_counters");
     out << '[';
-    for (uint64_t task = 0; count != 0 && task < layout.task_count; ++task) {
-        const uint64_t offset = layout.admission_records_offset + task * sizeof(SchedulerAdmissionRecord);
-        const auto &record = *image.array<SchedulerAdmissionRecord>(offset, 1);
-        if (task != 0) out << ',';
+    for (uint64_t task = 0; task < layout.task_count; ++task) {
+        const auto &descriptor = descriptors[task];
+        if (descriptor.add_address == 0) continue;
+        if (descriptor.read_address == 0) throw std::invalid_argument("counter has no read address");
+        const auto [position, inserted] = indices.emplace(descriptor.read_address, indices.size());
+        const uint64_t index = position->second;
+        task_indices[task] = index;
+        if (!inserted) {
+            const uint64_t previous = representatives[index];
+            if (descriptors[previous].limit != descriptor.limit ||
+                observations[previous].valid != observations[task].valid ||
+                observations[previous].value != observations[task].value)
+                throw std::invalid_argument("counter chain observations disagree after retirement");
+            continue;
+        }
+        representatives.push_back(task);
+        if (index != 0) out << ',';
         JsonObject row(out);
-        row.number("index", task);
-        row.number("run_epoch", record.run_epoch);
-        row.number("task_ref", record.task_ref);
-        row.number("order_key", record.order_key);
-        row.number("block_num", record.logical_block_num);
-        row.number("member_count", record.member_count);
-        row.lane_mask("active_mask", record.active_mask);
-        row.number("flags", record.flags);
-        row.number("record_offset", offset);
+        row.number("index", index);
+        row.number("value", observations[task].value);
+        row.number("valid", observations[task].valid);
+        row.number("limit", descriptor.limit);
     }
     out << ']';
+    return task_indices;
+}
+
+inline std::vector<LaneMask> async_masks(const Image &image, const AicoreSchedulerLayout &layout) {
+    std::vector<LaneMask> result(layout.task_count);
+    if (layout.async_layout_offset == 0) return result;
+    const auto &async = *image.array<SchedulerAsyncLayout>(layout.async_layout_offset, 1);
+    if (async.task_count != layout.task_count) throw std::invalid_argument("async protocol task count mismatch");
+    const auto *map = image.array<uint32_t>(async.task_map_offset, async.task_count);
+    const auto *tasks = image.array<SchedulerAsyncTaskData>(async.task_data_offset, async.async_task_count);
+    for (uint64_t ref = 0; ref < layout.task_count; ++ref) {
+        if (map[ref] == pto2::resident::ASYNC_INVALID_INDEX) continue;
+        if (map[ref] >= async.async_task_count || tasks[map[ref]].task_ref != static_cast<int64_t>(ref))
+            throw std::invalid_argument("async protocol task map mismatch");
+        result[ref] = tasks[map[ref]].async_mask;
+    }
+    return result;
 }
 
 }  // namespace scheduler_protocol_export
@@ -374,6 +404,7 @@ inline std::string scheduler_export_protocol(
         root.number("worker_count", plan.worker_count);
         root.number("trace_count", plan.trace_count);
         root.number("member_count", plan.member_count);
+        root.number("floor_count", plan.floor_count);
         root.number("cooperative_task_count", plan.cooperative_task_count);
         root.number("cluster_count", layout.spmd.cluster_count);
         root.number("mix_task_count", layout.spmd.mix_task_count);
@@ -409,11 +440,11 @@ inline std::string scheduler_export_protocol(
             row.lane_mask("active_mask", task.metadata.active_mask);
             row.number("block_num", task.metadata.logical_block_num);
             row.number("trace_base", task.metadata.trace_index_base);
-            if (task.schedule_rank != UINT32_MAX) {
-                row.number("schedule_rank", task.schedule_rank);
-                row.number("topological_level", task.topological_level);
-                row.number("bottom_level", task.bottom_level);
-            }
+            row.number("schedule_rank", task.order.rank);
+            row.number("topological_level", task.topological_level);
+            row.number("bottom_level", task.bottom_level);
+            row.number("cooperative_index", task.order.cooperative_index);
+            row.numbers("required_floor", task.order.required_floor, SUBTASK_SLOT_COUNT);
             row.numbers("kernel_ids", task.metadata.kernel_ids, 3);
             row.numbers("dependencies", task.dependencies.data(), task.dependencies.size());
         }
@@ -439,7 +470,10 @@ inline std::string scheduler_export_protocol(
             row.numbers("cluster_workers", context.cluster_worker_ids, 3);
         }
         out << ']';
-        admissions(root, image, layout);
+        const auto counter_indices = completion_counters(root, image, layout);
+        const auto task_async_masks = async_masks(image, layout);
+        const auto *counters =
+            image.array<SchedulerTaskCompletionCounter>(layout.completion_counters_offset, plan.task_count);
         const auto *controls = image.array<SchedulerTaskControl>(layout.task_controls_offset, plan.task_count);
         root.field("task_controls") << '[';
         for (uint64_t task = 0; task < plan.task_count; ++task) {
@@ -454,36 +488,45 @@ inline std::string scheduler_export_protocol(
             row.number("pending_compute", scheduler_completion_remaining(completion));
             row.number("completion_debt", scheduler_completion_debt(completion));
             row.number("next_block", controls[task].next_block);
-            row.number("claim_tickets", controls[task].claim_tickets);
             row.number("completed_subtasks", physical ? scheduler_completion_count(completion) : 0);
-            row.number("admission_state", controls[task].admission_state);
             row.number("claim_seal", controls[task].claim_seal);
+            const bool counted = counters[task].add_address != 0;
+            row.number("completion_backend", counted ? 1 : 0);
+            row.number("counter_index", counter_indices[task]);
+            row.number("counter_threshold", counted ? counters[task].threshold : 0);
+            row.number("counter_limit", counted ? counters[task].limit : 0);
+            row.lane_mask("async_mask", task_async_masks[task]);
         }
         out << ']';
         sparse(
             root, "task_events", image.array<SchedulerProtocolTaskTrace>(plan.tasks_offset, plan.task_count),
             plan.task_count, [](JsonObject &row, const auto &record) {
-                actor(row, "admission", record.admission);
                 actor(row, "completion", record.completion);
             }
         );
         sparse(
             root, "members", image.array<SchedulerProtocolMemberTrace>(plan.members_offset, plan.member_count),
             plan.member_count, [](JsonObject &row, const auto &record) {
-                row.stamp("observed", record.observed);
-                row.stamp("closed", record.closed);
+                row.stamp("committed", record.committed);
+                row.stamp("retired", record.retired);
+                row.number("observed_mix_floor", record.observed_mix_floor);
+                row.number("observed_self_floor", record.observed_self_floor);
                 row.number("run_epoch", record.run_epoch);
                 row.number("task_ref", record.task_ref);
                 row.number("order_key", record.order_key);
-                row.number("observed_tail", record.observed_tail);
-                row.number("closed_cursor", record.closed_cursor);
-                row.number("close_frontier", record.close_frontier);
-                row.number("last_group_seq", record.last_group_seq);
                 row.number("worker_index", record.worker_index);
-                row.number("flags", record.flags);
-                row.number("pending_mask", record.pending_mask);
-                row.number("claim_seal_seen", record.claim_seal_seen);
-                row.number("claim_cursor_seen", record.claim_cursor_seen);
+            }
+        );
+        sparse(
+            root, "floor_publications", image.array<SchedulerProtocolFloorTrace>(plan.floors_offset, plan.floor_count),
+            plan.floor_count, [](JsonObject &row, const auto &record) {
+                row.stamp("before", record.before);
+                row.stamp("after", record.after);
+                row.number("run_epoch", record.run_epoch);
+                row.number("cluster_index", record.cluster_index);
+                row.number("worker_index", record.worker_index);
+                row.number("prior_mix_ref", record.prior_mix_ref);
+                row.number("floor", record.floor);
             }
         );
         sparse(
@@ -497,6 +540,21 @@ inline std::string scheduler_export_protocol(
         sparse(
             root, "executions", image.array<SchedulerProtocolExecutionTrace>(plan.executions_offset, plan.trace_count),
             plan.trace_count, execution
+        );
+        sparse(
+            root, "condition_contributions",
+            image.array<SchedulerProtocolConditionContribution>(plan.condition_contributions_offset, plan.trace_count),
+            plan.trace_count, [](JsonObject &row, const auto &record) {
+                row.stamp("before", record.before);
+                row.stamp("after", record.after);
+                row.number("run_epoch", record.run_epoch);
+                row.number("task_ref", record.task_ref);
+                row.number("worker_index", record.worker_index);
+                row.number("block_idx", record.block_idx);
+                row.number("subtask_slot", record.lane);
+                row.number("source", record.source);
+                row.number("credits", record.credits);
+            }
         );
     }
     return out.str();

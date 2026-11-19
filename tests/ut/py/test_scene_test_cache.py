@@ -162,6 +162,7 @@ def _cacheable_spec(tmp_path):
                 "source": str(incore),
                 "func_id": 0,
                 "core_type": "aiv",
+                "async_capability": {"version": 1, "mode": "SYNCHRONOUS", "max_conditions": 0, "condition_types": 0},
                 "signature": [ArgDirection.IN],
                 "extra_include_dirs": [str(tmp_path)],
             }
@@ -205,6 +206,7 @@ def test_callable_preserves_spec_order_when_kernels_finish_out_of_order(monkeypa
             "source": str(second),
             "func_id": 7,
             "core_type": "aiv",
+            "async_capability": {"version": 1, "mode": "SYNCHRONOUS", "max_conditions": 0, "condition_types": 0},
             "signature": [ArgDirection.OUT],
             "extra_include_dirs": [],
         }
@@ -268,6 +270,78 @@ def test_compile_cache_survives_session_cache_clear(monkeypatch, tmp_path):
     assert second.child_count == first.child_count
 
 
+def test_a5_hbg_registered_scene_is_independent_of_decoder(monkeypatch, tmp_path):
+    from simpler_setup import a5_input_cache  # noqa: PLC0415
+
+    _configure_fake_compilation(monkeypatch, tmp_path)
+    spec, _ = _cacheable_spec(tmp_path)
+    monkeypatch.setattr("simpler_setup.elf_parser.extract_text_section", lambda binary: binary)
+    key = ("TestScene", "a5", "host_build_graph", "pin")
+    monkeypatch.setattr(
+        a5_input_cache, "annotate_a5_hbg_text", lambda *_: pytest.fail("registered artifact ran decoder")
+    )
+    first = compile_chip_callable_spec(spec, "a5", "host_build_graph", key)
+    clear_compile_cache()
+    monkeypatch.setenv("ASCEND_HOME_PATH", str(tmp_path / "new-sdk"))
+    second = compile_chip_callable_spec(spec, "a5", "host_build_graph", key)
+    from ctypes import string_at  # noqa: PLC0415
+
+    assert string_at(first.buffer_ptr(), first.buffer_size()) == string_at(second.buffer_ptr(), second.buffer_size())
+    assert _FakeKernelCompiler.orchestration_compiles == _FakeKernelCompiler.incore_compiles == 1
+
+
+def test_unknown_capability_uses_one_canonical_cache_identity(monkeypatch, tmp_path):
+    _configure_fake_compilation(monkeypatch, tmp_path)
+    spec, _header = _cacheable_spec(tmp_path)
+    key = ("TestScene", "a2a3sim", "host_build_graph", "pin")
+    spec["incores"][0].pop("async_capability")
+    deferred = {"version": 1, "mode": "DEFERRED", "max_conditions": 64, "condition_types": 3}
+    first = compile_chip_callable_spec(spec, "a2a3sim", "host_build_graph", key)
+    assert first.child(0).async_capability == deferred
+    assert "async_capability" not in spec["incores"][0]
+    for value in (None, {**deferred, "mode": "UNKNOWN", "max_conditions": 0, "condition_types": 0}, deferred):
+        spec["incores"][0]["async_capability"] = value
+        assert compile_chip_callable_spec(spec, "a2a3sim", "host_build_graph", key) is first
+    clear_compile_cache()
+    from_disk = compile_chip_callable_spec(spec, "a2a3sim", "host_build_graph", key)
+    assert from_disk.child(0).async_capability == deferred
+    assert _FakeKernelCompiler.orchestration_compiles == 1
+    assert _FakeKernelCompiler.incore_compiles == 1
+
+
+def test_async_capability_changes_callable_without_recompiling_kernel(monkeypatch, tmp_path):
+    _configure_fake_compilation(monkeypatch, tmp_path)
+    spec, _header = _cacheable_spec(tmp_path)
+    cache_key = ("TestScene", "a2a3sim", "host_build_graph", "pin")
+    sync = {"version": 1, "mode": "SYNCHRONOUS", "max_conditions": 0, "condition_types": 0}
+    deferred = {"version": 1, "mode": "DEFERRED", "max_conditions": 4, "condition_types": 3}
+    spec["incores"][0]["async_capability"] = sync
+    first = compile_chip_callable_spec(spec, "a2a3sim", "host_build_graph", cache_key)
+    assert first.child(0).async_capability == sync
+    spec["incores"][0]["async_capability"] = deferred
+    second = compile_chip_callable_spec(spec, "a2a3sim", "host_build_graph", cache_key)
+    assert second.child(0).async_capability == deferred
+    assert first.buffer_ptr() != second.buffer_ptr()
+    assert _FakeKernelCompiler.incore_compiles == 1
+
+
+def test_callable_cache_accepts_python39_zip_signature(monkeypatch, tmp_path):
+    _configure_fake_compilation(monkeypatch, tmp_path)
+    spec, _header = _cacheable_spec(tmp_path)
+    module = importlib.import_module("simpler_setup.scene_test")
+
+    def zip_without_keywords(*iterables):
+        return zip(*iterables)
+
+    monkeypatch.setattr(module, "zip", zip_without_keywords, raising=False)
+    key = ("Python39Zip", "a2a3sim", "host_build_graph", "pin")
+    first = compile_chip_callable_spec(spec, "a2a3sim", "host_build_graph", key)
+    clear_compile_cache()
+    restored = compile_chip_callable_spec(spec, "a2a3sim", "host_build_graph", key)
+    assert restored.child(0).async_capability == first.child(0).async_capability
+    assert _FakeKernelCompiler.incore_compiles == 1
+
+
 def test_compile_cache_invalidates_transitive_include(monkeypatch, tmp_path):
     _configure_fake_compilation(monkeypatch, tmp_path)
     spec, header = _cacheable_spec(tmp_path)
@@ -306,6 +380,7 @@ def test_only_changed_incore_recompiles(monkeypatch, tmp_path):
             "source": str(second),
             "func_id": 1,
             "core_type": "aiv",
+            "async_capability": {"version": 1, "mode": "SYNCHRONOUS", "max_conditions": 0, "condition_types": 0},
             "signature": [ArgDirection.OUT],
             "extra_include_dirs": [],
         }
@@ -346,6 +421,12 @@ def test_callables_share_incore_artifact_across_case_directories(monkeypatch, tm
                         "source": str(shared_kernel),
                         "func_id": index,
                         "core_type": "aiv",
+                        "async_capability": {
+                            "version": 1,
+                            "mode": "SYNCHRONOUS",
+                            "max_conditions": 0,
+                            "condition_types": 0,
+                        },
                         "signature": [ArgDirection.IN if index == 0 else ArgDirection.OUT],
                         "extra_include_dirs": [],
                     }

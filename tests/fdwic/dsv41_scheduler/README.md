@@ -18,6 +18,8 @@ half-sync DSL cases, one capacity-bounded all-sync DSL case, and seven latest
 PyPTO-lib cases. The checked-in `workloads/<flavor>/source.json` manifests own
 this selection; both exporters and the run list use them.
 Measurement availability and the timing contract are maintained in [RESULTS.md](RESULTS.md).
+Routine refreshes measure HBG and percounter. For each supported case, record
+the AICPU TMR baseline once and carry that value forward in later reports.
 
 Retain scheduler optimizations only when the sum of all 12 case means improves,
 using AICore L0 wall with one warmup and ten measured rounds per case. Include
@@ -412,6 +414,20 @@ under `vendor/`. The original Host source is losslessly compressed because the
 larger file exceeds this repository's individual-file size limit. It is
 expanded into `build/` before compilation and can be read with `gzip -dc`.
 
+Every registration declares `async_capability` alongside its signature:
+`SYNCHRONOUS` registers no deferred completion; `DEFERRED` supplies a static
+condition bound and condition-type mask. For legacy registrations, missing or
+`None` declarations and explicit `UNKNOWN` with zero condition fields normalize
+to `DEFERRED(max_conditions=64, condition_types=3)` at the input boundary;
+invalid fields remain errors. The checked-in declarations are explicit contracts maintained with the source, not deductions
+from kernel names or a successful execution. `build_sources.py` preserves them
+through the registration manifest into `CoreCallable`; model instructions are
+unchanged. The Host-only `native-runner --declare-async-capabilities INPUT
+DECLARATIONS OUTPUT` command can add reviewed declarations to an existing
+bundle's header padding without moving its kernel binaries. An A/B comparison
+must use the same declared bundle and verify each original kernel's bytes and
+offsets on both sides.
+
 Uniform zero/one initializers are stored as one element plus a repeat count;
 nonuniform metadata is stored in full. This avoids checking in tens of GB of
 materialized weights without changing the bytes uploaded to the devices.
@@ -449,6 +465,8 @@ Optional controls:
 - `--flavor pypto_lib`, `--flavor pypto_lib_dsl`, or `--flavor pypto_lib_latest` builds one organization.
 - `--flavor all` is the default; `--flavor both` selects the initial PyPTO-lib and DSL sources.
 - `--host-only` rebuilds just the native runner and Host adapters.
+- `--runtime percounter` builds model kernels against Percounter's Context ABI.
+  Keep its build directory separate from the default HBG artifacts.
 - `DSV41_BUILD_JOBS=4` controls compiler concurrency.
 - `DSV41_PYTHON=/path/to/python` selects the build helper's Python interpreter.
 - `DSV41_BUILD_DIR=/path/to/build` changes the output directory. Use the same
@@ -556,7 +574,13 @@ epochs and cycle counts as evidence. Launch, wait and finalization retain the
 production native lifecycle; model kernels and task scheduling are unchanged.
 For a single selected profiling level, warmup uses the same level.
 
-HBG and percounter use the same prepared bundles and original model kernels.
+HBG and percounter use the same inputs and original model sources. Compile the
+model kernels with the selected runtime's headers (`build.sh --runtime percounter`
+for Percounter), and pack each runtime's prepared bundle with those binaries.
+Percounter stores invocation Context in SSBUF; HBG uses argument suffix pointers,
+so their compiled model kernels cannot be interchanged.
+Pass `--runtime percounter` to `production/prepare.py` as well, using the matching
+`--build-dir`; `production/materialize.py` accepts the same runtime selection.
 Build both runtimes from one source revision and run each pair in the same
 automatic device allocation. Select percounter with `--runtime=percounter` after the round count; the default
 is `--runtime=host_build_graph`. The runner loads that runtime's subdirectory
@@ -579,7 +603,7 @@ bash "$DSV41/run.sh" "$PREPARED/cases/pypto_lib_latest/swa" \
 Its L1 records include kernel execution and final input acquisition. Use level 2
 for local execution dispatch/return timing, level 3 for percounter scheduling and
 Scalar memory operations, and level 4 for all instrumented function intervals plus Host
-orchestration. Earlier payload preparation, dependency waits, MIX rendezvous and
+orchestration. SSBUF context binding, dependency waits, MIX rendezvous and
 sync-start work appear in L3/L4. The standard converter produces a nested AICore
 Scheduler lane without changing the Worker kernel intervals. This selection does
 not make unsupported task kinds runnable.

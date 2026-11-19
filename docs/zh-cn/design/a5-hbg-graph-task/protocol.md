@@ -1,6 +1,6 @@
 # A5 Graph task 调度与发布协议
 
-**共同前提：** 本页的 A5 调度设计遵守 [A5 硬件与调度统一原则](build-execute-separation.md#a5-hardware-principles)。与本原则冲突的旧设计按此修订；当前实现、拟修改布局和未来 STARS 后端分别标明。
+**共同前提：** 本页的 A5 调度设计遵守 [A5 硬件与调度统一原则](build-execute-separation.md#a5-hardware-principles)。与本原则冲突的旧设计按此修订；当前 DONE 使用 CntNotify SRAM，其他拟修改后端分别标明。
 
 本文描述当前 resident 执行合同。节点、布局和 Host 地址来源见[数据布局](data-layout.md)；
 [目录与 token](ready-queue-design.md)说明工作发现，[canonical gate](dependency-counters.md)说明依赖完成。
@@ -17,7 +17,7 @@
 唯一 owner 的通知可按字段合同采用 `st_dev`；多写者 claim、完成汇合和交权仍由 atomic 裁定。
 独立竞争单元按 128B 隔离，64B 仅描述 Scalar DCache 维护。
 GM 同址读取也有争用，故同一次推进中的合法观察值应带身份传递，不在下层重复读或 FAA(0)确认。
-后续 STARS Wait 仍须保持本页的 epoch、MIX/sync_start、defer_wait 与退休语义，
+CntNotify DONE 与后续其他 STARS Wait 均须保持本页的 epoch、MIX/sync_start、defer_wait 与退休语义，
 加 `nop` 限制空轮询入口带宽；当前 SPR 握手不构成通用 event 分配机制。
 
 ## 从设备入口到 launch gate
@@ -28,12 +28,9 @@ Host 在 orchestration 完成后发布紧凑任务镜像、Graph readonly 计划
 1. AIC/AIV 报告物理身份与 run epoch。无效 descriptor 进入失败启动清退。
 2. AICPU 接收完整的 AIC/两 AIV cluster，校验拓扑及实际执行需求，填入每个 worker 的 context。
 3. AICPU 发布 context 地址和 READY。每个 worker acquire 后校验 view、epoch、extent、catalog、prepared layout 和 cluster peers。
-4. 所有核都参与 bootstrap，以 worker_index/runtime_worker_count 划分 node 区间。
-   不另设 scheduler 角色、索引或数量；诊断 activity 也按 worker 身份寻址。
-5. cluster coordinator 清理本轮 signal；各分区初始化必要的 admission 记录。
-   `bootstrap_scan_complete` 之前不执行控制完成，也不进入 kernel。
-6. scan barrier 后初始化两个 FREE slot，执行有限控制 scan 并准备首批 execution。
-   最后一个 worker 发布 `bootstrap_complete`。
+4. Worker 核对冻结目录和实际拓扑；每簇 AIV0 在首轮补给前初始化本簇 SSBUF。
+5. 各物理 lane 有界地准备首批工作，AIC 和 AIV1 分别报告自己的完成位。
+6. AIV0 完成自己的补给并观察到两个伙伴的完成位后，把本簇三个 worker 计入本轮总数。最后到达的簇发布 `bootstrap_complete`，任何首轮准备失败都走错误路径。
 7. AICPU 打开唯一 DMB launch gate。该 gate 打开前，已取得 Call 或 READY slot 的核也不能调用 kernel。
 
 READY 是配置发布点。它取代重复的角色标记，不能用零索引表示某个核尚未初始化。
@@ -45,18 +42,18 @@ shell 在 Host 展开成 ENTER、children、EXIT：外部 fanin 指向 ENTER，r
 child 依赖映射到实例内 ref，EXIT 等待所有 sink，外部消费者把 shell 引用映射到 EXIT。
 Graph 运行时不动态增添 topology，也不在设备构建 child 参数。
 
-ENTER、EXIT 和 inline node 没有 business Call、admission membership 或 kernel slot。
+ENTER、EXIT 和 inline node 没有 business Call、计算成员责任或 kernel 执行记录。
 控制切片每次最多检查八个 ref，观察全部 producer 的 canonical gate 后以唯一 CAS 完成节点。
 完成者累计 logical completion，消费者后续 scan 观察其 gate；不存在 control inbox 或后继通知链。
-即使普通 token 和 slot 全满、MIX reservation 正在等待，也要继续服务控制切片。
+即使自取与 MIX 执行记录都在等待，也要继续服务控制切片。
 
 ## 参数观察与执行
 
 Host 每个真实 block/lane 生成一个 immutable Call：函数地址、完整 args、任务身份、epoch 和 Binding 地址。
 Binding 的 LocalContext 与 GlobalContext 分占 cache line；逻辑 block geometry 和 async group 地址在 launch 前绑定。
-四个普通 token 可以提前取得这些 Call，依赖满足后再转入两个本核 slot。
+默认的一个自取 token 可以提前取得 Call；依赖满足后原地发布最终 payload。
 
-kernel 最终入口前仍需验证自己的 epoch、Claim 固定 owner 和共享 admission/resource 状态。
+kernel 最终入口前仍需验证自己的 epoch、Claim 固定 owner 和跨来源排序条件及实际资源承诺。
 predicate 在支持的单 block/lane 形状下按依赖顺序求值；false 跳过函数并保留正常的贡献与退休责任。
 损坏参数、非法 predicate 和不支持的 shape 在 Host 拒绝或进入设备首错处理，不能降级成普通完成。
 
@@ -66,16 +63,9 @@ predicate 在支持的单 block/lane 形状下按依赖顺序求值；false 跳�
 
 ## MIX 与 sync_start
 
-普通 MIX 使用每 cluster 的资源协议。active mask 决定真实 kernel lane，resource mask 还包含 AIC coordinator。
-AIC 发现 MIX 并保留对应 block 的 group reservation；AIV 按已经发布的具体 group 参加，不能自由执行其他 cluster 的 slot。
-coordinator 写回 descriptor 并 barrier 后发布对应 lane 的 assigned_seq；arrived_seq/released_seq 记录各 lane 的进出责任。
-GROUP_RESERVED 可以等待 fanin，等待期间固定保留原组责任，不转移或跨簇重领。
-资源等待期间继续处理 async/control 进展，并在执行前重查 固定 owner、fanin 与 admission；原组的执行责任保持不变。
+每簇 AIV0 代领 MIX，发布本代 SSBUF 描述符与单调排序边界。活动 lane 收到对应的任务和 block 后准备自己的 Call，确认前驱逻辑完成并服从较早的冲突责任后发布 ARRIVED。活动成员到齐才发布最终 payload 并运行。返回后各活动 lane 发布 FIN；实际记账成员收齐本代成功 FIN，才提交组的物理信用。失败进入错误清退。
 
-sync_start 使用全 run 的 cooperative admission 顺序与显式成员集合。
-一次 cohort 只覆盖一个 logical task 的 blocks，不覆盖整个 Graph，也不给每个 Graph 单独建顺序域。
-独立普通执行仍须通过最终 shared admission gate；准备和预留不能提前越过 cohort。
-MIX 资源 lane 的 release 负责资源退休，不增加一个未执行 kernel 的物理完成贡献。
+`sync_start` 的每个 block 使用不同执行位置。不可撤销的承诺检查 Host 生成的每 lane 排序阈值和未退休的冲突责任；较早返回的成员可先服务独立工作。实际依赖仍等 TaskDone，描述符复用仍等前代退休。
 
 ## 完成、诊断与清退
 

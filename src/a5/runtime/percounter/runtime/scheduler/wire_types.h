@@ -34,6 +34,7 @@
 #include "common/lane_mask.h"
 #include "scheduler/scheduler_layout.h"
 #include "scheduler/ssbuf.h"
+#include "invocation_context.h"
 #include "scheduler/scheduler_types.h"
 
 // Continues the SCHEDULER_RUNTIME_MODE_* numbering scheduler_layout.h starts,
@@ -47,9 +48,7 @@ namespace simpler::percounter {
 inline constexpr uint32_t PERCOUNTER_CORE_TYPE_COUNT = 2;  // 0 = AIC, 1 = AIV
 
 inline constexpr uint32_t PERCOUNTER_PENDING_CAPACITY = 1;
-inline constexpr uint32_t PERCOUNTER_PAYLOAD_SLOT_COUNT = 1;
 static_assert(PERCOUNTER_PENDING_CAPACITY == 1 || PERCOUNTER_PENDING_CAPACITY == 2 || PERCOUNTER_PENDING_CAPACITY == 4);
-static_assert(PERCOUNTER_PAYLOAD_SLOT_COUNT == 1 || PERCOUNTER_PAYLOAD_SLOT_COUNT == 2);
 inline constexpr uint32_t PERCOUNTER_SLOT_MASK = (1U << PERCOUNTER_PENDING_CAPACITY) - 1;
 inline constexpr uint32_t PERCOUNTER_NO_SYNC = UINT32_MAX;
 
@@ -68,6 +67,7 @@ struct alignas(64) PercounterMixSignal {
     volatile uint32_t sequence;
     volatile uint32_t start_arrived;
     volatile uint32_t fanin_cursor;
+    volatile uint32_t start_ready;  // Lowest active lane publishes global arrival through SSBUF.
     volatile uint64_t fanin_address;
     volatile int64_t fanin_body_base;
     volatile uint32_t fanin_count;
@@ -84,9 +84,17 @@ struct alignas(64) PercounterSsbufRegion {
     PercounterMixSignal mix[PERCOUNTER_PENDING_CAPACITY];
     volatile uint32_t mix_floor_rank;
     volatile uint32_t publish_sequence;
-    uint8_t reserved[PERCOUNTER_SSBUF_REGION_SIZE - PERCOUNTER_PENDING_CAPACITY * sizeof(PercounterMixSignal) - 8];
+    volatile uint32_t publication_closed;
+    uint8_t reserved
+        [PERCOUNTER_CONTEXT_SSBUF_OFFSET - PERCOUNTER_SSBUF_REGION_OFFSET -
+         PERCOUNTER_PENDING_CAPACITY * sizeof(PercounterMixSignal) - 12];
+    PercounterInvocationContextSlot contexts[PLATFORM_CORES_PER_BLOCKDIM];
+    uint8_t tail_reserved[64];
 };
 static_assert(sizeof(PercounterSsbufRegion) == PERCOUNTER_SSBUF_REGION_SIZE);
+static_assert(
+    offsetof(PercounterSsbufRegion, contexts) + PERCOUNTER_SSBUF_REGION_OFFSET == PERCOUNTER_CONTEXT_SSBUF_OFFSET
+);
 static_assert(std::is_trivially_copyable_v<PercounterSsbufRegion> && std::is_standard_layout_v<PercounterSsbufRegion>);
 
 inline __aicore__ PERCOUNTER_SSBUF PercounterSsbufRegion *percounter_ssbuf_region(uint64_t hardware_base) {
@@ -97,6 +105,7 @@ inline __aicore__ void percounter_mix_signal_clear(PERCOUNTER_SSBUF PercounterMi
     percounter_ssbuf_store_field(&signal->fanin_ready, uint32_t{0});
     percounter_ssbuf_store_field(&signal->completed, uint32_t{0});
     percounter_ssbuf_store_field(&signal->start_arrived, uint32_t{0});
+    percounter_ssbuf_store_field(&signal->start_ready, uint32_t{0});
     percounter_ssbuf_store_field(&signal->metadata_generation, uint32_t{0});
     for (uint32_t lane = 0; lane < PLATFORM_CORES_PER_BLOCKDIM; ++lane) {
         percounter_ssbuf_store_field(&signal->enter_ready[lane], uint32_t{0});
@@ -127,9 +136,8 @@ struct alignas(128) PercounterCounter {
     // Host prepares task-table arguments; AICPU prepares Graph body arguments.
     uint32_t argument_counts;
     uint64_t function_addresses[PLATFORM_CORES_PER_BLOCKDIM];
-    uint64_t tensors_address;
-    uint64_t scalars_address;
-    uint8_t reserved[40];
+    uint64_t arguments_address;
+    uint8_t reserved[48];
 };
 static_assert(sizeof(PercounterCounter) == 128, "a counter owns one GM sector");
 static_assert(std::is_trivially_copyable_v<PercounterCounter> && std::is_standard_layout_v<PercounterCounter>);
@@ -187,6 +195,16 @@ struct alignas(128) PercounterTicket {
 };
 static_assert(sizeof(PercounterTicket) == 128, "a ticket owns one GM sector");
 static_assert(std::is_trivially_copyable_v<PercounterTicket> && std::is_standard_layout_v<PercounterTicket>);
+
+// Arrival counts use the logical block index, independent of its claiming core.
+inline constexpr uint32_t PERCOUNTER_START_SECTOR_COUNT = 4;
+struct alignas(128) PercounterStartBarrier {
+    PercounterTicket sectors[PERCOUNTER_START_SECTOR_COUNT];
+};
+static_assert(sizeof(PercounterStartBarrier) == 128 * PERCOUNTER_START_SECTOR_COUNT);
+static_assert(
+    std::is_trivially_copyable_v<PercounterStartBarrier> && std::is_standard_layout_v<PercounterStartBarrier>
+);
 
 inline constexpr uint32_t PERCOUNTER_CLAIM_SECTOR_COUNT = 4;
 static_assert(
@@ -418,7 +436,10 @@ inline __aicore__ bool percounter_order_is_spmd(uint64_t entry) {
  */
 struct alignas(128) PercounterControl {
     uint64_t task_count;
-    uint64_t executable_block_count;
+    // Top-level sinks: the tasks no task in the table consumes. Every task
+    // reaches one along consumer edges, so their completion covers the graph.
+    uint64_t sink_count;
+    uint64_t sinks_offset;
     uint64_t edge_count;
     uint64_t order_count[PERCOUNTER_CORE_TYPE_COUNT];
     uint64_t orders_offset[PERCOUNTER_CORE_TYPE_COUNT];
@@ -451,9 +472,9 @@ struct alignas(128) PercounterControl {
     uint64_t graph_storage_count;
     uint64_t callable_addresses_address;
     uint64_t callable_addresses_count;
-    uint64_t dispatch_payloads_offset;
-    // One deferred-completion record per lane and the entry slots behind it,
-    // indexed the way the payloads are and for the same reason. The condition
+    uint64_t arguments_address;
+    uint64_t image_bytes;
+    // One deferred-completion registration scratch per physical lane. The condition
     // cap is one record's, and the epoch is what tells a record of this run
     // from one the retained storage still held.
     uint64_t async_groups_offset;
@@ -471,32 +492,21 @@ struct alignas(128) PercounterControl {
     uint32_t first_boundary_segment[PERCOUNTER_SYNC_DOMAIN_COUNT];
     uint64_t completion_sectors_offset;
 
-    // Progress atomics do not share the immutable configuration or lane_error.
-    alignas(128) uint64_t completed_block_count;
-    uint64_t completion_init_arrivals;
-    uint64_t completion_init_epoch;
-    uint8_t resolved_reserved[104];
-
     // Allocation precedes the corresponding block's completed publication.
     // Both counters are monotone; equality after all blocks ran permits exit.
     alignas(128) uint64_t async_registered;
     uint64_t async_settled;
     uint8_t async_reserved[112];
 };
-static_assert(sizeof(PercounterControl) == 768);
-static_assert(offsetof(PercounterControl, completed_block_count) == 512);
+static_assert(sizeof(PercounterControl) == 640);
 static_assert(
-    offsetof(PercounterControl, async_registered) % 128 == 0 &&
-        offsetof(PercounterControl, async_registered) / 128 != offsetof(PercounterControl, completed_block_count) / 128,
-    "the deferred-group counts are atomics and own their line"
+    offsetof(PercounterControl, async_registered) % 128 == 0,
+    "the deferred-group counts are the atomics lanes write; they must start a cache line, or every reader of "
+    "their neighbours pays for it"
 );
 static_assert(
-    offsetof(PercounterControl, completed_block_count) % 128 == 0,
-    "the one field lanes write must start a cache line, or every reader of its neighbours pays for it"
-);
-static_assert(
-    offsetof(PercounterControl, lane_error) / 128 != offsetof(PercounterControl, completed_block_count) / 128,
-    "lane_error is read every task; it must not share a line with the counter lanes increment"
+    offsetof(PercounterControl, lane_error) / 128 != offsetof(PercounterControl, async_registered) / 128,
+    "lane_error is read every task; it must not share a line with the counts lanes increment"
 );
 static_assert(std::is_trivially_copyable_v<PercounterControl> && std::is_standard_layout_v<PercounterControl>);
 

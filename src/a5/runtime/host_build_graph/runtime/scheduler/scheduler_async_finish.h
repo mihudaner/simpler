@@ -46,9 +46,10 @@ static inline __aicore__ bool scheduler_async_complete_task(
     if (!scheduler_subtask_count_checked(metadata.logical_block_num, scheduler_task_lanes(metadata).count(), &total))
         return failed();
     // Immutable geometry and the join owner define the expected gate. Only the
-    // CAS confirms that all physical returns and registered debt match it.
-    const uint64_t gate = scheduler_completion_encode(total, 0, scheduler_async_pending::registered(completion.joined));
-    if (!scheduler_completion_valid(gate)) return failed();
+    // CAS confirms all physical returns and the single async marker match it.
+    const uint64_t gate = scheduler_completion_encode(total, 0, 1);
+    if (!scheduler_completion_valid(gate) || scheduler_async_pending::registered(completion.joined) > total)
+        return failed();
     scheduler_protocol_task_done(base, local, task_ref, true, true);
     scheduler_cache_barrier();
     if (scheduler_gm_compare_exchange(control->completion_state, gate, scheduler_completion_completed_state(total)) !=
@@ -56,8 +57,9 @@ static inline __aicore__ bool scheduler_async_complete_task(
         return failed();
     scheduler_protocol_task_done(base, local, task_ref, false, true);
     scheduler_cache_barrier();
+    scheduler_publish_task_done(base, local, task_ref);
     scheduler_remember_task_proof(local, task_ref, SchedulerTaskProof::DONE);
-    ++local->pending_completed;
+    scheduler_report_task_completed(run);
     return true;
 }
 
@@ -92,6 +94,7 @@ static inline __aicore__ bool scheduler_service_async_slice(
         async, UINT32_C(1) << local->config.self_core_type, 8, SchedulerAsyncCompletionObserver{}, made_progress,
         completion
     );
+    scalar_step.close();
     if (ok && completion.result == SchedulerAsyncCompletionResult::FINISH_OWNER)
         ok = scheduler_async_complete_task(graph, base, local, run, completion);
     if (!ok)
