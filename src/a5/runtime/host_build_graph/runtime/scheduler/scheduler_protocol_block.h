@@ -199,7 +199,7 @@ scheduler_protocol_lane_publication(__gm__ void *base, const SchedulerLocalState
 }
 
 static inline __aicore__ void scheduler_protocol_group_acks(
-    __gm__ void *base, const SchedulerLocalState *local, bool releases, const uint64_t *observed
+    __gm__ void *base, const SchedulerLocalState *local, bool releases, const uint64_t (&observed)[SUBTASK_SLOT_COUNT]
 ) {
     auto *layout = scheduler_protocol_layout_at(base, local);
     if (layout == nullptr) return;
@@ -215,7 +215,7 @@ static inline __aicore__ void scheduler_protocol_group_acks(
     auto *stamp = releases ? &record->owner.releases_observed : &lane->arrivals_observed;
     auto *values = releases ? record->owner.released_seq : lane->arrived_seq;
     const LaneMask resources = local->admission->current_resource_mask;
-    for (uint32_t peer = 0; peer < 3; ++peer) {
+    for (uint32_t peer = 0; peer < SUBTASK_SLOT_COUNT; ++peer) {
         const uint64_t expected = resources.has(static_cast<SubtaskSlot>(peer)) ? group.group_seq : 0;
         if (observed[peer] != expected || (stamp->sequence != 0 && values[peer] != observed[peer])) {
             scheduler_protocol_fail(base, local, layout, SCHEDULER_PROTOCOL_INVALID_IDENTITY);
@@ -224,7 +224,7 @@ static inline __aicore__ void scheduler_protocol_group_acks(
     }
     if (stamp->sequence != 0) return;
     if (!scheduler_protocol_stamp(base, local, layout, stamp)) return;
-    for (uint32_t peer = 0; peer < 3; ++peer)
+    for (uint32_t peer = 0; peer < SUBTASK_SLOT_COUNT; ++peer)
         values[peer] = observed[peer];
     if (releases) scheduler_protocol_publish_record(&record->owner);
     else scheduler_protocol_publish_record(lane);

@@ -373,7 +373,7 @@ static inline __aicore__ bool scheduler_gm_mix_check_acks(
     auto *mailbox = scheduler_gm_mix_mailbox(base, local);
     const uint64_t seq = group.group_seq;
     const bool record = RecordProtocol && scheduler_protocol_enabled(local);
-    uint64_t observations[PLATFORM_CORES_PER_BLOCKDIM]{};
+    uint64_t observations[SUBTASK_SLOT_COUNT]{};
     const LaneMask resources = local->admission->current_resource_mask;
     auto &confirmed = releases ? group.releases_confirmed : group.arrivals_confirmed;
     for (uint8_t lane = 0; lane < PLATFORM_CORES_PER_BLOCKDIM; ++lane) {
@@ -435,7 +435,7 @@ static inline __aicore__ bool scheduler_gm_mix_arrivals_ready(
         );
     *all = true;
     if constexpr (RecordProtocol) {
-        uint64_t observations[PLATFORM_CORES_PER_BLOCKDIM]{};
+        uint64_t observations[SUBTASK_SLOT_COUNT]{};
         const auto resources = local->admission->current_resource_mask;
         for (uint8_t lane = 0; lane < PLATFORM_CORES_PER_BLOCKDIM; ++lane)
             if (resources.has(static_cast<SubtaskSlot>(lane))) observations[lane] = seq;

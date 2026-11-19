@@ -3,7 +3,6 @@
 [性能总表](../README.zh-CN.md) · [迁移结论](a6-migration.zh-CN.md)
 
 - [ ] **P0　用同一张 A6 跑 L0 和 L3，回填下表，保留一份带 AICPU 细分的设备泳道。**
-- [ ] **P1　用完整 L4 原始 JSON 复查协议首错，在本文末尾贴结果或首个失败字段。**
 
 ## P0 复现
 
@@ -43,17 +42,6 @@ python "$case_dir/performance.py" "$work_dir/L3" --platform "$platform" --level 
 
 若核实 AICPU RunWall 与 AICore 使用同一纪元的 1 GHz 设备计数器，在上述两条统计命令添加 `--shared-device-clock`，即可得到 `before/after` 并在图上显示 Device wall 分段。仅有频率一致不能确定纪元一致。若已导出泳道，重跑时选择新的文件名。其余指标都可独立回填。新 worktree 的环境准备见 [使用方法](usage.zh-CN.md#单卡-a6-swa)。
 
-## P1 复查原始 L4
-
-在新分支使用转换器直接读取保留了 `aicore_protocol` 的那份 `chip_swimlane_records.json`。已有产物无需重新占卡。将 `raw` 换成实际的原始文件路径。
-
-```bash
-python -m simpler_setup.tools.swimlane_converter "$raw" --device-only \
-  --deps-json "$(dirname "$raw")/deps.json" --func-names "$work_dir/replay/bundle/name_map.json" -o "$work_dir/check-L4.json"
-```
-
-转换器会校验 1C1V 的成员和未使用的第三槽，并打印失败字段的实测值与期望值。若仍报 worker 首错，贴该行以及原始段的 `run_epoch`、`worker_count`、`cluster_count`、`workers[0:3]`。本轮构建会按 19 个实际核生成 `bundle/name_map.json`；上面的 L3 统计脚本会自动提供。设备视图独立起时，保留 AICPU 生命周期和设备因果证据。
-
 ## 本轮回答区
 
 只需返回本 MD，数值均为 µs、10 轮均值。保留 L3 图在 A6 本地，填写文件名即可。
@@ -69,4 +57,3 @@ python -m simpler_setup.tools.swimlane_converter "$raw" --device-only \
 
 - 提交、设备、CANN、校验结果、设备时钟依据：
 - L3 泳道文件名、所选轮次、A6 与 A5 的主要差异：
-- 原始 L4 复查或首个失败字段：

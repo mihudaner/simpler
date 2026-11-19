@@ -210,7 +210,11 @@ A6 端回执与工作树 diff 基于 `8fef3c1`（2026-11-18）。在该工作树
 
 2026-11-19，A6 端从 `63cf2ab` 重建三端运行时及 SWA 包，逻辑设备 0 正常返回 `SWA output check passed`。L4 原始记录含 570 条核执行和 570 条执行身份，1 GHz 下首末核跨度 997.499 µs。该单轮结果归入功能和诊断证据。跨代性能按 [L0 与 L3 总表](../README.zh-CN.md) 另测。
 
-**协议与可视化。** 原转换器要求每组有三个实际 worker；A6 是两个，第三个 wire 槽保持 `UINT64_MAX`。转换器现在按 worker 数和组数校验实际成员及空槽。worker 1 的报错发生在更早的身份与终态检查，回执没有给出哪个字段异常；保留严格校验，补报字段、实值和期望值。L4 完整协议通过后按任务及逻辑子槽取得核 ID；L3 从同轮 deps 获取 ID，并由业务核清单还原核名。可用 `--device-only` 单独显示设备轨道，在该视图中保留原始协议、执行身份及依赖校验。
+**L4 协议采集。** 在原始 `a6b-L4/rank0/run0` 中，epoch 为 1，54 组共 108 个 worker，28 个图任务、570 个执行实例。worker 0／1／2 的组员分别为 `[0,54,空]`、`[1,55,空]`、`[2,56,空]`，空槽为 `UINT64_MAX`。三行的 worker 索引与上下文索引一致，均为 `finished=1`、`error_flags=4`。全图 `scheduler_error=0`、`error_claimed=0`。错误位 4 表示设备端 L4 记录的身份或关联字段未通过检查。该位由多个记录点共用，三行未记录具体触发位置。[错误位定义](../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_protocol_types.h)
+
+- **转换端。** 支持按每组两个活跃成员校验 A6 的拓扑。保留对设备错误位的检查。原文件已带错误位，重新转换仍会拒绝协议审计。L3 可以从同轮依赖数据及执行子槽还原核名，`--device-only` 按设备时间显示。
+- **采集端。** A6 plan 的 t22 为 48 个同步启动的 1C1V block。C 汇总组内确认，V 观察本组已到齐；旧 L4 两条路径都只分配两个观测槽，而记录函数会读取三个。第三项越界可以置位 4。现按协议的三个槽分配并初始化，仅向实际 C/V 填值；例如第 7 次组确认记作 `[7,7,0]`。记录接口在编译时检查数组长度。[观测值采集](../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_gm_mix.h) · [协议确认记录](../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_protocol_block.h)
+- **验证范围。** A6 配置的 CPU 回归在旧版 `3505ceeea` 复现错误位 4，AddressSanitizer 定位到确认记录函数的第三项读取。修复后相同回归通过，A5 和 A6 HBG 均已编译。A6 板上新 L4 尚未采集。当前交付按 L0 比性能，按 L3 加 AICPU 细分采泳道，两项均可独立完成。[回归用例](../../../ut/cpp/a5/runtime/host_build_graph/test_hbg_paired_bootstrap.cpp)
 
 ### 9. 计时：采用 SYS_CNT，不使用 Cube 主频
 
