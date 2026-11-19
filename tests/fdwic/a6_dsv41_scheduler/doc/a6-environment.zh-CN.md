@@ -1,6 +1,6 @@
 # A6 单卡 SWA 性能复测与回填
 
-[性能总表](../README.zh-CN.md) · [迁移结论](a6-migration.zh-CN.md)
+[性能总表](a5-results-2026-11-17.zh-CN.md) · [迁移结论](a6-migration.zh-CN.md)
 
 - [ ] **P0　用同一张 A6 跑 L0 和 L3，回填下表，保留一份带 AICPU 细分的设备泳道。**
 
