@@ -241,7 +241,7 @@ A6 端回执与工作树 diff 基于 `8fef3c1`（2026-11-18）。在该工作树
 
 A6 使用主线的 GM 完成路径。每个逻辑任务由唯一负责记账的核对同一个 64 位整轮计数加一，AICPU 读取它判断进度和退出。后继任务读各自前驱的 GM 完成状态，有异步条件时 CHECK 使用 GM 位图。每核的启动和退出握手继续用 IPC0／IPC4。A5 继续按可用资源映射 CntNotify。[Host 映射选择](../../../../src/a5/platform/onboard/host/device_runner.cpp) · [完成与退休](../../../../src/a5/runtime/host_build_graph/docs/RUNTIME_LOGIC.md#73-canonical-completion-and-retirement)
 
-本版已交叉编译 A6 HBG 并重建回放包，板上校验和 L0 待回填。[本轮任务](a6-environment.zh-CN.md#本轮回答区)
+本版已交叉编译 A6 HBG 并重建 19 核回放包。A5 同卡对照见 [阶段 001](../results/001-hbg-main-merge-swa/README.zh-CN.md)，A6 板上校验和 L0 待回填。[本轮任务](a6-environment.zh-CN.md#本轮回答区)
 
 ## 环境与证据
 

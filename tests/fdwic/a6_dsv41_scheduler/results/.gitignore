@@ -4,5 +4,5 @@ local-traces/
 *[aA]6*-hbg-L*-detail.json*
 *[aA]6*-hbg-L*-workers.json*
 
-# Unpacked preview of the archived A5 baseline.
-00-baseline/swa-a5-hbg-L3-detail.json
+# Unpacked previews of the archived A5 traces.
+*/swa-a5-hbg-L3-detail.json
