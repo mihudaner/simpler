@@ -287,6 +287,10 @@ def build(args):
     }
     if json.loads(capture([tools / "native-runner", "--describe-callable", bundle / "callable.bin"])) != expected:
         raise ValueError("Assembled replay callable differs from the SWA signatures")
+    case_path = bundle / "case.json"
+    case = json.loads(case_path.read_text())
+    case["source"] = {"executions": executions}
+    save(case_path, case)
     save(
         build_dir / "build.json",
         {
