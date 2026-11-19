@@ -333,14 +333,18 @@ def audit_protocol_sequences(section):
     streams = {index: {} for index in workers}
     epoch = section["run_epoch"]
     for index, worker in workers.items():
-        if (
-            worker["worker_index"] != index
-            or worker["context_worker_index"] != index
-            or worker["run_epoch"] != epoch
-            or worker["error_flags"] != 0
-            or worker["finished"] != 1
+        for field, expected in (
+            ("worker_index", index),
+            ("context_worker_index", index),
+            ("run_epoch", epoch),
+            ("error_flags", 0),
+            ("finished", 1),
         ):
-            _error(f"worker {index} identity, error or terminal status is invalid")
+            if worker[field] != expected:
+                _error(
+                    f"worker {index} identity, error or terminal status is invalid: "
+                    f"{field}={worker[field]}, expected {expected}"
+                )
     for record, kind, path in _event_records(section):
         worker = record["worker_index"]
         if worker not in workers or record["run_epoch"] != epoch:

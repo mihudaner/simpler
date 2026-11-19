@@ -615,6 +615,7 @@ struct alignas(64) AicpuThreadLifecycleTrace {
     uint64_t exit_signal_end_cycles;
     uint64_t exit_wait_start_cycles;
     uint64_t exit_wait_end_cycles;
+    uint64_t detail_address;
 };
 
 struct alignas(64) SchedulerWorkerContext {

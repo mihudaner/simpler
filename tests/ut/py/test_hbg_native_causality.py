@@ -1110,3 +1110,20 @@ def test_mix_group_completion_preserves_unique_credit_and_physical_retirement(fa
         done["before"] = last["completion_before"].copy()
     with pytest.raises(ValueError):
         audit_native_protocol(raw, identities)
+
+
+@pytest.mark.parametrize("mask", [1, 3])
+def test_single_vector_cluster_preserves_worker_and_terminal_checks(mask):
+    raw, identities = ProtocolBuilder([(mask, 1, ())], clusters=1).run()
+    raw["worker_count"] = raw["active_worker_count"] = 2
+    raw["workers"].pop()
+    for worker in raw["workers"]:
+        worker["cluster_workers"] = [0, 1, (1 << 64) - 1]
+    assert audit_native_protocol(raw, identities)["protocol_verified"]
+    raw["workers"][1]["finished"] = 0
+    with pytest.raises(ValueError, match="worker 1 .*finished=0, expected 1"):
+        audit_native_protocol(raw, identities)
+    raw["workers"][1]["finished"] = 1
+    raw["workers"][0]["cluster_workers"][2] = 1
+    with pytest.raises(ValueError, match="inactive cluster worker"):
+        audit_native_protocol(raw, identities)

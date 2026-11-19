@@ -106,7 +106,8 @@ class NativeAudit:
     def topology(self):
         count = self.raw["worker_count"]
         clusters = self.raw["cluster_count"]
-        require(count > 0 and count == clusters * 3, "incomplete worker topology")
+        require(clusters > 0 and count in (clusters * 2, clusters * 3), "incomplete worker topology")
+        lanes = count // clusters
         require(self.raw["active_worker_count"] == count, "inactive scheduler topology")
         cores = set()
         for index, worker in self.workers.items():
@@ -114,8 +115,10 @@ class NativeAudit:
             cluster = worker["cluster_index"]
             require(worker["core_id"] >= 0 and worker["core_id"] not in cores, "duplicate or unknown physical core")
             cores.add(worker["core_id"])
-            require(cluster < clusters and len(set(peers)) == 3 and index in peers, "invalid cluster membership")
-            for lane, peer in enumerate(peers):
+            require(all(peer == MAX for peer in peers[lanes:]), "unexpected inactive cluster worker")
+            active = peers[:lanes]
+            require(cluster < clusters and len(set(active)) == lanes and index in active, "invalid cluster membership")
+            for lane, peer in enumerate(active):
                 require(peer in self.workers, "cluster names an absent worker")
                 other = self.workers[peer]
                 require(
@@ -164,7 +167,8 @@ class NativeAudit:
             require(0 < mask < 8 and 0 < blocks * active <= 32767, "invalid frozen task shape")
             require(bool(flags & MIX) == (active > 1) and bool(flags & SPMD) == (blocks > 1), "shape/flags mismatch")
             if flags & SYNC:
-                positions = self.raw["cluster_count"] * (2 if mask in (2, 4) else 1)
+                clusters = self.raw["cluster_count"]
+                positions = self.raw["worker_count"] - clusters if mask in (2, 4) else clusters
                 require(1 < blocks <= positions, "sync_start distinct position capacity exceeded or N=1")
             require(not flags & PREDICATE or (active == blocks == 1), "unsupported cooperative predicate")
             for slot, kernel in enumerate(task["kernel_ids"]):
