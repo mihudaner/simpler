@@ -1,23 +1,72 @@
-# A6 单卡 SWA 验证任务
+# A6 单卡 SWA 性能复测与回填
 
-[迁移结论与本分支的适配](a6-migration.zh-CN.md#本分支的修正与验证) · [构建和运行命令](usage.zh-CN.md#单卡-a6-swa)
+[性能总表](../README.zh-CN.md) · [迁移结论](a6-migration.zh-CN.md)
 
-- [ ] **P0　在干净的 `a6-migrate-case` 工作树重建 HBG 和 SWA，单卡执行一次，返回数值与退出结果。**
+- [ ] **P0　用同一张 A6 跑 L0 和 L3，回填下表，保留一份带 AICPU 细分的设备泳道。**
+- [ ] **P1　用完整 L4 原始 JSON 复查协议首错，在本文末尾贴结果或首个失败字段。**
 
-保留上轮有本地 diff 的工作树。可在已有仓库执行以下命令，目录名选择尚未使用的名字。然后按上方链接在干净 worktree 内构建并运行。
+## P0 复现
+
+加载 A6 CANN 环境、激活与当前提交匹配的项目 venv，在仓库根目录执行。先编译 HBG 与 SWA，构建不占卡。复测 A5 时设 `platform=a5` 并使用已分配的 A5 卡，余下命令相同。
 
 ```bash
-git fetch https://github.com/mihudaner/simpler.git refs/heads/a6-migrate-case
-git worktree add --detach ../simpler-a6-swa-verify FETCH_HEAD
-cd ../simpler-a6-swa-verify
+platform=a6
+case_dir=tests/fdwic/a6_dsv41_scheduler
+mkdir -p "$case_dir/build"
+work_dir=$(mktemp -d "$case_dir/build/perf-${platform}-XXXXXXXX")
+runtime=build/lib/$platform/onboard
+git rev-parse HEAD
+python simpler_setup/build_runtimes.py --platforms "$platform" --runtime host_build_graph \
+  --profiling-dfx 1 --profiling-orch 0 --profiling-sched 0 --profiling-tensormap 0
+python -I "$case_dir/prepare.py" build --platform "$platform" --pto-isa build/pto-isa --build-dir "$work_dir/replay"
 ```
 
-| 结果 | 在下方填写 |
-| ---- | ---------- |
-| 通过 | 实际提交 SHA、设备型号、运行退出码，贴本轮 `rank0/result.json` 中 `passed`、`snapshot_inputs`、`validated_against_fused_prefix` 及 `console.log` 的 `scheduler_mode`。 |
-| 失败 | 实际提交 SHA、最早失败阶段、错误码和相关日志数行。启动失败附已有的 `site/workers/dispatch_arrived/bootstrap_complete`，退出失败附 retirement 记录，数值不符附 buffer 编号。 |
+在同一个 shell 中使用已分配的逻辑设备，下例为 0。每级一个进程、1 次预热、10 次正式。L0 关闭附加打点，L3 打开 AICPU 细分；两组使用同一构建和用例包。运行期间不要切换分支或库路径。
+
+```bash
+set -e
+device=0
+for level in 0 3; do
+  out="$work_dir/L$level"
+  mkdir -p "$out/rank0"
+  detail=0
+  if [ "$level" = 3 ]; then detail=1; fi
+  SIMPLER_HBG_AICPU_DETAIL_ENABLE=$detail SIMPLER_HBG_BIND_BREAKDOWN_ENABLE=0 \
+    "$work_dir/replay/host/native-runner" "$work_dir/replay/bundle" "$runtime" \
+    "$device" 0 "$out/rootinfo" "$out/rank0" "$level" 1 10 --runtime=host_build_graph \
+    > "$out/rank0/console.log" 2>&1
+done
+python "$case_dir/performance.py" "$work_dir/L0" --platform "$platform" --level 0
+python "$case_dir/performance.py" "$work_dir/L3" --platform "$platform" --level 3 \
+  --trace "$work_dir/swa-${platform}-hbg-L3-detail.json.xz"
+```
+
+若核实 AICPU RunWall 与 AICore 使用同一纪元的 1 GHz 设备计数器，在上述两条统计命令添加 `--shared-device-clock`，即可得到 `before/after` 并在图上显示 Device wall 分段。仅有频率一致不能确定纪元一致。若已导出泳道，重跑时选择新的文件名。其余指标都可独立回填。新 worktree 的环境准备见 [使用方法](usage.zh-CN.md#单卡-a6-swa)。
+
+## P1 复查原始 L4
+
+在新分支使用转换器直接读取保留了 `aicore_protocol` 的那份 `chip_swimlane_records.json`。已有产物无需重新占卡。将 `raw` 换成实际的原始文件路径。
+
+```bash
+python -m simpler_setup.tools.swimlane_converter "$raw" --device-only \
+  --deps-json "$(dirname "$raw")/deps.json" --func-names "$work_dir/replay/bundle/name_map.json" -o "$work_dir/check-L4.json"
+```
+
+转换器会校验 1C1V 的成员和未使用的第三槽，并打印失败字段的实测值与期望值。若仍报 worker 首错，贴该行以及原始段的 `run_epoch`、`worker_count`、`cluster_count`、`workers[0:3]`。本轮构建会按 19 个实际核生成 `bundle/name_map.json`；上面的 L3 统计脚本会自动提供。设备视图独立起时，保留 AICPU 生命周期和设备因果证据。
 
 ## 本轮回答区
 
-- 提交与运行结果：
-- 关键输出或首个错误：
+只需返回本 MD，数值均为 µs、10 轮均值。保留 L3 图在 A6 本地，填写文件名即可。
+
+| 等级 | Host bind | 发布镜像 | 准备执行 | 完整调用 | 计算前 | AICore 窗口 | 计算后 | Device wall |
+| ---- | --------: | -------: | -------: | -------: | -----: | ----------: | -----: | ----------: |
+| L0 | | | | | | | | |
+| L3 细分 | | | | | | | | |
+
+| L3 细分 | 泳道初始化 | 核握手 | bootstrap 等待 | 退出等待 | 泳道汇总 |
+| ------- | ---------: | -----: | -------------: | -------: | -------: |
+| A6 | | | | | |
+
+- 提交、设备、CANN、校验结果、设备时钟依据：
+- L3 泳道文件名、所选轮次、A6 与 A5 的主要差异：
+- 原始 L4 复查或首个失败字段：

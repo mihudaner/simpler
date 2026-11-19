@@ -207,6 +207,14 @@ def build(args):
     kernels = [k for k in manifest["kernels"] if k["func_id"] in metadata["kernel_ids"]]
     if sorted(k["func_id"] for k in kernels) != metadata["kernel_ids"]:
         raise ValueError("SWA kernel sources are incomplete")
+    save(
+        bundle / "name_map.json",
+        {
+            "level": 2,
+            "orchestrator_name": "SWA",
+            "callable_id_to_name": {str(k["func_id"]): k["name"] for k in kernels},
+        },
+    )
     binary_dir = build_dir / "kernels"
     binary_dir.mkdir(exist_ok=True)
     if args.platform == "a6":
