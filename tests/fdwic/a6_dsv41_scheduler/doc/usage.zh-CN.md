@@ -1,6 +1,6 @@
 # SWA 使用方法：构建、运行与调优复测
 
-[性能总表](a5-results-2026-11-17.zh-CN.md) · [按 PR 口径测量及采集详细泳道](a6-environment.zh-CN.md)
+[优化阶段索引](a6-optimization.zh-CN.md) · [优化前基线](../results/00-baseline/README.zh-CN.md) · [按 PR 口径测量及采集详细泳道](a6-environment.zh-CN.md)
 
 ## 首次运行 A5
 
