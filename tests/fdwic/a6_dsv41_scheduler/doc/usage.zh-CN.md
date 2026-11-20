@@ -51,11 +51,11 @@ python -I tests/fdwic/a6_dsv41_scheduler/run.py \
 
 **本页前面的运行命令目前仅适用于 A5；A6 用下文的单卡入口，设备执行还需要 A6 HBG 运行库。** 首轮 A6 只构建／运行 HBG，不默认连跑 percounter。
 
-远端报告的系统 CMake 为 3.16.3。原生工具的 [CMakeLists.txt](../../dsv41_scheduler/production/CMakeLists.txt) 声明最低 3.20；现有 [AICore 运行时构建](../../../../src/a5/platform/onboard/aicore/CMakeLists.txt) 还实际使用了 Makefile 生成器的 `DEPFILE` 支持，要求 CMake 3.20。因此沿用这条构建路径时，不能只调低版本声明。
+原生工具的 [CMakeLists.txt](../../dsv41_scheduler/production/CMakeLists.txt) 声明最低 3.20；现有 [AICore 运行时构建](../../../../src/a5/platform/onboard/aicore/CMakeLists.txt) 还实际使用了 Makefile 生成器的 `DEPFILE` 支持，要求 CMake 3.20。因此沿用这条构建路径时，不能只调低版本声明。
 
 建议在项目 `.venv` 提供 `cmake>=3.20` 和当前入口使用的 Ninja，不升级系统 CMake，也不改用户全局环境；复现时记录 `command -v cmake ninja` 和各自版本。3.20 是当前构建链要求，不是 A6 芯片本身的硬要求。若选择其他生成器或兼容旧版本，需要验证依赖追踪和重编行为。
 
-Host 的 x86_64 C++ 工具、AICPU 的 aarch64 交叉编译器、AICore 的 `dav-920r1-*` ccec 目标分别配置。没有 task-submit 的 A6 机器按实际设备占用方式提供执行入口，不能直接复用本页的 A5 队列命令。已核实环境见 [迁移说明](a6-migration.zh-CN.md#环境与证据)，待补验证见 [当前 A6 任务单](a6-environment.zh-CN.md)。
+Host 的 x86_64 C++ 工具、AICPU 的 aarch64 交叉编译器、AICore 的 `dav-920r1-*` ccec 目标分别配置。没有 task-submit 的 A6 机器按实际设备占用方式提供执行入口，不能直接复用本页的 A5 队列命令。已核实环境见 [迁移说明](a6-migration.zh-CN.md#平台与工具链)，待补验证见 [当前 A6 任务单](a6-environment.zh-CN.md)。
 
 ## 单卡 A6 SWA
 
@@ -83,4 +83,6 @@ ASCEND_PROCESS_LOG_PATH="$(realpath "$swa_verify_dir/ascend-log")" \
 
 默认零预热、执行一次 HBG。通过时 runner 正常返回，`run/rank0/result.json` 记录 `passed`、`snapshot_inputs`、`validated_against_fused_prefix` 为 true，包含对固定参考的 30 个可写 Device buffer 检查。失败时先看 `run/rank0/console.log` 及本次 `ascend-log` 中最早的异常。[当前任务单](a6-environment.zh-CN.md)
 
-单独定位构建失败时，可用 [compile_kernels.py](../compile_kernels.py) 查看逐核诊断，或用 [prepare_plan.py](../prepare_plan.py) 检查 Host 对 2735 条记录的解码与两处 MIX 转换。
+阶段 003 的性能测量在构建命令中显式加 `--a6-plan quant54-oa54`，同时启用两处改动。省略参数时构建器使用仅调整 t17 的 `quant54`；`merge-baseline` 可重建原分片。历史对照数据和回填口径见[阶段 003](../results/003-a6-swa-blocks/README.zh-CN.md)。
+
+单独定位构建失败时，可用 [compile_kernels.py](../compile_kernels.py) 查看逐核诊断，或用 [prepare_plan.py](../prepare_plan.py) 检查 Host 对 2735 条记录的解码与 A6 分片转换。

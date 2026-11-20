@@ -1,0 +1,42 @@
+{
+  "stage": "003-a6-swa-blocks",
+  "device_measurements": "pending",
+  "fixture_sha256": "a25b3c4241ac4a8d46e0f3103e2f0c4bad57d268abacb5f73d478b8ba7291dcf",
+  "a5": {
+    "executions": 578,
+    "plan_sha256": "2c891ce643f4903a1c7ba8dc2ef9640bf9f6bca16f6b9119ba18d4870e3cf645",
+    "callable_sha256": "4a2298f7c0d18cf5ca0f2f367b126f5b07875f6b07c1da6415f0bdacf938a646",
+    "matches_stage_001": true
+  },
+  "a6": {
+    "default": "quant54",
+    "profiles": {
+      "merge-baseline": {
+        "executions": 570,
+        "l0_kernel_window_us": 328.139,
+        "l0_device_wall_us": 414.771,
+        "reference_stage": "002",
+        "reference_commit": "0d76a7d"
+      },
+      "quant54": {
+        "executions": 560,
+        "l0_kernel_window_us": null,
+        "l0_device_wall_us": null
+      },
+      "quant54-oa54": {
+        "executions": 604,
+        "l0_kernel_window_us": null,
+        "l0_device_wall_us": null
+      }
+    },
+    "identical_callables_across_profiles": true,
+    "benchmark_profile": "quant54-oa54",
+    "migration_baseline": {
+      "stage": "00",
+      "commit": "9161810",
+      "executions": 570,
+      "l0_kernel_window_us": 370.307,
+      "l0_device_wall_us": 463.159
+    }
+  }
+}

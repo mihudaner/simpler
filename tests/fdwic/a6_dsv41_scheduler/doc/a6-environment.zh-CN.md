@@ -3,7 +3,8 @@
 [优化阶段索引](a6-optimization.zh-CN.md) · [优化前基线](../results/00-baseline/README.zh-CN.md) · [迁移结论](a6-migration.zh-CN.md)
 
 - [x] **单卡 SWA 的 L0、L1 下界与 L3 已回填。** [性能总表](../results/00-baseline/README.zh-CN.md) · [逐核分析](../results/00-baseline/README.zh-CN.md#下界为何更高)
-- [ ] **001 待回填 A6。** 合并提交 `120e15b9e` 使用 GM 完成计数，沿用 00 的固定输入。A5 同卡对照已归档。[本轮性能表](../results/001-hbg-main-merge-swa/README.zh-CN.md)
+- [x] **合并后、原分片的 A6 对照已有数据。** `0d76a7d` 使用 GM-FAA，L0 核窗口 328.139 µs，Device wall 414.771 µs。[阶段 002](../results/002-hbg-same-address-access/README.zh-CN.md#a6-单卡-swa-l0)
+- [ ] **003 待测 A6 分片。** 只测两项同时启用的 `quant54-oa54`，与 00 和 002 的已有结果比较。性能表见[阶段 003](../results/003-a6-swa-blocks/README.zh-CN.md)。
 
 ## 已有性能数据的复测方法
 
@@ -18,7 +19,10 @@ runtime=build/lib/$platform/onboard
 git rev-parse HEAD
 python simpler_setup/build_runtimes.py --platforms "$platform" --runtime host_build_graph \
   --profiling-dfx 1 --profiling-orch 0 --profiling-sched 0 --profiling-tensormap 0
-python -I "$case_dir/prepare.py" build --platform "$platform" --pto-isa build/pto-isa --build-dir "$work_dir/replay"
+# 003 同时启用 t17 输出量化和 t20 O-A 投影的 54 组分片。
+plan_args=()
+if [ "$platform" = a6 ]; then plan_args=(--a6-plan quant54-oa54); fi
+python -I "$case_dir/prepare.py" build --platform "$platform" "${plan_args[@]}" --pto-isa build/pto-isa --build-dir "$work_dir/replay"
 ```
 
 在同一个 shell 中使用已分配的逻辑设备，下例为 0。每级一个进程、1 次预热、10 次正式。L0 关闭附加打点，L3 打开 AICPU 细分；两组使用同一构建和用例包。运行期间不要切换分支或库路径。
@@ -43,19 +47,13 @@ python "$case_dir/performance.py" "$work_dir/L3" --platform "$platform" --level 
 
 若核实 AICPU RunWall 与 AICore 使用同一纪元的 1 GHz 设备计数器，在上述两条统计命令添加 `--shared-device-clock`，即可得到 `before/after` 并在图上显示 Device wall 分段。仅有频率一致不能确定纪元一致。若已导出泳道，重跑时选择新的文件名。其余指标都可独立回填。新 worktree 的环境准备见 [使用方法](usage.zh-CN.md#单卡-a6-swa)。
 
-A6 泳道保存在本地工作目录；按阶段整理时放入对应的 `local-traces/`。回填提交号、轮次和汇总值即可。
+汇总表记录提交号、芯片、测量轮次和均值。
 
 ## 本轮回答区
 
-只需回传 Markdown。合入主线后，先按上面的命令重建 HBG 和 SWA，在同一张 A6 上完成 L0 的 1 轮预热和 10 轮正式测量，回填提交号、设备型号、30 个输出缓冲区的校验结果、AICore 窗口与 Device wall 均值。对照迁移基线的 370.307 µs 与 463.159 µs。L3 用于定位具体差异，原图保存在 A6 本地。
+将本次配置的提交号、设备型号、输出校验及十轮均值记入[阶段 003 的性能表](../results/003-a6-swa-blocks/README.zh-CN.md)。
 
-| A6 运行时提交 | 设备 | 输出校验（30 个缓冲区） | L0 AICore 窗口 µs | L0 Device wall µs |
-| ------------- | ---- | ----------------------- | ----------------: | ----------------: |
-| | | | | |
+后续定位可对比以下指标：
 
-后续定位可复用已有记录：
-
-- O-B（回放 t21／源码 t29）的 A6 子核机器码指纹、实际核心频率及可用的矩阵和搬运流水计数。若补测，固定输入、tile 与每实例工作量，对比单 block 与原 32 block 的核体时间。
-- 若继续对照调度窗口，贴十轮 dispatch、complete 端点的取法与逐轮跨度，标明产生 667.320 和 682.560 µs 的轮次。当前 run5 核体窗口已由逐核 CSV 确认为 672.200 µs。
-
-答：
+- O-B（回放 t21／源码 t29）的实际核心频率及可用的矩阵和搬运流水计数。若补测，固定输入、tile 与每实例工作量，对比单 block 与原 32 block 的核体时间。
+- 若继续对照调度窗口，需核对十轮 dispatch、complete 端点的取法与逐轮跨度，标明产生 667.320 和 682.560 µs 的轮次。当前 run5 核体窗口为 672.200 µs。
