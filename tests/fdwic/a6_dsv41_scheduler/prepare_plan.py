@@ -30,7 +30,7 @@ def read_records(tool, path):
 def check_conversion(before, after, plan):
     blocks = A6_PLAN_BLOCKS[plan]
     expected = copy.deepcopy(before)
-    block_counts = {9: blocks.padding, 22: 48, 25: blocks.quant, 28: blocks.oa, 29: blocks.ob, 35: blocks.post}
+    block_counts = {22: 48, 25: blocks.quant, 28: blocks.oa, 29: blocks.ob, 35: blocks.post}
     selected = []
     for record in expected:
         task = record["id"]
@@ -102,7 +102,6 @@ def main():
         "a6_executions": executions,
         "a6_plan": args.a6_plan,
         "changes": [
-            {"task": 9, "before": {"blocks": 80, "lanes": "V"}, "after": {"blocks": blocks.padding, "lanes": "V"}},
             {"task": 22, "before": {"blocks": 24, "lanes": "C,V0,V1"}, "after": {"blocks": 48, "lanes": "C,V"}},
             {"task": 25, "before": {"blocks": 64, "lanes": "V"}, "after": {"blocks": blocks.quant, "lanes": "V"}},
             {"task": 28, "before": {"blocks": 32, "lanes": "C,V0,V1"}, "after": {"blocks": blocks.oa, "lanes": "C,V"}},

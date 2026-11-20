@@ -79,7 +79,7 @@ def lifecycle(raw, counts, expected):
             total += max(0, end - max(start, cursor))
             cursor = max(cursor, end)
         result[name] = total * 1e6 / raw["metadata"]["clock_freq_hz"]
-    for task_id in (1, 4, 17, 20, 21, 27):
+    for task_id in (4, 17, 20, 21, 27):
         rows = [row for row in tasks if row[1] == task_id]
         cycles = max(row[4] for row in rows) - min(row[3] for row in rows)
         result[f"t{task_id}_kernel_span"] = cycles * 1e6 / raw["metadata"]["clock_freq_hz"]

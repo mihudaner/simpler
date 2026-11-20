@@ -36,20 +36,19 @@ int parse_blocks(const std::string &value, int original, int candidate) {
 
 int main(int argc, char **argv) {
     try {
-        if (argc != 8)
-            throw std::runtime_error(
-                "Usage: adapt-plan input output quant-blocks oa-blocks ob-blocks post-blocks padding-blocks"
-            );
+        if (argc != 7)
+            throw std::runtime_error("Usage: adapt-plan input output quant-blocks oa-blocks ob-blocks post-blocks");
         const int quant = parse_blocks(argv[3], 64, 54);
         const int oa = parse_blocks(argv[4], 32, 54);
         const int ob = parse_blocks(argv[5], 32, 54);
         const int post = parse_blocks(argv[6], 64, 54);
-        const int padding = parse_blocks(argv[7], 80, 8);
         // Each specialized binary expects this scalar signature and partitions exactly this shape.
         std::map<uint64_t, Partition> partitions{
-            {9, {{-1, 9, -1}, 80, {80, 72}, padding}},    {22, {{18, 19, 19}, 24, {72, 64, 128, 0, 0}, 48}},
-            {25, {{-1, 20, -1}, 64, {72, 8, 80}, quant}}, {28, {{21, 22, 22}, 32, {8192, 72, 80, 80}, oa}},
-            {29, {{23, -1, -1}, 32, {80, 8192, 80}, ob}}, {35, {{-1, 27, -1}, 64, {80}, post}},
+            {22, {{18, 19, 19}, 24, {72, 64, 128, 0, 0}, 48}},
+            {25, {{-1, 20, -1}, 64, {72, 8, 80}, quant}},
+            {28, {{21, 22, 22}, 32, {8192, 72, 80, 80}, oa}},
+            {29, {{23, -1, -1}, 32, {80, 8192, 80}, ob}},
+            {35, {{-1, 27, -1}, 64, {80}, post}},
         };
         std::ifstream input(argv[1], std::ios::binary);
         auto records = dsv41::read_records(input);
@@ -85,7 +84,7 @@ int main(int argc, char **argv) {
         output.close();
         if (!output) throw std::runtime_error("Failed to finish converted plan");
         std::cout << "A6 SWA: t22=48 x 1C1V, t25=" << quant << " x V, t28=" << oa << " x 1C1V"
-                  << ", t29=" << ob << " x C, t35=" << post << " x V, t9=" << padding << " x V\n";
+                  << ", t29=" << ob << " x C, t35=" << post << " x V\n";
         return 0;
     } catch (const std::exception &error) {
         std::cerr << error.what() << '\n';

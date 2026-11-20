@@ -35,23 +35,19 @@ class SwaBlocks(NamedTuple):
     oa: int
     ob: int = 32
     post: int = 64
-    padding: int = 80
 
     def specialized_kernels(self):
         # These kernels change their tile ownership together with the plan.
-        return {k for k, active in ((23, self.ob == 54), (27, self.post == 54), (9, self.padding == 8)) if active}
+        return {k for k, active in ((23, self.ob == 54), (27, self.post == 54)) if active}
 
 
 A6_PLAN_BLOCKS = {
     "merge-baseline": SwaBlocks(64, 32),
     "quant54": SwaBlocks(54, 32),
     "quant54-oa54": SwaBlocks(54, 54),
-    "post54": SwaBlocks(54, 54, post=54),
-    "ob54": SwaBlocks(54, 54, ob=54),
     "post54-ob54": SwaBlocks(54, 54, ob=54, post=54),
-    "padding8": SwaBlocks(54, 54, padding=8),
 }
-DEFAULT_A6_PLAN = "quant54"
+DEFAULT_A6_PLAN = "post54-ob54"
 
 
 def digest(data):

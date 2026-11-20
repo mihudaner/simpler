@@ -83,6 +83,6 @@ ASCEND_PROCESS_LOG_PATH="$(realpath "$swa_verify_dir/ascend-log")" \
 
 默认零预热、执行一次 HBG。通过时 runner 正常返回，`run/rank0/result.json` 记录 `passed`、`snapshot_inputs`、`validated_against_fused_prefix` 为 true，包含对固定参考的 30 个可写 Device buffer 检查。失败时先看 `run/rank0/console.log` 及本次 `ascend-log` 中最早的异常。[当前任务单](a6-environment.zh-CN.md)
 
-阶段 003 的性能测量在构建命令中显式加 `--a6-plan quant54-oa54`，同时启用两处改动。省略参数时构建器使用仅调整 t17 的 `quant54`；`merge-baseline` 可重建原分片。[003 已测结果](../results/003-a6-swa-blocks/README.zh-CN.md)。004 的 `post54`、`ob54`、`post54-ob54` 和 `padding8` 都基于这组 003 对照，构建命令只需换配置名。[004 配置与测量表](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照)
+A6 省略分片参数时使用已测的 004 组合 `post54-ob54`，每轮 616 个执行实例。复测 003 用 `--a6-plan quant54-oa54`，核对 t20 扩组可用 `quant54`，复测合并后原分片可用 `merge-baseline`。[003 实测](../results/003-a6-swa-blocks/README.zh-CN.md) · [004 同卡对照](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照)
 
 单独定位构建失败时，可用 [compile_kernels.py](../compile_kernels.py) 查看逐核诊断，或用 [prepare_plan.py](../prepare_plan.py) 检查 Host 对 2735 条记录的解码与 A6 分片转换。
