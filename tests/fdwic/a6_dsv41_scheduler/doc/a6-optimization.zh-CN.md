@@ -8,7 +8,7 @@
 | [001 合入主线 HBG](../results/001-hbg-main-merge-swa/) | 同一张 A5 上，纯主线 219.287 µs，合并版 218.050 µs。A6 使用 GM 完成计数，待单卡回填 | | | [阶段报告](../results/001-hbg-main-merge-swa/README.zh-CN.md) · [指标 JSON](../results/001-hbg-main-merge-swa/metrics.json) · [A5 L3 泳道](../results/001-hbg-main-merge-swa/swa-a5-hbg-L3-detail.json.xz) |
 | [002 同址访问](../results/002-hbg-same-address-access/README.zh-CN.md) | A6 的 96 核 GM 64 位加一全部完成均值 1.051 µs；CntNotify ADD 直映射返回 507899。SWA 使用 GM-FAA | 328.139 µs | 414.771 µs | [A6 访问结果](../results/002-hbg-same-address-access/README.zh-CN.md#a6-同址读写) · [A5 逐名次数据](../results/002-hbg-same-address-access/a5-ranks.json) |
 | [003 A6 输出量化与投影分片](../results/003-a6-swa-blocks/README.zh-CN.md) | t17、t20 均用 54 组。较 002 核窗口缩短 9.079 µs；t20 的 L3 跨度相对 00 增长 | 319.060 µs | 406.690 µs | [实测与回退分析](../results/003-a6-swa-blocks/README.zh-CN.md) |
-| [004 A6 输出尾部与补零分片](../results/004-a6-swa-output-tiles/README.zh-CN.md) | HC post 和 O-B 分别及组合对照 003，补零单独测量 | | | [方案与测量表](../results/004-a6-swa-output-tiles/README.zh-CN.md) · [指标 JSON](../results/004-a6-swa-output-tiles/metrics.json) |
+| [004 A6 输出尾部分片](../results/004-a6-swa-output-tiles/README.zh-CN.md) | HC post 与 O-B 均用 54 组。同批 L0 核窗口缩短 26.502 µs，Device wall 缩短 26.295 µs | 290.068 µs | 377.707 µs | [分项结果与下界](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照) · [指标 JSON](../results/004-a6-swa-output-tiles/metrics.json) |
 
 ## 追加一个阶段
 

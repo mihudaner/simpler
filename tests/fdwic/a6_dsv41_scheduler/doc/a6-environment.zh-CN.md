@@ -5,7 +5,7 @@
 - [x] **单卡 SWA 的 L0、L1 下界与 L3 已回填。** [性能总表](../results/00-baseline/README.zh-CN.md) · [逐核分析](../results/00-baseline/README.zh-CN.md#下界为何更高)
 - [x] **合并后、原分片的 A6 对照已有数据。** `0d76a7d` 使用 GM-FAA，L0 核窗口 328.139 µs，Device wall 414.771 µs。[阶段 002](../results/002-hbg-same-address-access/README.zh-CN.md#a6-单卡-swa-l0)
 - [x] **003 的 A6 核窗口为 319.060 µs，Device wall 为 406.690 µs。** [阶段 003](../results/003-a6-swa-blocks/README.zh-CN.md)
-- [ ] **004 比较 O-B、HC post 和补零分片。** 配置名、顺序和填写位置见[阶段 004](../results/004-a6-swa-output-tiles/README.zh-CN.md)。
+- [x] **004 的 HC post 与 O-B 组合已通过校验。** L0 核窗口 290.068 µs，Device wall 377.707 µs。[004 同卡对照](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照)
 
 ## 已有性能数据的复测方法
 
@@ -13,7 +13,7 @@
 
 ```bash
 platform=a6
-plan=${plan:-quant54-oa54}
+plan=${plan:-post54-ob54}
 case_dir=tests/fdwic/a6_dsv41_scheduler
 mkdir -p "$case_dir/build"
 work_dir=$(mktemp -d "$case_dir/build/perf-${platform}-XXXXXXXX")
@@ -53,4 +53,4 @@ python "$case_dir/performance.py" "$work_dir/L3" --platform "$platform" --level 
 
 ## 本轮回答区
 
-将单卡型号、提交号、运行配置、输出校验和十轮均值填入[004 测量表](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照)。`performance.py --level 3` 的 `t1_kernel_span`、`t21_kernel_span`、`t27_kernel_span` 分别对应补零、O-B、HC post。
+004 已归档同批原配置、两个单项和组合配置。L3 的 `t21_kernel_span` 和 `t27_kernel_span` 分别对应 O-B 和 HC post 的首末实例跨度。[004 测量结果](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照)
