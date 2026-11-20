@@ -18,7 +18,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -38,13 +38,28 @@ PHASES = {
 }
 
 
-def lifecycle(raw, expected):
+def planned_executions(path, platform):
+    if not path.exists():
+        # Older timing-only exports omit deps.json and use the original platform plan.
+        return {}, 578 if platform == "a5" else 570
+    deps = json.loads(path.read_bytes())
+    tasks = {int(t["task_id"]): t for t in deps["tasks"] if any(k >= 0 for k in t["kernel_ids"])}
+    gather_lanes = [18, 19, 19] if platform == "a5" else [18, 19, -1]
+    if len(tasks) != 16 or tasks.get(14, {}).get("kernel_ids") != gather_lanes:
+        raise ValueError(f"Expected the single-card {platform} SWA task graph")
+    counts = {task: t["block_num"] * sum(k >= 0 for k in t["kernel_ids"]) for task, t in tasks.items()}
+    return counts, sum(counts.values())
+
+
+def lifecycle(raw, counts, expected):
     streams = raw["scheduler_records"]["streams"]
     if any(s["capture"]["dropped"] or s["capture"]["truncated"] for s in streams):
         raise ValueError("Incomplete scheduler capture")
     tasks = raw["aicore_tasks"]
     if len(tasks) != expected or len(raw["aicore_execution_identities"]["records"]) != expected:
         raise ValueError(f"Expected {expected} executions and identities")
+    if counts and Counter(row[1] for row in tasks) != counts:
+        raise ValueError("Kernel executions or identities differ from the recorded SWA plan")
     intervals = defaultdict(list)
     for row in raw["aicpu_lifecycle_records"]:
         for name, (start, end) in PHASES.items():
@@ -64,6 +79,10 @@ def lifecycle(raw, expected):
             total += max(0, end - max(start, cursor))
             cursor = max(cursor, end)
         result[name] = total * 1e6 / raw["metadata"]["clock_freq_hz"]
+    for task_id in (17, 20):
+        rows = [row for row in tasks if row[1] == task_id]
+        cycles = max(row[4] for row in rows) - min(row[3] for row in rows)
+        result[f"t{task_id}_kernel_span"] = cycles * 1e6 / raw["metadata"]["clock_freq_hz"]
     return result
 
 
@@ -173,7 +192,7 @@ def main():
             if span.name in call:
                 raise ValueError(f"Duplicate Host span {span.name}")
             call[span.name] = span.dur / 1000
-    expected = 578 if args.platform == "a5" else 570
+    counts, expected = planned_executions(rank / "run1/deps.json", args.platform) if args.level == 3 else ({}, 0)
     samples, endpoints = [], []
     for iteration, (core, wall) in enumerate(zip(cores[dev][1:], walls[dev][1:], strict=True), 1):
         t0, t1, t2, t3 = wall["start_cycle"], core["start_cycle"], core["end_cycle"], wall["end_cycle"]
@@ -189,7 +208,7 @@ def main():
             rows = raw["aicore_tasks"]
             if not rows or (min(r[3] for r in rows), max(r[4] for r in rows)) != (t1, t2):
                 raise ValueError("Trace kernel endpoints differ from AICore wall")
-            sample.update(lifecycle(raw, expected))
+            sample.update(lifecycle(raw, counts, expected))
         samples.append(sample)
         endpoints.append((t0, t1, t2, t3))
     for field in samples[0]:

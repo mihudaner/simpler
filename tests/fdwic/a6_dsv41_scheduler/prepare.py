@@ -27,6 +27,9 @@ REPO = HERE.parents[2]
 SUITE = HERE.parent / "dsv41_scheduler"
 FIXTURE = HERE / "fixtures"
 FLAVOR = "pypto_lib_latest"
+# Source tasks 25 (V output quantization) and 28 (MIX output projection).
+A6_PLAN_BLOCKS = {"merge-baseline": (64, 32), "quant54": (54, 32), "quant54-oa54": (54, 54)}
+DEFAULT_A6_PLAN = "quant54"
 
 
 def digest(data):
@@ -169,6 +172,8 @@ def compile_a5(args, sources, kernels, binary_dir):
 
 
 def build(args):
+    if args.platform != "a6" and args.a6_plan is not None:
+        raise ValueError("--a6-plan requires --platform a6")
     if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
         raise ValueError("Need positive --jobs and --pto-isa containing include/pto")
     build_dir = (args.build_dir or HERE / "build" / args.platform).resolve()
@@ -249,7 +254,8 @@ def build(args):
         )
         plan = bundle / "plan-rank0.bin"
         converted = build_dir / "plan-a6.bin"
-        _, executions = convert_plan(tools / "record-tool", converter, plan, converted)
+        a6_plan = args.a6_plan or DEFAULT_A6_PLAN
+        _, executions = convert_plan(tools / "record-tool", converter, plan, converted, a6_plan)
         converted.replace(plan)
     else:
         compiled = compile_a5(args, sources, kernels, binary_dir)
@@ -295,6 +301,7 @@ def build(args):
         build_dir / "build.json",
         {
             "platform": args.platform,
+            **({"a6_plan": a6_plan} if args.platform == "a6" else {}),
             "source_commit": capture(["git", "-C", REPO, "rev-parse", "HEAD"]).strip(),
             "pto_isa_commit": capture(["git", "-C", args.pto_isa, "rev-parse", "HEAD"]).strip(),
             "fixture_sha256": digest((FIXTURE / "swa.tar.gz").read_bytes()),
@@ -322,6 +329,9 @@ def main():
     export.add_argument("--output", type=Path, default=FIXTURE)
     compile_case = commands.add_parser("build", help="Compile only SWA and the native replay tools")
     compile_case.add_argument("--platform", choices=["a5", "a6"], default="a5")
+    compile_case.add_argument(
+        "--a6-plan", choices=A6_PLAN_BLOCKS, help=f"A6 SWA partition (default: {DEFAULT_A6_PLAN})"
+    )
     compile_case.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
     compile_case.add_argument("--build-dir", type=Path)
     compile_case.add_argument(
