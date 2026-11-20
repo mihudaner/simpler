@@ -28,9 +28,9 @@ def read_records(tool, path):
 
 
 def check_conversion(before, after, plan):
-    quant_blocks, oa_blocks = A6_PLAN_BLOCKS[plan]
+    blocks = A6_PLAN_BLOCKS[plan]
     expected = copy.deepcopy(before)
-    block_counts = {22: 48, 25: quant_blocks, 28: oa_blocks}
+    block_counts = {9: blocks.padding, 22: 48, 25: blocks.quant, 28: blocks.oa, 29: blocks.ob, 35: blocks.post}
     selected = []
     for record in expected:
         task = record["id"]
@@ -39,7 +39,7 @@ def check_conversion(before, after, plan):
             if task in (22, 28):
                 record["kernels"][2] = -1
             selected.append(task)
-    if selected != [22, 25, 28] or after != expected:
+    if selected != list(block_counts) or after != expected:
         raise ValueError(f"Converted capture does not match the {plan} SWA plan")
     tasks = [r for r in after if r["op"] == 2 and 8 <= r["id"] <= 35]
     executions = sum(r["blocks"] * sum(k >= 0 for k in r["kernels"]) for r in tasks)
@@ -89,7 +89,7 @@ def main():
     original_semantics, executions = convert_plan(
         tools / "record-tool", tools / "adapt-plan", original, converted, args.a6_plan
     )
-    quant_blocks, oa_blocks = A6_PLAN_BLOCKS[args.a6_plan]
+    blocks = A6_PLAN_BLOCKS[args.a6_plan]
     # Keep the original capture intact; the A6 plan stays separately named.
     summary = {
         "runtime_executed": False,
@@ -102,9 +102,12 @@ def main():
         "a6_executions": executions,
         "a6_plan": args.a6_plan,
         "changes": [
+            {"task": 9, "before": {"blocks": 80, "lanes": "V"}, "after": {"blocks": blocks.padding, "lanes": "V"}},
             {"task": 22, "before": {"blocks": 24, "lanes": "C,V0,V1"}, "after": {"blocks": 48, "lanes": "C,V"}},
-            {"task": 25, "before": {"blocks": 64, "lanes": "V"}, "after": {"blocks": quant_blocks, "lanes": "V"}},
-            {"task": 28, "before": {"blocks": 32, "lanes": "C,V0,V1"}, "after": {"blocks": oa_blocks, "lanes": "C,V"}},
+            {"task": 25, "before": {"blocks": 64, "lanes": "V"}, "after": {"blocks": blocks.quant, "lanes": "V"}},
+            {"task": 28, "before": {"blocks": 32, "lanes": "C,V0,V1"}, "after": {"blocks": blocks.oa, "lanes": "C,V"}},
+            {"task": 29, "before": {"blocks": 32, "lanes": "C"}, "after": {"blocks": blocks.ob, "lanes": "C"}},
+            {"task": 35, "before": {"blocks": 64, "lanes": "V"}, "after": {"blocks": blocks.post, "lanes": "V"}},
         ],
     }
     summary["changes"] = [change for change in summary["changes"] if change["before"] != change["after"]]

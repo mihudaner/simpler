@@ -21,14 +21,36 @@ import sys
 import tarfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import NamedTuple
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 SUITE = HERE.parent / "dsv41_scheduler"
 FIXTURE = HERE / "fixtures"
 FLAVOR = "pypto_lib_latest"
-# Source tasks 25 (V output quantization) and 28 (MIX output projection).
-A6_PLAN_BLOCKS = {"merge-baseline": (64, 32), "quant54": (54, 32), "quant54-oa54": (54, 54)}
+
+
+class SwaBlocks(NamedTuple):
+    quant: int
+    oa: int
+    ob: int = 32
+    post: int = 64
+    padding: int = 80
+
+    def specialized_kernels(self):
+        # These kernels change their tile ownership together with the plan.
+        return {k for k, active in ((23, self.ob == 54), (27, self.post == 54), (9, self.padding == 8)) if active}
+
+
+A6_PLAN_BLOCKS = {
+    "merge-baseline": SwaBlocks(64, 32),
+    "quant54": SwaBlocks(54, 32),
+    "quant54-oa54": SwaBlocks(54, 54),
+    "post54": SwaBlocks(54, 54, post=54),
+    "ob54": SwaBlocks(54, 54, ob=54),
+    "post54-ob54": SwaBlocks(54, 54, ob=54, post=54),
+    "padding8": SwaBlocks(54, 54, padding=8),
+}
 DEFAULT_A6_PLAN = "quant54"
 
 
@@ -234,7 +256,15 @@ def build(args):
         from compile_kernels import compile_kernel_set  # noqa: PLC0415
         from prepare_plan import convert_plan  # noqa: PLC0415
 
-        compiled = compile_kernel_set("a6", args.pto_isa, binary_dir, args.jobs, metadata["kernel_ids"])["kernels"]
+        a6_plan = args.a6_plan or DEFAULT_A6_PLAN
+        compiled = compile_kernel_set(
+            "a6",
+            args.pto_isa,
+            binary_dir,
+            args.jobs,
+            metadata["kernel_ids"],
+            A6_PLAN_BLOCKS[a6_plan].specialized_kernels(),
+        )["kernels"]
         if not all(record["passed"] for record in compiled):
             raise RuntimeError("A6 kernel compilation failed; see kernels/summary.json")
         converter = tools / "adapt-plan"
@@ -254,7 +284,6 @@ def build(args):
         )
         plan = bundle / "plan-rank0.bin"
         converted = build_dir / "plan-a6.bin"
-        a6_plan = args.a6_plan or DEFAULT_A6_PLAN
         _, executions = convert_plan(tools / "record-tool", converter, plan, converted, a6_plan)
         converted.replace(plan)
     else:

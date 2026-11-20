@@ -125,10 +125,16 @@ extern "C" __aicore__ void kernel_entry(__gm__ int64_t* args) {
     set_mask_norm();
     set_vector_mask(-1, -1);
     int worker = get_block_idx(args);
+#if defined(SWA_COMPACT_PARTITION)
+    const int chunks = args[5] * 2;
+    const int workers = get_block_num(args);
+    for (int chunk = worker; chunk < chunks; chunk += workers) process(args, chunk, 0, 4);
+#else
     int total = args[5] * 2, full = total / 64 * 64;
     for (int chunk = worker; chunk < full; chunk += 64) process(args, chunk, 0, 4);
     for (int tail = worker; tail < (total - full) * 4; tail += 64) {
         process(args, full + tail / 4, tail % 4, 1);
     }
+#endif
 #endif
 }

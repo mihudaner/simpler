@@ -40,10 +40,30 @@ __aicore__ inline void project_width(__gm__ int64_t* args) {
     }
 }
 
+#if defined(SWA_COMPACT_PARTITION)
+template <int Cols>
+__aicore__ inline void project_output_columns(__gm__ int64_t* args, int column) {
+    project<8192, 5120, Cols, 80>(
+        data<F>(args, 0), data<F>(args, 1), data<S>(args, 2), data<S>(args, 3), data<bfloat16_t>(args, 4),
+        args[5], 5120, column);
+}
+#endif
+
 extern "C" __aicore__ void kernel_entry(__gm__ int64_t* args) {
+#if defined(SWA_COMPACT_PARTITION)
+    constexpr int wide_blocks = 52;
+    static_assert(wide_blocks * 96 + 2 * 64 == 5120);
+    const int block = get_block_idx(args);
+    if (block < wide_blocks) {
+        project_output_columns<96>(args, block * 96);
+    } else {
+        project_output_columns<64>(args, wide_blocks * 96 + (block - wide_blocks) * 64);
+    }
+#else
     if (args[7] == 256) {
         project_width<256>(args);
     } else {
         project_width<80>(args);
     }
+#endif
 }

@@ -8,7 +8,7 @@
 | 规模 | 16 个计算任务，19 个计算核。A5 有 578 个执行实例，A6 迁移基线有 570 个，当前 A6 默认分片有 560 个 |
 | A5 结果 | 11 月 17 日 HBG 和 percounter 均逐轮校验通过，后续 HBG 同口径数据见复测报告 |
 | 已完成的提取 | 只编 SWA 所需核，随目录保存固定输入和参考，复用生产 runner 与原 PR 统计器 |
-| A6 状态 | 1C1V 迁移基线已通过单卡 HBG 的 30 个输出缓冲区校验，已归档 L0、L1 和 L3。当前 [输出量化分片](results/003-a6-swa-blocks/README.zh-CN.md) 待上板对照 |
+| A6 状态 | 1C1V 迁移基线已通过单卡 HBG 的 30 个输出缓冲区校验，已归档 L0、L1 和 L3。[003 分片](results/003-a6-swa-blocks/README.zh-CN.md) 的 L0 核窗口为 319.060 µs，[004 尾部与补零分片](results/004-a6-swa-output-tiles/README.zh-CN.md) 待单卡测量 |
 | 依赖边界 | 仍需 CANN、PTO-ISA 和匹配的 Simpler；解除的是 PyPTO／PTOAS 的代码生成依赖 |
 
 SWA 包含 MIX／sync_start 协同，但本切片没有跨卡通信和 deferred 等待。因此它适合验证计算与调度，双卡 MoE／defer_wait 需要后续独立验证。

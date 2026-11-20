@@ -168,6 +168,11 @@ extern "C" __aicore__ __attribute__((always_inline)) void kernel_entry(__gm__ in
     attention_count_inline5370__ssa_v0_conv.u64 = args[2];
     int32_t attention_count_inline5370__ssa_v0 = attention_count_inline5370__ssa_v0_conv.val;
 
+#if defined(SWA_COMPACT_PARTITION)
+    // The compact plan launches one block per padding row.
+    __pypto_spmd_block_idx += attention_count_inline5370__ssa_v0;
+#endif
+
     // Forward to ptoas-generated function
     decode_sp_zero_padding(x_norm_inline5604__ssa_v0, LOCAL_T_DYN, attention_count_inline5370__ssa_v0, __pypto_spmd_block_idx, __pypto_spmd_block_num);
 }

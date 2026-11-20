@@ -26,7 +26,7 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def compile_kernel_set(platform, pto_isa, output, jobs, kernel_ids):
+def compile_kernel_set(platform, pto_isa, output, jobs, kernel_ids, specialized_ids=()):
     sys.path[:0] = [str(REPO), str(REPO / "python")]
     from simpler_setup.compile_paths import compiler_visible_path  # noqa: PLC0415
     from simpler_setup.elf_parser import extract_text_section  # noqa: PLC0415
@@ -48,6 +48,8 @@ def compile_kernel_set(platform, pto_isa, output, jobs, kernel_ids):
         prefix = output / f"kernel-{kernel['func_id']}"
         object_path, elf_path, binary_path = (prefix.with_suffix(s) for s in (".o", ".elf", ".bin"))
         command = [toolchain.cxx_path, *toolchain.get_compile_flags(core_type=kernel["core_type"])]
+        if kernel["func_id"] in specialized_ids:
+            command.append("-DSWA_COMPACT_PARTITION=1")
         command += [
             f"-I{compiler_visible_path(p)}" for p in [*includes, *(str(SOURCES / p) for p in kernel["include_dirs"])]
         ]

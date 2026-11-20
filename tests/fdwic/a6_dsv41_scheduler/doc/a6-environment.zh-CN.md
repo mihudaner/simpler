@@ -4,7 +4,8 @@
 
 - [x] **单卡 SWA 的 L0、L1 下界与 L3 已回填。** [性能总表](../results/00-baseline/README.zh-CN.md) · [逐核分析](../results/00-baseline/README.zh-CN.md#下界为何更高)
 - [x] **合并后、原分片的 A6 对照已有数据。** `0d76a7d` 使用 GM-FAA，L0 核窗口 328.139 µs，Device wall 414.771 µs。[阶段 002](../results/002-hbg-same-address-access/README.zh-CN.md#a6-单卡-swa-l0)
-- [ ] **003 待测 A6 分片。** 只测两项同时启用的 `quant54-oa54`，与 00 和 002 的已有结果比较。性能表见[阶段 003](../results/003-a6-swa-blocks/README.zh-CN.md)。
+- [x] **003 的 A6 核窗口为 319.060 µs，Device wall 为 406.690 µs。** [阶段 003](../results/003-a6-swa-blocks/README.zh-CN.md)
+- [ ] **004 比较 O-B、HC post 和补零分片。** 配置名、顺序和填写位置见[阶段 004](../results/004-a6-swa-output-tiles/README.zh-CN.md)。
 
 ## 已有性能数据的复测方法
 
@@ -12,6 +13,7 @@
 
 ```bash
 platform=a6
+plan=${plan:-quant54-oa54}
 case_dir=tests/fdwic/a6_dsv41_scheduler
 mkdir -p "$case_dir/build"
 work_dir=$(mktemp -d "$case_dir/build/perf-${platform}-XXXXXXXX")
@@ -19,9 +21,9 @@ runtime=build/lib/$platform/onboard
 git rev-parse HEAD
 python simpler_setup/build_runtimes.py --platforms "$platform" --runtime host_build_graph \
   --profiling-dfx 1 --profiling-orch 0 --profiling-sched 0 --profiling-tensormap 0
-# 003 同时启用 t17 输出量化和 t20 O-A 投影的 54 组分片。
+# plan 取当前对照的配置名，每种配置重新创建 work_dir。
 plan_args=()
-if [ "$platform" = a6 ]; then plan_args=(--a6-plan quant54-oa54); fi
+if [ "$platform" = a6 ]; then plan_args=(--a6-plan "$plan"); fi
 python -I "$case_dir/prepare.py" build --platform "$platform" "${plan_args[@]}" --pto-isa build/pto-isa --build-dir "$work_dir/replay"
 ```
 
@@ -51,9 +53,4 @@ python "$case_dir/performance.py" "$work_dir/L3" --platform "$platform" --level 
 
 ## 本轮回答区
 
-将本次配置的提交号、设备型号、输出校验及十轮均值记入[阶段 003 的性能表](../results/003-a6-swa-blocks/README.zh-CN.md)。
-
-后续定位可对比以下指标：
-
-- O-B（回放 t21／源码 t29）的实际核心频率及可用的矩阵和搬运流水计数。若补测，固定输入、tile 与每实例工作量，对比单 block 与原 32 block 的核体时间。
-- 若继续对照调度窗口，需核对十轮 dispatch、complete 端点的取法与逐轮跨度，标明产生 667.320 和 682.560 µs 的轮次。当前 run5 核体窗口为 672.200 µs。
+将单卡型号、提交号、运行配置、输出校验和十轮均值填入[004 测量表](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照)。`performance.py --level 3` 的 `t1_kernel_span`、`t21_kernel_span`、`t27_kernel_span` 分别对应补零、O-B、HC post。

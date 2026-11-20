@@ -1,0 +1,78 @@
+{
+  "stage": "004-a6-swa-output-tiles",
+  "baseline": "003-a6-swa-blocks/quant54-oa54",
+  "device_measurements": "pending",
+  "fixture_sha256": "a25b3c4241ac4a8d46e0f3103e2f0c4bad57d268abacb5f73d478b8ba7291dcf",
+  "profiles": {
+    "quant54-oa54": {
+      "executions": 604,
+      "changed_kernel_ids_vs_003": [],
+      "kernel_count": 19,
+      "plan_records_verified": 2735,
+      "l0_kernel_window_us": null,
+      "l0_device_wall_us": null
+    },
+    "post54": {
+      "executions": 594,
+      "changed_kernel_ids_vs_003": [
+        27
+      ],
+      "kernel_count": 19,
+      "plan_records_verified": 2735,
+      "l0_kernel_window_us": null,
+      "l0_device_wall_us": null
+    },
+    "ob54": {
+      "executions": 626,
+      "changed_kernel_ids_vs_003": [
+        23
+      ],
+      "kernel_count": 19,
+      "plan_records_verified": 2735,
+      "l0_kernel_window_us": null,
+      "l0_device_wall_us": null
+    },
+    "post54-ob54": {
+      "executions": 616,
+      "changed_kernel_ids_vs_003": [
+        23,
+        27
+      ],
+      "kernel_count": 19,
+      "plan_records_verified": 2735,
+      "l0_kernel_window_us": null,
+      "l0_device_wall_us": null
+    },
+    "padding8": {
+      "executions": 532,
+      "changed_kernel_ids_vs_003": [
+        9
+      ],
+      "kernel_count": 19,
+      "plan_records_verified": 2735,
+      "l0_kernel_window_us": null,
+      "l0_device_wall_us": null
+    }
+  },
+  "a5_control": {
+    "executions": 578,
+    "same_19_binaries_plan_and_callable_as_003": true
+  },
+  "coverage_check": {
+    "kind": "host_kernel_entry_index_check",
+    "ob_columns_once": 5120,
+    "post_chunks": 160,
+    "post_streams_per_chunk": 4,
+    "padding_rows_once": [
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79
+    ],
+    "other_padding_rows_written": 0
+  }
+}
