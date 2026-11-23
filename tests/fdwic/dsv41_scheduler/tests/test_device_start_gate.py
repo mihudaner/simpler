@@ -120,13 +120,16 @@ def test_prepare_passes_valid_snapshot_to_capture(tmp_path, gate, monkeypatch, s
     prepare = importlib.import_module("prepare")
     runtime = snapshot(tmp_path / "wrapper", gate)
     output = tmp_path / "prepared"
-    calls = []
-    monkeypatch.setattr(sys, "argv", ["prepare.py", str(runtime), str(output), *selection])
-    monkeypatch.setattr(prepare.subprocess, "run", lambda command, **kwargs: calls.append(command))
-    monkeypatch.setattr(prepare, "export", lambda *args: [])
+    runner = tmp_path / "shared-runner"
+    calls, exporters = [], []
+    monkeypatch.setattr(sys, "argv", ["prepare.py", str(runtime), str(output), "--runner", str(runner), *selection])
+    monkeypatch.setattr(prepare.subprocess, "run", lambda command, **kwargs: calls.append((command, kwargs["env"])))
+    monkeypatch.setattr(prepare, "export", lambda *args: exporters.append(args[-1]) or [])
     prepare.main()
-    assert len(calls) == 1 and calls[0][3] == str(runtime)
-    assert Path(calls[0][2]).name == "pypto_lib_latest"
+    assert len(calls) == 1
+    command, env = calls[0]
+    assert command[3] == str(runtime) and Path(command[2]).name == "pypto_lib_latest"
+    assert env["DSV41_RUNNER"] == str(runner) and exporters == [runner]
     assert json.loads((output / "runtime.json").read_text())["path"] == str(runtime)
 
 

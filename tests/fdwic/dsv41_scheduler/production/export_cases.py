@@ -40,7 +40,7 @@ def _export_native(destination, root, tools, native_moe_bundle):
     subprocess.run(command, check=True)
 
 
-def export(bundle, capture, flavor, output, tools, native_moe_bundle=None, case_name=None):
+def export(bundle, capture, flavor, output, tools, native_moe_bundle=None, case_name=None, runner=None):
     if flavor != "pypto_lib_latest":
         raise ValueError(f"Unknown workload: {flavor}")
     root = Path(__file__).resolve().parents[1]
@@ -103,7 +103,7 @@ def export(bundle, capture, flavor, output, tools, native_moe_bundle=None, case_
         (destination / "slice.txt").write_text(f"{first} {last}\n")
         subprocess.run(
             [
-                str(tools / "native-runner"),
+                str(runner or tools / "native-runner"),
                 "--repack-orchestration",
                 str(bundle / "original-callable.bin"),
                 str(tools / "libreplay.so"),

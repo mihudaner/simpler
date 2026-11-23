@@ -29,6 +29,12 @@ def main():
     parser.add_argument(
         "--build-dir", type=Path, default=Path(os.environ.get("DSV41_BUILD_DIR", ROOT / "build/portable"))
     )
+    parser.add_argument(
+        "--runner",
+        type=Path,
+        default=os.environ.get("DSV41_RUNNER"),
+        help="Native runner used for capture, repacking and materialization",
+    )
     parser.add_argument("--flavor", choices=("pypto_lib_latest", "all"), default="pypto_lib_latest")
     parser.add_argument("--native-moe-bundle", type=Path, help="Reuse an existing compatible native MoE bundle")
     parser.add_argument("--runtime", choices=("host_build_graph", "percounter"), default="host_build_graph")
@@ -49,8 +55,11 @@ def main():
     except ValueError as exc:
         parser.error(str(exc))
     output.mkdir(parents=True, exist_ok=False)
-    env = {**os.environ, "DSV41_RUNNER": str(build / "host/native-runner")}
-    (output / "runtime.json").write_text(json.dumps({"path": str(runtime), "runtime": args.runtime}, indent=2) + "\n")
+    runner = (args.runner or build / "host/native-runner").resolve()
+    env = {**os.environ, "DSV41_RUNNER": str(runner)}
+    (output / "runtime.json").write_text(
+        json.dumps({"path": str(runtime), "runtime": args.runtime, "runner": str(runner)}, indent=2) + "\n"
+    )
     flavor = "pypto_lib_latest"
     bundle = build / "forward" / flavor
     capture = output / "capture" / flavor
@@ -69,7 +78,7 @@ def main():
         env=env,
         check=True,
     )
-    cases = export(bundle, capture, flavor, output / "cases", build / "host", args.native_moe_bundle, args.case)
+    cases = export(bundle, capture, flavor, output / "cases", build / "host", args.native_moe_bundle, args.case, runner)
     for case in cases:
         if json.loads((case / "case.json").read_text())["device_count"] == 1:
             materialize(case, runtime, output / "preparation" / flavor / case.name, env, args.runtime)

@@ -27,7 +27,8 @@ input=$(realpath -e -- "$4")
 out=$(realpath -m -- "$5")
 suite=tests/fdwic/dsv41_scheduler
 build=$main/$suite/build/portable
-runner=$build/host/native-runner
+# Keep the full-forward resource settings and native launch code identical for both runtime arms.
+runner=$migrated/$suite/build/portable/host/native-runner
 : "${ASCEND_HOME_PATH:?source the CANN set_env.sh}"
 [[ -x $runner ]] || { echo "Missing executable $runner" >&2; exit 2; }
 export PYTHONPATH="$migrated:$migrated/python${PYTHONPATH:+:$PYTHONPATH}"
@@ -35,7 +36,7 @@ export DSV41_PYTHON="$migrated/.venv/bin/python" DSV41_RUNNER="$runner" DSV41_BU
 if [[ $mode == prepare ]]; then
     [[ ! -e $out ]] || { echo "Preparation output already exists: $out" >&2; exit 2; }
     exec "$DSV41_PYTHON" "$migrated/$suite/production/prepare.py" "$input" "$out" \
-         --build-dir "$build" --runtime host_build_graph --case swa
+         --build-dir "$build" --runner "$runner" --runtime host_build_graph --case swa
 fi
 if [[ $mode == collect ]]; then
     [[ ! -e $out ]] || { echo "Capture output already exists: $out" >&2; exit 2; }
@@ -99,6 +100,7 @@ if [[ $mode != device || -z ${TASKQUEUE_INSIDE:-} || ! ${TASK_DEVICE:-} =~ ^[0-9
     echo 'The device stage requires a single card allocated by task-submit.' >&2
     exit 2
 fi
+sha256sum --check "$out/runner.sha256"
 bash "$main/.claude/skills/onboard-arch-precheck/check.sh" a5
 npu-smi info -t board -i "$TASK_DEVICE" > "$out/board.log"
 printf '%s\n' "$TASK_DEVICE" > "$out/device.txt"
