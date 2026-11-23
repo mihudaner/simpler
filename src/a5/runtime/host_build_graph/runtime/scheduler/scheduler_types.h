@@ -46,9 +46,9 @@ inline constexpr uint64_t SCHEDULER_STATE_ALIGNMENT = 64;
 // it is not a scalar ordering guarantee. See the data-layout contract.
 inline constexpr uint64_t SCHEDULER_GM_ATOMIC_SECTOR_BYTES = 128;
 inline constexpr uint64_t SCHEDULER_WORKER_CAPACITY = 108;
-inline constexpr uint32_t SCHEDULER_EXECUTION_TOKEN_COUNT = 2;
+inline constexpr uint32_t SCHEDULER_EXECUTION_TOKEN_COUNT = 1;
 inline constexpr uint32_t SCHEDULER_CLUSTER_MIX_EXECUTION = SCHEDULER_EXECUTION_TOKEN_COUNT;
-inline constexpr uint32_t SCHEDULER_MIX_MEMBER_COUNT = 2;
+inline constexpr uint32_t SCHEDULER_MIX_MEMBER_COUNT = 1;
 inline constexpr uint32_t SCHEDULER_LOCAL_EXECUTION_COUNT =
     SCHEDULER_CLUSTER_MIX_EXECUTION + SCHEDULER_MIX_MEMBER_COUNT;
 // MIX keeps the same trace identity in both window-depth builds.
@@ -186,6 +186,7 @@ enum SchedulerTaskMetadataFlags : uint8_t {
     SCHEDULER_TASK_SYNC_START = 1U << 4,
     SCHEDULER_TASK_INLINE = 1U << 5,
     SCHEDULER_TASK_HAS_PREDICATE = 1U << 6,
+    SCHEDULER_TASK_FIXED_OWNER = 1U << 7,
 };
 
 #if !defined(__CCE_AICORE__)
@@ -223,6 +224,13 @@ static_assert(
     std::is_trivially_copyable_v<SchedulerTaskCompletionCounter> &&
     std::is_standard_layout_v<SchedulerTaskCompletionCounter>
 );
+
+// A later task in this chain can legitimately exceed an earlier threshold.
+inline __aicore__ constexpr int
+scheduler_classify_completion_counter(uint32_t value, uint32_t threshold, uint32_t limit) {
+    if (value > limit) return -1;
+    return value >= threshold ? 1 : 0;
+}
 
 // GM records have a 16-byte stride. Stack copies use scalar alignment: their
 // callers pass local objects across outlined boundaries without realigning SP.
@@ -319,10 +327,13 @@ inline __aicore__ bool scheduler_task_requires_sync_start(uint8_t flags) {
     return (flags & SCHEDULER_TASK_SYNC_START) != 0;
 }
 
-// A lone AIV subtask can run on either of a cluster's two V lanes, so it has
-// two claimable positions there; every other shape is pinned to one.
+inline __aicore__ constexpr LaneMask scheduler_cluster_lanes() {
+    return LaneMask{true, true, PLATFORM_AIV_CORES_PER_BLOCKDIM > 1};
+}
+
+// A single Vector subtask can run on every physical Vector lane in the cluster.
 inline __aicore__ uint64_t scheduler_block_claim_positions(LaneMask active_mask, uint64_t clusters) {
-    return clusters * (active_mask.to_shape() == ResourceShape::AIV ? 2 : 1);
+    return clusters * (active_mask.to_shape() == ResourceShape::AIV ? PLATFORM_AIV_CORES_PER_BLOCKDIM : 1);
 }
 
 inline __aicore__ bool scheduler_task_is_inline(uint8_t flags) { return (flags & SCHEDULER_TASK_INLINE) != 0; }
@@ -330,6 +341,31 @@ inline __aicore__ bool scheduler_task_is_inline(uint8_t flags) { return (flags &
 inline __aicore__ bool scheduler_task_has_predicate(uint8_t flags) {
     return (flags & SCHEDULER_TASK_HAS_PREDICATE) != 0;
 }
+
+// Pair the halves of a full Cube + Vector MIX wave while preserving the four block stripes.
+// Flipping the high bit according to bit one is its own inverse, so every
+// physical cluster still owns exactly one block without a shared claim.
+inline __aicore__ uint32_t scheduler_fixed_mix_block(uint32_t cluster, uint32_t clusters, LaneMask lanes) {
+    if (lanes.is_mix() && lanes.has_aic() && clusters >= 8 && (clusters & (clusters - 1)) == 0 && (cluster & 2U) != 0)
+        return cluster ^ (clusters / 2);
+    return cluster;
+}
+
+inline __aicore__ bool scheduler_task_has_fixed_owners(uint8_t flags) {
+    return (flags & SCHEDULER_TASK_FIXED_OWNER) != 0;
+}
+
+#if !defined(__CCE_AICORE__)
+// Each cube (including its MIX partners) owns one block per cluster. A pure
+// vector task can use each physical vector position. Vector-only MIX keeps dynamic distribution.
+inline bool scheduler_is_exact_owner_wave(const SchedulerTaskMetadata &meta, uint64_t clusters) {
+    const auto lanes = meta.active_mask;
+    return clusters != 0 && scheduler_task_is_executable(meta.flags) && !scheduler_task_is_inline(meta.flags) &&
+           !scheduler_task_has_predicate(meta.flags) &&
+           (lanes.count() == 1 || (lanes.has_aic() && scheduler_cluster_lanes().contains(lanes))) &&
+           meta.logical_block_num == scheduler_block_claim_positions(lanes, clusters);
+}
+#endif
 
 // Classification uses immutable flags; payload preparation still validates shape.
 inline __aicore__ bool scheduler_task_requires_admission(uint8_t flags) {
@@ -535,7 +571,9 @@ static_assert(sizeof(SchedulerErrorSignal) == 64);
 
 struct alignas(64) SchedulerRunControl {
     uint64_t active_worker_count;
-    uint64_t expected_task_count;
+    // All unconsumed, device-live task refs in the effective dependency graph.
+    uint64_t sink_count;
+    uint64_t sinks_offset;
     uint64_t inline_completed_count;
     uint64_t aic_worker_demand;
     uint64_t aiv_worker_demand;
@@ -543,13 +581,8 @@ struct alignas(64) SchedulerRunControl {
     volatile uint64_t scheduler_timeout_cycles;
     volatile uint64_t chip_swimlane_level;
     volatile uint64_t sampled_task_timing_enabled;
-    // One owned 32-bit CntNotify for this invocation. Zero addresses select
-    // immediate per-task GM reporting; neither address changes after READY.
-    uint64_t run_completed_read_address;
-    uint64_t run_completed_add_address;
 
-    alignas(64) volatile uint64_t resolved_task_count;
-    volatile uint64_t bootstrap_arrived_count;
+    alignas(64) volatile uint64_t bootstrap_arrived_count;
     volatile uint64_t bootstrap_complete;
 
     alignas(64) volatile uint64_t error_claimed;
@@ -661,6 +694,8 @@ struct alignas(64) SchedulerWorkerContext {
     uint64_t args_dump_address;
     uint64_t done_notifications_offset;
     uint64_t completion_counters_offset;
+    uint64_t native_graph_address;
+    uint64_t native_graph_bytes;
 
     // After READY only this worker writes this line, exclusively by bypass stores.
     alignas(64) uint64_t bootstrap_task_count;
@@ -686,11 +721,16 @@ struct alignas(64) SchedulerTaskTrace {
     uint64_t task_ref;
     uint64_t state_probe_start_cycles;
     uint64_t state_probe_end_cycles;
+    // L2 stores the proxy's descriptor preparation boundaries on one member per group.
+    uint64_t l2_proxy_begin_cycles;
+    uint64_t l2_proxy_arm_cycles;
 
     // This core owns execution timing through slot retirement.
     alignas(64) uint64_t kernel_start_cycles;
     uint64_t kernel_end_cycles;
     uint64_t ready_observe_cycles;
+    uint64_t l2_first_pending_cycles;
+    int64_t l2_first_predecessor;
 
     alignas(64) uint64_t dispatch_start_cycles;
     uint64_t dispatch_end_cycles;
@@ -756,7 +796,7 @@ static_assert(alignof(SchedulerExecutorTaskTrace) == alignof(uint64_t), "executo
 static_assert(offsetof(SchedulerExecutorTaskTrace, ready_observe_cycles) == 16, "executor trace layout changed");
 static_assert(sizeof(SchedulerRunControl) == 384 + SCHEDULER_WORKER_CAPACITY * 64, "run control layout changed");
 static_assert(alignof(SchedulerRunControl) == 64, "run control alignment changed");
-static_assert(offsetof(SchedulerRunControl, resolved_task_count) == 128, "lifecycle atomics need their own line");
+static_assert(offsetof(SchedulerRunControl, bootstrap_arrived_count) == 128, "lifecycle atomics need their own line");
 static_assert(offsetof(SchedulerRunControl, error_claimed) == 192, "error state needs its own line");
 static_assert(offsetof(SchedulerRunControl, error_site) == 248, "error site ABI changed");
 static_assert(offsetof(SchedulerRunControl, error_run_epoch) == 256, "error identity ABI changed");
@@ -778,6 +818,8 @@ static_assert(offsetof(SchedulerWorkerContext, task_metadata_offset) == 120, "di
 static_assert(offsetof(SchedulerWorkerContext, cluster_count) == 136, "topology configuration offset changed");
 static_assert(offsetof(SchedulerWorkerContext, trace_cells_offset) == 184, "diagnostic offsets changed");
 static_assert(offsetof(SchedulerWorkerContext, args_dump_address) == 208, "argument capture address changed");
+static_assert(offsetof(SchedulerWorkerContext, native_graph_address) == 232);
+static_assert(offsetof(SchedulerWorkerContext, native_graph_bytes) == 240);
 static_assert(offsetof(SchedulerWorkerContext, prepared_layout_offset) == 40, "prepared execution address changed");
 static_assert(offsetof(SchedulerWorkerContext, bootstrap_task_count) == 256, "worker diagnostics need an owned line");
 static_assert(sizeof(SchedulerTaskTrace) == 256, "task trace layout changed");
@@ -799,13 +841,14 @@ inline __aicore__ __gm__ T *scheduler_state_at(__gm__ void *base, uint64_t offse
 
 #if !defined(__CCE_AICORE__)
 #include <type_traits>
-// A bank retains its last publication through FIN. A third, unassigned ticket
-// may coexist with both banks when the proxy is waiting for a bank to retire.
+// A bank retains its last publication through FIN. A pending ticket can
+// coexist with an occupied bank while the proxy waits for the bank to retire.
 template <typename Visitor>
 inline void scheduler_visit_mix_proxy_records(const SchedulerWorkerContext &context, Visitor visit) {
-    static_assert(SCHEDULER_MIX_MEMBER_COUNT == 2);
+    static_assert(SCHEDULER_MIX_MEMBER_COUNT >= 1 && SCHEDULER_MIX_MEMBER_COUNT <= 2);
     const uint64_t acquired = __atomic_load_n(&context.mix_proxy_acquired, __ATOMIC_ACQUIRE);
-    uint64_t published[SCHEDULER_MIX_MEMBER_COUNT];
+    // The snapshot treats a disabled bank as having no publication.
+    uint64_t published[2]{};
     for (uint32_t bank = 0; bank < SCHEDULER_MIX_MEMBER_COUNT; ++bank)
         published[bank] = __atomic_load_n(&context.mix_proxy_published[bank], __ATOMIC_ACQUIRE);
     const uint64_t cancelled = __atomic_load_n(&context.mix_proxy_cancelled, __ATOMIC_ACQUIRE);
@@ -954,20 +997,15 @@ inline bool scheduler_plan_prepared_storage(uint64_t *cursor, AicoreSchedulerLay
 inline bool scheduler_plan_layout(
     uint64_t task_count, AicoreSchedulerLayout *layout, bool enable_activity_profiling = false,
     uint64_t trace_count = 0, const SchedulerSpmdRequirements &spmd = {}, bool enable_protocol_profiling = false,
-    bool enable_pmu = false, uint64_t native_readonly_end_offset = 0
+    bool enable_pmu = false
 ) {
     // Expanded node references and scan cursors fit the validated task-count bound.
     if (layout == nullptr || task_count > static_cast<uint64_t>(INT32_MAX) ||
         !scheduler_spmd_requirements_valid(spmd, task_count))
         return false;
-    if (native_readonly_end_offset != 0 &&
-        (native_readonly_end_offset < sizeof(SchedulerRunControl) ||
-         native_readonly_end_offset % SCHEDULER_STATE_ALIGNMENT != 0 || spmd.worker_count == 0))
-        return false;
     AicoreSchedulerLayout next{};
     next.task_count = task_count;
     next.spmd = spmd;
-    next.native_readonly_end_offset = native_readonly_end_offset;
     uint64_t cursor = 0;
     uint64_t bytes = 0;
 #define SCHEDULER_RESERVE_ARRAY(count, type, field)                 \
@@ -977,14 +1015,12 @@ inline bool scheduler_plan_layout(
             &cursor, sizeof(SchedulerRunControl), alignof(SchedulerRunControl), &next.run_control_offset
         ))
         return false;
-    if (native_readonly_end_offset != 0) {
-        cursor = native_readonly_end_offset;
-    }
     if (!SCHEDULER_RESERVE_ARRAY(
             PLATFORM_MAX_AICPU_THREADS, AicpuThreadLifecycleTrace, aicpu_lifecycle_traces_offset
         ) ||
         !SCHEDULER_RESERVE_ARRAY(SCHEDULER_WORKER_CAPACITY, SchedulerWorkerContext, worker_contexts_offset) ||
         !SCHEDULER_RESERVE_ARRAY(task_count, SchedulerTaskMetadata, task_metadata_offset) ||
+        !SCHEDULER_RESERVE_ARRAY(task_count, uint32_t, sinks_offset) ||
         !SCHEDULER_RESERVE_ARRAY(task_count, uint64_t, done_notifications_offset) ||
         !SCHEDULER_RESERVE_ARRAY(task_count, SchedulerTaskCompletionCounter, completion_counters_offset) ||
         !SCHEDULER_RESERVE_ARRAY(task_count, SchedulerTaskControl, task_controls_offset) ||
@@ -1052,6 +1088,7 @@ inline bool scheduler_init_data_from_layout(
             workers[worker].worker_index = worker;
     }
     auto *run = scheduler_state_at<SchedulerRunControl>(base, layout.run_control_offset);
+    run->sinks_offset = layout.sinks_offset;
     run->error_run_epoch = UINT64_MAX;
     run->error_order_key = UINT64_MAX;
     run->error_block_idx = UINT64_MAX;
@@ -1096,9 +1133,6 @@ scheduler_init_prepared_execution_records(void *base, const AicoreSchedulerLayou
     auto *plans = layout.prepared_layout_offset == 0 ?
                       nullptr :
                       scheduler_state_at<SchedulerExecutionPlan>(base, layout.prepared.plans_offset);
-    auto *bindings = layout.prepared_layout_offset == 0 ?
-                         nullptr :
-                         scheduler_state_at<SchedulerExecutionBinding>(base, layout.prepared.bindings_offset);
     uint64_t next_execution = 0;
     for (uint64_t task = 0; task < layout.task_count; ++task) {
         if (plans != nullptr) plans[task].execution_begin = next_execution;
@@ -1107,20 +1141,15 @@ scheduler_init_prepared_execution_records(void *base, const AicoreSchedulerLayou
         const uint32_t lanes = static_cast<uint32_t>(meta.active_mask.count());
         uint32_t count = 0;
         uint64_t end = 0;
-        if (plans == nullptr || !scheduler_subtask_count_checked(meta.logical_block_num, lanes, &count) ||
+        if (plans == nullptr || !meta.active_mask.is_valid() ||
+            (meta.active_mask.is_mix() && !scheduler_cluster_lanes().contains(meta.active_mask)) ||
+            !scheduler_subtask_count_checked(meta.logical_block_num, lanes, &count) ||
             !scheduler_layout_checked_add(next_execution, count, &end) || end > layout.prepared.execution_count)
             return false;
         plans[task] = {
             next_execution, count, meta.logical_block_num, meta.active_mask.raw(), static_cast<uint8_t>(lanes)
         };
-        for (uint32_t block = 0; block < meta.logical_block_num; ++block) {
-            for (uint32_t lane = 0; lane < SUBTASK_SLOT_COUNT; ++lane) {
-                if (!meta.active_mask.has(static_cast<SubtaskSlot>(lane))) continue;
-                auto &binding = bindings[next_execution++];
-                binding.local_context.block_idx = block;
-                binding.local_context.block_num = meta.logical_block_num;
-            }
-        }
+        next_execution = end;
     }
     if (next_execution != layout.prepared.execution_count) return false;
     if (layout.prepared_layout_offset != 0)
@@ -1139,10 +1168,14 @@ inline bool scheduler_init_spmd_task_records(void *base, const AicoreSchedulerLa
     uint64_t sync_mix_count = 0;
     for (uint64_t task = 0; task < layout.task_count; ++task) {
         const auto &meta = metadata[task];
+        if (scheduler_task_has_fixed_owners(meta.flags) &&
+            !scheduler_is_exact_owner_wave(meta, layout.spmd.cluster_count))
+            return false;
         if (!scheduler_task_is_executable(meta.flags) || scheduler_task_is_inline(meta.flags)) continue;
         const uint32_t active_subtasks = static_cast<uint32_t>(meta.active_mask.count());
         uint32_t expected_subtasks = 0;
         if (!meta.active_mask.is_valid() ||
+            (meta.active_mask.is_mix() && !scheduler_cluster_lanes().contains(meta.active_mask)) ||
             !scheduler_subtask_count_checked(meta.logical_block_num, active_subtasks, &expected_subtasks) ||
             scheduler_task_is_mix(meta.flags) != (active_subtasks > 1) ||
             scheduler_task_is_spmd(meta.flags) != (meta.logical_block_num > 1) ||
@@ -1152,9 +1185,8 @@ inline bool scheduler_init_spmd_task_records(void *base, const AicoreSchedulerLa
             return false;
         if (scheduler_task_requires_admission(meta)) {
             const uint64_t positions = scheduler_block_claim_positions(meta.active_mask, layout.spmd.cluster_count);
-            if ((meta.flags & UINT8_C(128)) != 0 || scheduler_task_has_predicate(meta.flags) || positions == 0 ||
-                meta.logical_block_num > positions || controls[task].next_block != 0 ||
-                controls[task].claim_seal != 0 ||
+            if (scheduler_task_has_predicate(meta.flags) || positions == 0 || meta.logical_block_num > positions ||
+                controls[task].next_block != 0 || controls[task].claim_seal != 0 ||
                 controls[task].completion_state != scheduler_completion_initial_state(1))
                 return false;
             ++cooperative_count;

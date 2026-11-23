@@ -150,9 +150,10 @@ void initialize(
 }
 
 int run(int argc, char **argv) {
-    if (argc == 3 && std::string(argv[1]) == "--describe-callable") {
+    const bool describe_layout = argc == 3 && std::string(argv[1]) == "--describe-layout";
+    if (describe_layout || (argc == 3 && std::string(argv[1]) == "--describe-callable")) {
         const auto binary = read_binary(argv[2]);
-        if (binary.size() < sizeof(ChipCallable)) throw std::runtime_error("Truncated callable");
+        validate_chip_callable_buffer(binary.data(), binary.size());
         const auto *source = reinterpret_cast<const ChipCallable *>(binary.data());
         std::cout << "{\"signature\":[";
         for (int i = 0; i < source->sig_count(); ++i) {
@@ -168,7 +169,13 @@ int run(int argc, char **argv) {
                 if (j) std::cout << ',';
                 std::cout << static_cast<int>(child.sig(j));
             }
-            std::cout << "]}";
+            std::cout << ']';
+            if (describe_layout) {
+                const auto offset =
+                    reinterpret_cast<const uint8_t *>(&child) - binary.data() + CoreCallable::binary_data_offset();
+                std::cout << ",\"binary_offset\":" << offset << ",\"binary_size\":" << child.binary_size();
+            }
+            std::cout << '}';
         }
         std::cout << "]}\n";
         return 0;

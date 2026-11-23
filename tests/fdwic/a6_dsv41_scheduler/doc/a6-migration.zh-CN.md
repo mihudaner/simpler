@@ -1,5 +1,7 @@
 # A6 SWA 迁移状态与适配说明
 
+本文记录 00–004 所用的 SWA 图、夹具与命令。005 的任务编号、分片和运行方法见[使用方法](usage.zh-CN.md)及[005 报告](../results/005-main-swa/README.zh-CN.md)。
+
 [返回用例索引](../README.zh-CN.md) · [性能优化阶段索引](a6-optimization.zh-CN.md) · [性能复测方法](a6-environment.zh-CN.md) · [构建与复现命令](usage.zh-CN.md)
 
 ## 完成状态索引

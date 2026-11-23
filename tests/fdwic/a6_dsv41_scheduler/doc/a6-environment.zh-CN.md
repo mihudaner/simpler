@@ -1,5 +1,7 @@
 # A6 单卡 SWA 性能复测与回填
 
+本文记录 00–004 所用的 SWA 图、夹具与命令。005 的任务编号、分片和运行方法见[使用方法](usage.zh-CN.md)及[005 报告](../results/005-main-swa/README.zh-CN.md)。
+
 [优化阶段索引](a6-optimization.zh-CN.md) · [优化前基线](../results/00-baseline/README.zh-CN.md) · [迁移结论](a6-migration.zh-CN.md)
 
 - [x] **单卡 SWA 的 L0、L1 下界与 L3 已回填。** [性能总表](../results/00-baseline/README.zh-CN.md) · [逐核分析](../results/00-baseline/README.zh-CN.md#下界为何更高)

@@ -10,108 +10,77 @@
 """Check the captured Host ABI and the A6 SWA tile assignments."""
 
 import argparse
-import copy
-import hashlib
 import json
 import subprocess
+import sys
 from pathlib import Path
 
-from prepare import A6_PLAN_BLOCKS, DEFAULT_A6_PLAN, FIXTURE, HERE, REPO, SUITE, unpack_fixture
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from compile_kernels import HERE, REPO, SUITE, swa_tasks
 
-def semantic_hash(records):
-    return hashlib.sha256(json.dumps(records, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+A6_BLOCKS = {12: 54, 22: 48, 30: 54, 33: 54, 34: 54}
 
 
 def read_records(tool, path):
     return json.loads(subprocess.check_output([str(tool), "--records-json", str(path)], text=True))
 
 
-def check_conversion(before, after, plan):
-    blocks = A6_PLAN_BLOCKS[plan]
-    expected = copy.deepcopy(before)
-    block_counts = {22: 48, 25: blocks.quant, 28: blocks.oa, 29: blocks.ob, 35: blocks.post}
-    selected = []
-    for record in expected:
-        task = record["id"]
-        if record["op"] == 2 and task in block_counts:
-            record["blocks"] = block_counts[task]
-            if task in (22, 28):
-                record["kernels"][2] = -1
-            selected.append(task)
-    if selected != list(block_counts) or after != expected:
-        raise ValueError(f"Converted capture does not match the {plan} SWA plan")
-    tasks = [r for r in after if r["op"] == 2 and 8 <= r["id"] <= 35]
-    executions = sum(r["blocks"] * sum(k >= 0 for k in r["kernels"]) for r in tasks)
-    if len(tasks) != 16:
-        raise ValueError(f"Expected 16 SWA compute tasks for {plan}")
-    return executions
+def validate_source(records):
+    selected = [(r["id"], (r["blocks"], r["kernels"])) for r in records if r["op"] == 2 and 8 <= r["id"] <= 34]
+    if selected != list(swa_tasks().items()):
+        raise ValueError("Source plan differs from the pinned SWA task table")
 
 
-def convert_plan(record_tool, converter, original, converted, plan):
+def check_conversion(before, after):
+    validate_source(before)
+    expected = []
+    for record in before:
+        if record["op"] == 2 and record["id"] in A6_BLOCKS:
+            slots = [*record["kernels"][:2], -1]
+            record = {**record, "blocks": A6_BLOCKS[record["id"]], "kernels": slots}
+        expected.append(record)
+    if after != expected:
+        raise ValueError("A6 conversion changed fields outside the five SWA partitions")
+    return sum(r["blocks"] * sum(k >= 0 for k in r["kernels"]) for r in after if r["op"] == 2 and 8 <= r["id"] <= 34)
+
+
+def build_converter(cxx, output):
+    subprocess.run(
+        [
+            cxx,
+            "-std=c++17",
+            "-O2",
+            f"-I{SUITE / 'production'}",
+            f"-I{REPO / 'src/common'}",
+            f"-I{REPO / 'src/common/task_interface'}",
+            str(HERE / "adapt_plan.cpp"),
+            "-o",
+            output,
+        ],
+        check=True,
+    )
+
+
+def convert_plan(record_tool, converter, original, converted):
     before = read_records(record_tool, original)
-    golden = json.loads((FIXTURE / "plan-semantics.json").read_text())
-    if len(before) != golden["records"] or semantic_hash(before) != golden["semantic_sha256"]:
-        raise ValueError("Host ABI decoded the fixture differently; do not run or convert this capture")
-    subprocess.run([converter, original, converted, *map(str, A6_PLAN_BLOCKS[plan])], check=True)
-    after = read_records(record_tool, converted)
-    executions = check_conversion(before, after, plan)
-    return semantic_hash(before), executions
+    validate_source(before)
+    subprocess.run([converter, original, converted], check=True)
+    return check_conversion(before, read_records(record_tool, converted))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--a6-plan", choices=A6_PLAN_BLOCKS, default=DEFAULT_A6_PLAN)
-    parser.add_argument("--cxx", default="g++", help="Host C++ compiler executable, not the AICPU cross compiler")
+    parser.add_argument("--plan", type=Path, required=True, help="Original latest A5 plan-rank0.bin")
+    parser.add_argument("--record-tool", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True, help="New output directory")
+    parser.add_argument("--cxx", default="c++")
     args = parser.parse_args()
-    output = args.output.resolve()
-    output.mkdir(parents=True, exist_ok=False)
-    tools = output / "host"
-    tools.mkdir()
-    # No runtime or SDK is needed to read the Host submission format.
-    flags = [
-        args.cxx,
-        "-std=c++17",
-        "-O2",
-        f"-I{SUITE / 'production'}",
-        f"-I{REPO / 'src/common'}",
-        f"-I{REPO / 'src/common/task_interface'}",
-    ]
-    for source, target in (
-        (SUITE / "production/record_tool.cpp", "record-tool"),
-        (HERE / "adapt_plan.cpp", "adapt-plan"),
-    ):
-        subprocess.run([*flags, str(source), "-o", str(tools / target)], check=True)
-    bundle = output / "bundle"
-    unpack_fixture(bundle)
-    original, converted = bundle / "plan-rank0.bin", output / "plan-a6-rank0.bin"
-    original_semantics, executions = convert_plan(
-        tools / "record-tool", tools / "adapt-plan", original, converted, args.a6_plan
-    )
-    blocks = A6_PLAN_BLOCKS[args.a6_plan]
-    # Keep the original capture intact; the A6 plan stays separately named.
-    summary = {
-        "runtime_executed": False,
-        "host_compiler": subprocess.check_output([args.cxx, "--version"], text=True).splitlines()[0],
-        "original_plan_sha256": hashlib.sha256(original.read_bytes()).hexdigest(),
-        "original_semantic_sha256": original_semantics,
-        "a6_plan_sha256": hashlib.sha256(converted.read_bytes()).hexdigest(),
-        "tasks": 16,
-        "a5_executions": 578,
-        "a6_executions": executions,
-        "a6_plan": args.a6_plan,
-        "changes": [
-            {"task": 22, "before": {"blocks": 24, "lanes": "C,V0,V1"}, "after": {"blocks": 48, "lanes": "C,V"}},
-            {"task": 25, "before": {"blocks": 64, "lanes": "V"}, "after": {"blocks": blocks.quant, "lanes": "V"}},
-            {"task": 28, "before": {"blocks": 32, "lanes": "C,V0,V1"}, "after": {"blocks": blocks.oa, "lanes": "C,V"}},
-            {"task": 29, "before": {"blocks": 32, "lanes": "C"}, "after": {"blocks": blocks.ob, "lanes": "C"}},
-            {"task": 35, "before": {"blocks": 64, "lanes": "V"}, "after": {"blocks": blocks.post, "lanes": "V"}},
-        ],
-    }
-    summary["changes"] = [change for change in summary["changes"] if change["before"] != change["after"]]
-    (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    print(f"Verified A5 source capture and A6 {args.a6_plan}: {executions} kernel instances (offline).")
+    args.output.mkdir(parents=True, exist_ok=False)
+    converter = args.output / "adapt-plan"
+    build_converter(args.cxx, converter)
+    executions = convert_plan(args.record_tool, converter, args.plan, args.output / "plan-a6-rank0.bin")
+    print(f"Verified A6 SWA partition and unchanged payloads, flags and dependencies: {executions} kernel instances.")
 
 
 if __name__ == "__main__":

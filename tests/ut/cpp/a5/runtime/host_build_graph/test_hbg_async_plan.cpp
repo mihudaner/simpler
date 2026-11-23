@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "async_completion_plan.h"
-#include "completion_counter_plan.h"
+#include "host_build_graph/host/completion_counter_plan.h"
 #include "async_condition_writer.h"
 #include "backend/sdma/sdma_submission_guard.h"
 
@@ -235,9 +235,9 @@ TEST(HbgAsyncPlan, ExpandedTasksBlocksAndLanesHaveIndependentStableRecords) {
             }
         }
     }
-    const auto *leases = scheduler_state_at<SchedulerAsyncLease>(image.base, plan.layout.group_leases_offset);
+    const auto *queued = scheduler_state_at<SchedulerAsyncGroupProgress>(image.base, plan.layout.group_progress_offset);
     for (uint32_t index = 0; index < plan.layout.group_count; ++index)
-        EXPECT_EQ(leases[index].word, UINT64_C(0xa5a5a5a5a5a5a5a5));
+        EXPECT_EQ(queued[index].pending_mask, UINT64_C(0xa5a5a5a5a5a5a5a5));
     const auto *joins = scheduler_state_at<SchedulerAsyncTaskJoin>(image.base, plan.layout.joins_offset);
     EXPECT_EQ(joins[1].word, 0u);
     EXPECT_EQ(joins[2].word, 0u);
@@ -375,7 +375,7 @@ TEST(HbgAsyncPlan, RelocationPreservesIndependentExecutionRecords) {
     EXPECT_TRUE(seal_conditions(writer));
 }
 
-TEST(HbgAsyncPlan, DirectoriesHideUninitializedLeasesAcrossWordBoundaries) {
+TEST(HbgAsyncPlan, UninitializedOverflowStorageSupportsMoreThan64Groups) {
     AsyncCompletionHostPlan plan;
     std::vector<AsyncTaskPlanInput> inputs;
     for (int64_t ref = 0; ref < 65; ++ref)
@@ -384,14 +384,9 @@ TEST(HbgAsyncPlan, DirectoriesHideUninitializedLeasesAcrossWordBoundaries) {
     ASSERT_TRUE(plan_async_completion(kPrefix, 7, 65, inputs, &plan, &error)) << error;
     Image image(plan.total_bytes);
     ASSERT_TRUE(initialize_async_completion(image.base, plan.total_bytes, plan));
-    const auto *checks =
-        scheduler_state_at<SchedulerAsyncDirectoryWord>(image.base, plan.layout.check_directory_offset);
-    for (uint32_t word = 0; word < 2; ++word) {
-        EXPECT_EQ(checks[word].bits, 0u);
-    }
-    auto *leases = scheduler_state_at<SchedulerAsyncLease>(image.base, plan.layout.group_leases_offset);
+    const auto *queued = scheduler_state_at<SchedulerAsyncGroupProgress>(image.base, plan.layout.group_progress_offset);
     for (uint32_t index = 0; index < 65; ++index)
-        EXPECT_EQ(leases[index].word, UINT64_C(0xa5a5a5a5a5a5a5a5));
+        EXPECT_EQ(queued[index].pending_mask, UINT64_C(0xa5a5a5a5a5a5a5a5));
     EXPECT_EQ(scheduler_async_condition_mask(0), 0u);
     EXPECT_EQ(scheduler_async_condition_mask(1), 1u);
     EXPECT_EQ(scheduler_async_condition_mask(63), UINT64_MAX >> 1);
@@ -514,4 +509,42 @@ TEST(HbgCompletionCounterPlan, OverflowingLatestTipDoesNotHideAnOlderReusableBra
     ASSERT_TRUE(scheduler_plan_completion_counters({{}, {}, {0, 1}}, {0, 1, 2}, {1, UINT32_MAX, 2}, &plan));
     EXPECT_EQ(plan.task_chains, (std::vector<uint32_t>{0, 1, 0}));
     EXPECT_EQ(plan.thresholds, (std::vector<uint32_t>{1, UINT32_MAX, 3}));
+}
+
+TEST(HbgCompletionCounterPlan, LongControlChainKeepsItsReusableProducer) {
+    constexpr int64_t last = 2048;
+    std::vector<std::vector<int64_t>> fanin(last + 1);
+    std::vector<int64_t> order(last + 1);
+    std::vector<uint32_t> credits(last + 1);
+    credits.front() = 2;
+    credits.back() = 3;
+    for (int64_t index = 1; index <= last; ++index) {
+        order[index] = index;
+        fanin[index].push_back(index - 1);
+    }
+    SchedulerCompletionCounterPlan plan;
+    ASSERT_TRUE(scheduler_plan_completion_counters(fanin, order, credits, &plan));
+    ASSERT_EQ(plan.chains.size(), 1u);
+    EXPECT_EQ(plan.thresholds.back(), 5u);
+}
+
+TEST(HbgCompletionCounterPlan, LimitsSearchBehindAConsumedChainTip) {
+    constexpr int64_t tip = 1024;
+    std::vector<std::vector<int64_t>> fanin(tip + 3);
+    std::vector<int64_t> order(tip + 3);
+    const std::vector<uint32_t> credits(tip + 3, 1);
+    for (int64_t index = 1; index <= tip + 2; ++index)
+        order[index] = index;
+    fanin[2] = {0, 1};
+    for (int64_t index = 3; index <= tip; ++index)
+        fanin[index] = {index - 1};
+    fanin[tip + 1] = {tip};
+    fanin[tip + 2] = {tip, 1};
+
+    SchedulerCompletionCounterPlan plan;
+    ASSERT_TRUE(scheduler_plan_completion_counters(fanin, order, credits, &plan));
+    ASSERT_EQ(plan.chains.size(), 3u);
+    EXPECT_EQ(plan.task_chains[tip + 1], plan.task_chains[tip]);
+    EXPECT_NE(plan.task_chains[tip + 2], plan.task_chains[0]);
+    EXPECT_EQ(plan.thresholds[tip + 2], 1u);
 }

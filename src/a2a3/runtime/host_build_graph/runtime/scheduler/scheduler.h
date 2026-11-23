@@ -1507,7 +1507,11 @@ struct SchedulerState {
             }
         }
         execution.published_tasks.store(last, std::memory_order_release);
-        graph_route_ready_roots(execution);
+        // The later RMW acquires the earlier one: either this publisher sees READY,
+        // or the readiness caller sees the new range before claiming roots.
+        if (execution.control.fetch_or(0, std::memory_order_acq_rel) & GRAPH_EXECUTION_EXTERNAL_READY) {
+            graph_route_ready_roots(execution);
+        }
     }
 
     // `image` is the calling thread's own view of this run's Definition section;
@@ -1683,6 +1687,11 @@ struct SchedulerState {
     // Capacities are baked into the returned layout; init_data_from_layout uses
     // the same values.
     static SchedulerLayout reserve_layout(DeviceArena &arena);
+
+    // Same, with the run's reachable queue populations. A queue's slot storage
+    // is sized so it holds every task that can reach it, instead of the
+    // capacity limit.
+    static SchedulerLayout reserve_layout(DeviceArena &arena, const ReadyQueueCapacities &capacities);
 
     // Phase 3a: write everything *except* arena-internal pointer fields.
     // `sm_dev_base` is the device address of the SM (only stored, never

@@ -12,102 +12,152 @@
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
-SOURCES = HERE.parent / "dsv41_scheduler/kernels/pypto_lib_latest"
+SUITE = HERE.parent / "dsv41_scheduler"
+SOURCES = SUITE / "kernels/pypto_lib_latest"
+WORKLOAD = SUITE / "workloads/pypto_lib_latest"
 
 
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def compile_kernel_set(platform, pto_isa, output, jobs, kernel_ids, specialized_ids=()):
-    sys.path[:0] = [str(REPO), str(REPO / "python")]
-    from simpler_setup.compile_paths import compiler_visible_path  # noqa: PLC0415
+def swa_tasks():
+    names = {k["name"]: k["func_id"] for k in json.loads((SOURCES / "manifest.json").read_text())["kernels"]}
+    tasks = {}
+    for row in (WORKLOAD / "swa/tasks.tsv").read_text().splitlines():
+        if row.startswith("#"):
+            continue
+        task, kernels, mask, blocks, _ = row.split()
+        active = iter(kernels.split("+"))
+        slots = [names[next(active)] if int(mask) & (1 << slot) else -1 for slot in range(3)]
+        if next(active, None) is not None:
+            raise ValueError(f"Task {task} has excess kernel names")
+        tasks[int(task)] = (int(blocks), slots)
+    return tasks
+
+
+def retarget_vector_ir(source, cpu):
+    """Translate the exported A5 scalar-shift ABI to the A6 CCE vector intrinsics."""
+    if '"target-cpu"="dav-c310-vec"' not in source or cpu != "dav-920r1-vec":
+        raise ValueError("Unexpected source or target VF architecture")
+    source = source.replace('"target-cpu"="dav-c310-vec"', f'"target-cpu"="{cpu}"')
+    source = re.sub(r' "target-features"="[^"]*"', "", source)
+
+    # A6's vshls/vshrs overloads take a uint32_t scalar. Preserve the input,
+    # direction, signedness and predicate; zeroing is valid for inactive .x lanes.
+    def shift(match):
+        operation, signedness = match.groups()
+        intrinsic = f"llvm.hivm.{operation}.v64{signedness}32u32.z"
+        return f"""declare <64 x i32> @{intrinsic}(<64 x i32>, i32, <256 x i1>)
+define internal <64 x i32> @swa.{operation}.{signedness}(<64 x i32> %input, i16 %shift, <256 x i1> %mask)
+alwaysinline {{
+    %bits = zext i16 %shift to i32
+    %result = call <64 x i32> @{intrinsic}(<64 x i32> %input, i32 %bits, <256 x i1> %mask)
+    ret <64 x i32> %result
+}}"""
+
+    name = r"@llvm\.hivm\.(vsh[lr]s)\.([su])\.x\.v64i32"
+    source = re.sub(r"declare <64 x i32> " + name + r"\(<64 x i32>, i16, <256 x i1>\)", shift, source)
+    return re.sub(name + r"\(", r"@swa.\1.\2(", source)
+
+
+def compile_kernel_set(platform, pto, output, jobs):
+    sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
+    from build_sources import VF_FLAGS, compile_vector_functions  # noqa: PLC0415
+
+    from simpler_setup.a5_input_cache import annotate_a5_hbg_text  # noqa: PLC0415
+    from simpler_setup.compile_pool import compile_slot, compile_worker_budget  # noqa: PLC0415
     from simpler_setup.elf_parser import extract_text_section  # noqa: PLC0415
     from simpler_setup.kernel_compiler import KernelCompiler  # noqa: PLC0415
-    from simpler_setup.toolchain import CCECToolchain  # noqa: PLC0415
 
-    headers = KernelCompiler(platform)
-    includes = [str(pto_isa.resolve() / name) for name in ("include", "include/pto", "pkg_inc")]
-    includes += headers.get_incore_include_dirs() + headers.get_orchestration_include_dirs("host_build_graph")
-    includes += headers.get_ascend_incore_include_dirs()
-    toolchain = CCECToolchain(platform)
-    manifest = json.loads((SOURCES / "manifest.json").read_text())
-    kernels = [k for k in manifest["kernels"] if k["func_id"] in kernel_ids]
-    if sorted(k["func_id"] for k in kernels) != kernel_ids:
-        raise ValueError("Selected SWA kernels differ from the fixture")
+    compiler = KernelCompiler(platform)
+    toolchain = compiler.ccec
+    if toolchain is None:
+        raise ValueError(f"Missing CCEC toolchain for {platform}")
+    arch = next(f for f in toolchain.get_compile_flags(core_type="aiv") if f.startswith("--cce-aicore-arch="))
+    vf_flags = (arch, *VF_FLAGS[1:])
+    pto = pto.resolve()
+    ids = {k for _, slots in swa_tasks().values() for k in slots if k >= 0}
+    kernels = [k for k in json.loads((SOURCES / "manifest.json").read_text())["kernels"] if k["func_id"] in ids]
+    if len(kernels) != len(ids):
+        raise ValueError("Incomplete SWA source manifest")
 
     def compile_one(kernel):
         source = SOURCES / kernel["source"]
-        prefix = output / f"kernel-{kernel['func_id']}"
-        object_path, elf_path, binary_path = (prefix.with_suffix(s) for s in (".o", ".elf", ".bin"))
-        command = [toolchain.cxx_path, *toolchain.get_compile_flags(core_type=kernel["core_type"])]
-        if kernel["func_id"] in specialized_ids:
-            command.append("-DSWA_COMPACT_PARTITION=1")
-        command += [
-            f"-I{compiler_visible_path(p)}" for p in [*includes, *(str(SOURCES / p) for p in kernel["include_dirs"])]
+        extra = compiler.get_orchestration_include_dirs("host_build_graph") + [
+            str(SOURCES / item) for item in kernel["include_dirs"]
         ]
-        command += ["-o", str(object_path), str(compiler_visible_path(source))]
-        link = [toolchain.linker_path, "-e", "kernel_entry", "-o", str(elf_path), str(object_path)]
-        # Exact commands and full diagnostics remain local; summary uses relative paths.
-        prefix.with_suffix(".commands.json").write_text(json.dumps([command, link], indent=2) + "\n")
-        result = {
+        helpers = [SOURCES / path for path in kernel.get("vf_llvm", [])]
+        with compile_slot(), tempfile.TemporaryDirectory() as tmp:
+            if helpers:
+                includes = [
+                    pto / "include",
+                    pto / "include/pto",
+                    *compiler.get_incore_include_dirs(),
+                    *compiler.get_ascend_incore_include_dirs(),
+                    *extra,
+                ]
+                if platform == "a6":
+                    # Per-function LLVM target attributes override the driver's selected chip.
+                    # Keep the exported helper operations and let the A6 backend select its own features.
+                    retargeted = []
+                    for path in helpers:
+                        target = Path(tmp) / path.name
+                        target.write_text(retarget_vector_ir(path.read_text(), arch.split("=")[1]))
+                        retargeted.append(target)
+                    helpers = retargeted
+                binary = compile_vector_functions(compiler, source, includes, helpers, vf_flags)
+            else:
+                binary = extract_text_section(
+                    compiler.compile_incore(
+                        str(source), core_type=kernel["core_type"], pto_isa_root=str(pto), extra_include_dirs=extra
+                    )
+                )
+        target = output / f"kernel-{kernel['func_id']}.bin"
+        target.write_bytes(binary)
+        registration = target
+        if platform == "a5":
+            annotated = annotate_a5_hbg_text(binary, kernel["core_type"])
+            if annotated != binary:
+                registration = target.with_suffix(".hbg")
+                registration.write_bytes(annotated)
+        print(f"Compiled {platform} SWA {kernel['func_id']}: {kernel['name']}", flush=True)
+        return {
             "id": kernel["func_id"],
             "name": kernel["name"],
-            "file": binary_path.name,
             "core": kernel["core_type"],
-            "source": source.relative_to(REPO).as_posix(),
+            "file": target.name,
+            "registration_file": registration.name,
+            "bytes": len(binary),
+            "source": kernel["source"],
             "source_sha256": sha256(source),
-            "stage": "compile",
-            "passed": False,
+            "vf_llvm": {path: sha256(SOURCES / path) for path in kernel.get("vf_llvm", [])},
+            "binary_sha256": sha256(target),
         }
-        with prefix.with_suffix(".log").open("w") as log:
-            for stage, argv in (("compile", command), ("link", link)):
-                result["stage"] = stage
-                completed = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, check=False)
-                if completed.returncode:
-                    result["returncode"] = completed.returncode
-                    break
-            else:
-                result["stage"] = "text-extraction"
-                try:
-                    binary_path.write_bytes(extract_text_section(elf_path.read_bytes()))
-                except (ValueError, RuntimeError) as error:
-                    log.write(str(error) + "\n")
-                else:
-                    result.update(passed=True, bytes=binary_path.stat().st_size, binary_sha256=sha256(binary_path))
-        print(
-            f"{kernel['func_id']:2}: {'PASS' if result['passed'] else 'FAIL'} {kernel['name']} ({result['stage']})",
-            flush=True,
-        )
-        return result
 
-    with ThreadPoolExecutor(max_workers=jobs) as pool:
-        results = list(pool.map(compile_one, kernels))
-    forbidden = [n for n in sys.modules if n.split(".")[0] in ("pypto", "torch")]
-    if forbidden:
-        raise RuntimeError(f"Unexpected model dependencies: {forbidden}")
+    with compile_worker_budget(jobs), ThreadPoolExecutor(max_workers=jobs) as pool:
+        compiled = list(pool.map(compile_one, kernels))
     summary = {
         "platform": platform,
         "runtime_executed": False,
-        "kernel_argument_headers": "src/a5/runtime/host_build_graph/common (shared HBG argument headers)",
-        "source_commit": subprocess.check_output(["git", "-C", str(REPO), "rev-parse", "HEAD"], text=True).strip(),
-        "pto_isa_commit": subprocess.check_output(["git", "-C", str(pto_isa), "rev-parse", "HEAD"], text=True).strip(),
+        "kernels": compiled,
         "compiler": subprocess.check_output([toolchain.cxx_path, "--version"], text=True).strip(),
         "flags": {core: toolchain.get_compile_flags(core_type=core) for core in ("aic", "aiv")},
-        "fixture_sha256": sha256(HERE / "fixtures/swa.tar.gz"),
-        "kernels": results,
+        "vf_flags": vf_flags,
+        "manifest_sha256": sha256(SOURCES / "manifest.json"),
+        "pto_isa_commit": subprocess.check_output(["git", "-C", pto, "rev-parse", "HEAD"], text=True).strip(),
     }
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
-    passed = sum(r["passed"] for r in results)
-    print(f"{passed}/{len(results)} kernels compiled, linked and extracted; no device execution.")
-    return summary
+    return compiled
 
 
 def main():
@@ -121,10 +171,8 @@ def main():
         parser.error("Need positive --jobs and --pto-isa containing include/pto")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    fixture = json.loads((HERE / "fixtures/fixture.json").read_text())
-    summary = compile_kernel_set(args.platform, args.pto_isa, output, args.jobs, fixture["kernel_ids"])
-    return 0 if all(kernel["passed"] for kernel in summary["kernels"]) else 1
+    compile_kernel_set(args.platform, args.pto_isa, output, args.jobs)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

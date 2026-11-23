@@ -103,9 +103,9 @@ struct SchedulerGraphView {
     // whole-graph-resident tables and never wrap, so this value must not be
     // used to mask a ref (the configured capacity need not be a power of two).
     uint64_t task_window_last_index;
-    uint64_t scheduler_state_address;
+    uint64_t native_graph_address;
     uint64_t native_header_offset;
-    uint64_t scheduler_state_bytes;
+    uint64_t native_graph_bytes;
     uint32_t original_task_count;
 };
 
@@ -128,7 +128,7 @@ inline __aicore__ bool scheduler_graph_view_valid(const SchedulerGraphView &grap
     if (!scheduler_graph_storage_extent_valid(graph)) return false;
     if (graph.native_header_offset == 0) return graph.original_task_count == graph.task_count;
     return scheduler_native_header_checked(
-               graph.scheduler_state_address, graph.scheduler_state_bytes, graph.native_header_offset, graph.task_count,
+               graph.native_graph_address, graph.native_graph_bytes, graph.native_header_offset, graph.task_count,
                graph.original_task_count
            ) != nullptr;
 }
@@ -148,7 +148,7 @@ public:
     inline __aicore__ __gm__ const SchedulerNativeGraphHeader *native_header() const {
         if (header_ == nullptr) {
             header_ = scheduler_native_header_checked(
-                scheduler_state_address, scheduler_state_bytes, native_header_offset, task_count, original_task_count
+                native_graph_address, native_graph_bytes, native_header_offset, task_count, original_task_count
             );
         }
         return header_;
@@ -157,12 +157,11 @@ public:
     inline __aicore__ __gm__ const SchedulerGraphTemplate *native_template(uint32_t index) const {
         const auto *header = native_header();
         if (header == nullptr || index >= header->definition_count) return nullptr;
-        const auto *entry = reinterpret_cast<__gm__ const SchedulerGraphTemplate *>(
-                                scheduler_state_address + header->templates_offset
-                            ) +
-                            index;
+        const auto *entry =
+            reinterpret_cast<__gm__ const SchedulerGraphTemplate *>(native_graph_address + header->templates_offset) +
+            index;
         if (definition_ == entry) return definition_;
-        definition_ = scheduler_native_template_checked(scheduler_state_address, *header, index);
+        definition_ = scheduler_native_template_checked(native_graph_address, *header, index);
         return definition_;
     }
 
@@ -204,9 +203,9 @@ struct SchedulerTaskShape {
 
 static_assert(sizeof(SchedulerGraphView) == 56, "read-only graph view layout changed");
 static_assert(offsetof(SchedulerGraphView, storage_address) == 0, "storage address offset changed");
-static_assert(offsetof(SchedulerGraphView, scheduler_state_address) == 24);
+static_assert(offsetof(SchedulerGraphView, native_graph_address) == 24);
 static_assert(offsetof(SchedulerGraphView, native_header_offset) == 32);
-static_assert(offsetof(SchedulerGraphView, scheduler_state_bytes) == 40);
+static_assert(offsetof(SchedulerGraphView, native_graph_bytes) == 40);
 static_assert(offsetof(SchedulerGraphView, original_task_count) == 48);
 static_assert(std::is_trivially_copyable_v<SchedulerGraphView> && std::is_standard_layout_v<SchedulerGraphView>);
 static_assert(sizeof(SchedulerTaskShape) == 16, "task shape result layout changed");
@@ -245,7 +244,7 @@ struct SchedulerNativeNode {
 inline __aicore__ bool
 scheduler_native_node_checked(const SchedulerGraphAccess &graph, int64_t ref, SchedulerNativeNode *out) {
     if (out == nullptr) return false;
-    const uint64_t base = graph.scheduler_state_address;
+    const uint64_t base = graph.native_graph_address;
     auto *header = graph.native_header();
     if (header == nullptr) return false;
     auto *binding = scheduler_native_binding_checked(base, *header, ref);
@@ -288,7 +287,7 @@ scheduler_native_child_plan_checked(const SchedulerGraphView &graph, const Sched
         node.binding->source_index >= node.definition->task_count)
         return nullptr;
     auto *child = reinterpret_cast<__gm__ const SchedulerGraphChildPlan *>(
-                      graph.scheduler_state_address + node.definition->child_plans_offset
+                      graph.native_graph_address + node.definition->child_plans_offset
                   ) +
                   node.binding->source_index;
     if (!scheduler_native_child_arguments_valid(*child, node.definition->args_bytes)) return nullptr;
@@ -348,13 +347,15 @@ inline __aicore__ bool scheduler_native_child_fanin_row(
     if (node.definition == nullptr || node.instance == nullptr ||
         node.binding->source_index >= node.definition->task_count)
         return false;
-    auto *rows =
-        reinterpret_cast<__gm__ const int32_t *>(graph.scheduler_state_address + node.definition->fanin_offsets_offset);
-    const auto start = rows[node.binding->source_index];
-    const auto stop = rows[node.binding->source_index + 1];
-    if (start < 0 || stop < start || static_cast<uint64_t>(stop) > node.definition->edge_count) return false;
-    *begin = static_cast<uint32_t>(start);
-    *end = static_cast<uint32_t>(stop);
+    const auto *plans = reinterpret_cast<__gm__ const SchedulerGraphChildPlan *>(
+        graph.native_graph_address + node.definition->child_plans_offset
+    );
+    const auto &child = plans[node.binding->source_index];
+    const uint32_t start = child.fanin_begin;
+    const uint32_t count = child.fanin_count;
+    if (start > node.definition->edge_count || count > node.definition->edge_count - start) return false;
+    *begin = start;
+    *end = start + count;
     return true;
 }
 
@@ -369,8 +370,10 @@ struct SchedulerFaninView {
     uint32_t source_limit{0};
 };
 
-inline __aicore__ SchedulerGraphResult
-scheduler_node_fanin_view(const SchedulerGraphAccess &graph, int64_t task_ref, SchedulerFaninView *view) {
+inline __aicore__ SchedulerGraphResult scheduler_node_fanin_view(
+    const SchedulerGraphAccess &graph, int64_t task_ref, SchedulerFaninView *view,
+    SchedulerNativeNode *resolved = nullptr
+) {
     if (view == nullptr) return SchedulerGraphResult::INVALID_ARGUMENTS;
     if (graph.storage_address == 0 || !scheduler_task_ref_valid(graph, task_ref))
         return SchedulerGraphResult::INVALID_TASK_COUNT;
@@ -379,7 +382,8 @@ scheduler_node_fanin_view(const SchedulerGraphAccess &graph, int64_t task_ref, S
     if (graph.native_header_offset != 0) {
         SchedulerNativeNode node{};
         if (!scheduler_native_node_checked(graph, task_ref, &node)) return SchedulerGraphResult::INVALID_ARGUMENTS;
-        const uint64_t base = graph.scheduler_state_address;
+        if (resolved != nullptr) *resolved = node;
+        const uint64_t base = graph.native_graph_address;
         const auto kind = node.binding->kind;
         if (kind == SchedulerNodeKind::GRAPH_EXIT) {
             view->local_refs = reinterpret_cast<__gm__ const uint16_t *>(base + node.definition->sinks_offset);
@@ -439,25 +443,10 @@ scheduler_fanin_ref(const SchedulerFaninView &view, int64_t task_ref, uint32_t i
     return SchedulerGraphResult::OK;
 }
 
-inline __aicore__ SchedulerGraphResult
-scheduler_node_fanin_count(const SchedulerGraphAccess &graph, int64_t task_ref, uint32_t *count) {
-    if (count == nullptr) return SchedulerGraphResult::INVALID_ARGUMENTS;
-    SchedulerFaninView view{};
-    const auto status = scheduler_node_fanin_view(graph, task_ref, &view);
-    if (status == SchedulerGraphResult::OK) *count = view.count;
-    return status;
-}
-
-inline __aicore__ SchedulerGraphResult
-scheduler_node_fanin_ref(const SchedulerGraphAccess &graph, int64_t task_ref, uint32_t index, int64_t *producer) {
-    if (producer == nullptr) return SchedulerGraphResult::INVALID_ARGUMENTS;
-    SchedulerFaninView view{};
-    const auto status = scheduler_node_fanin_view(graph, task_ref, &view);
-    return status == SchedulerGraphResult::OK ? scheduler_fanin_ref(view, task_ref, index, producer) : status;
-}
-
-inline __aicore__ SchedulerGraphResult
-scheduler_classify_task_shape(const SchedulerGraphAccess &graph, int64_t task_ref, SchedulerTaskShape *shape) {
+inline __aicore__ SchedulerGraphResult scheduler_classify_task_shape(
+    const SchedulerGraphAccess &graph, int64_t task_ref, SchedulerTaskShape *shape,
+    const SchedulerFaninView *fanin = nullptr, int64_t *decoded = nullptr
+) {
     if (shape == nullptr) return SchedulerGraphResult::UNSUPPORTED_SHAPE;
     *shape = {
         {SCHEDULER_GRAPH_INVALID_KERNEL_ID, SCHEDULER_GRAPH_INVALID_KERNEL_ID, SCHEDULER_GRAPH_INVALID_KERNEL_ID},
@@ -495,24 +484,26 @@ scheduler_classify_task_shape(const SchedulerGraphAccess &graph, int64_t task_re
     uint64_t stored_task_ref = *reinterpret_cast<__gm__ uint64_t *>(descriptor + SCHEDULER_GRAPH_TASK_ID_OFFSET);
     if (stored_task_ref != static_cast<uint64_t>(storage_ref)) return SchedulerGraphResult::INVALID_TASK_ID;
 
-    SchedulerFaninView fanin{};
-    const auto fanin_status = scheduler_node_fanin_view(graph, task_ref, &fanin);
-    if (fanin_status != SchedulerGraphResult::OK) return fanin_status;
-    for (uint32_t i = 0; i < fanin.count; ++i) {
+    SchedulerFaninView row{};
+    if (fanin == nullptr) {
+        const auto status = scheduler_node_fanin_view(graph, task_ref, &row);
+        if (status != SchedulerGraphResult::OK) return status;
+        fanin = &row;
+    }
+    for (uint32_t i = 0; i < fanin->count; ++i) {
         int64_t producer = -1;
-        if (scheduler_fanin_ref(fanin, task_ref, i, &producer) != SchedulerGraphResult::OK)
+        if (scheduler_fanin_ref(*fanin, task_ref, i, &producer) != SchedulerGraphResult::OK)
             return SchedulerGraphResult::INVALID_FANIN_ID;
-        if (graph.native_header_offset == 0) {
+        if (decoded != nullptr) {
+            // The ordinary host path checks for duplicates in its saved row of resolved producer references.
+            for (uint32_t prior = 0; prior < i; ++prior)
+                if (decoded[prior] == producer) return SchedulerGraphResult::INVALID_FANIN_ID;
+            decoded[i] = producer;
+        } else {
             for (uint32_t prior = 0; prior < i; ++prior) {
-                if (fanin.global_refs[prior] == producer) return SchedulerGraphResult::INVALID_FANIN_ID;
-            }
-            continue;
-        }
-        for (uint32_t prior = 0; prior < i; ++prior) {
-            int64_t previous = -1;
-            if (scheduler_fanin_ref(fanin, task_ref, prior, &previous) != SchedulerGraphResult::OK ||
-                previous == producer) {
-                return SchedulerGraphResult::INVALID_FANIN_ID;
+                const auto ref = fanin->global_refs[prior];
+                if ((fanin->completion_refs == nullptr ? ref : fanin->completion_refs[ref]) == producer)
+                    return SchedulerGraphResult::INVALID_FANIN_ID;
             }
         }
     }

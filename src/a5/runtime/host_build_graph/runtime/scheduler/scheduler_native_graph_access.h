@@ -22,7 +22,7 @@ scheduler_native_region_valid(uint64_t bytes, uint64_t offset, uint64_t count, u
 
 inline __aicore__ bool scheduler_native_header_extent_valid(uint64_t base, uint64_t bytes, uint64_t offset) {
     return base != 0 && base % SCHEDULER_STATE_ALIGNMENT == 0 && bytes <= UINT64_MAX - base &&
-           offset >= sizeof(SchedulerRunControl) &&
+           offset >= SCHEDULER_STATE_ALIGNMENT &&
            scheduler_native_region_valid(
                bytes, offset, 1, sizeof(SchedulerNativeGraphHeader), alignof(SchedulerNativeGraphHeader)
            );
@@ -90,20 +90,16 @@ scheduler_native_template_checked(uint64_t base, __gm__ const SchedulerNativeGra
             alignof(SchedulerGraphChildPlan)
         ) ||
         !scheduler_native_region_valid(
-            end, entry->fanin_offsets_offset, entry->task_count + 1, sizeof(int32_t), alignof(int32_t)
-        ) ||
-        !scheduler_native_region_valid(
             end, entry->sinks_offset, entry->sink_count, sizeof(uint16_t), alignof(uint16_t)
-        ) ||
-        entry->fanin_offsets_offset < entry->child_plans_offset + entry->task_count * sizeof(SchedulerGraphChildPlan))
+        ))
         return nullptr;
-    const uint64_t rows_end = entry->fanin_offsets_offset + (entry->task_count + 1) * sizeof(int32_t);
+    const uint64_t plans_end = entry->child_plans_offset + entry->task_count * sizeof(SchedulerGraphChildPlan);
     if (entry->edge_count == 0) {
-        if (entry->fanin_indices_offset != 0 || entry->sinks_offset < rows_end) return nullptr;
+        if (entry->fanin_indices_offset != 0 || entry->sinks_offset < plans_end) return nullptr;
     } else if (!scheduler_native_region_valid(
                    end, entry->fanin_indices_offset, entry->edge_count, sizeof(uint16_t), alignof(uint16_t)
                ) ||
-               entry->fanin_indices_offset < rows_end ||
+               entry->fanin_indices_offset < plans_end ||
                entry->sinks_offset < entry->fanin_indices_offset + entry->edge_count * sizeof(uint16_t)) {
         return nullptr;
     }

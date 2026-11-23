@@ -51,11 +51,10 @@ static inline __aicore__ bool scheduler_progress_graph_controls(
         auto &cached = local->control_fanin_tags[static_cast<uint64_t>(ref) % SCHEDULER_TASK_PROOF_CACHE_COUNT];
         const uint32_t cached_prefix = cached >> 32 == tag ? static_cast<uint32_t>(cached) : 0;
         uint32_t next_fanin = cached_prefix;
-        bool ready = false;
-        if (!scheduler_observe_fanin_prefix(graph, base, local, run, ref, fanin, next_fanin, &ready)) return false;
+        if (!scheduler_observe_fanin_prefix(graph, base, local, run, ref, fanin, next_fanin)) return false;
         // A zero-progress visitor cannot displace another control's positive proof.
         if (next_fanin != cached_prefix) cached = (tag << 32) | next_fanin;
-        if (!ready) continue;
+        if (next_fanin != fanin.count) continue;
         const bool record = scheduler_protocol_enabled(local);
         auto *notification = scheduler_done_notification_at(base, local, ref);
         if (notification != nullptr) {
@@ -73,8 +72,8 @@ static inline __aicore__ bool scheduler_progress_graph_controls(
         }
         scheduler_cache_barrier();
         if (notification != nullptr) scheduler_notify_done(*notification);
-        // No yield or error-return separates publication from this accounting
-        // attempt. A losing CAS means another publisher already owns the count.
+        // Publish the canonical GM state in the same step as the notification.
+        // Only the winning CAS records the control-node completion actor.
         const uint64_t before = record ? scheduler_protocol_cycles(local) : 0;
         const uint64_t previous = scheduler_gm_compare_exchange(
             control->completion_state, scheduler_completion_initial_state(1), scheduler_completion_completed_state(1)
@@ -97,7 +96,6 @@ static inline __aicore__ bool scheduler_progress_graph_controls(
             scheduler_protocol_task_actor(base, local, ref, flags, false, after);
         }
         scheduler_remember_task_proof(local, ref, SchedulerTaskProof::DONE);
-        scheduler_report_task_completed(run);
         *progress = true;
     }
     return true;

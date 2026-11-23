@@ -9,9 +9,10 @@
 | [002 同址访问](../results/002-hbg-same-address-access/README.zh-CN.md) | A6 的 96 核 GM 64 位加一全部完成均值 1.051 µs；CntNotify ADD 直映射返回 507899。SWA 使用 GM-FAA | 328.139 µs | 414.771 µs | [A6 访问结果](../results/002-hbg-same-address-access/README.zh-CN.md#a6-同址读写) · [A5 逐名次数据](../results/002-hbg-same-address-access/a5-ranks.json) |
 | [003 A6 输出量化与投影分片](../results/003-a6-swa-blocks/README.zh-CN.md) | t17、t20 均用 54 组。较 002 核窗口缩短 9.079 µs；t20 的 L3 跨度相对 00 增长 | 319.060 µs | 406.690 µs | [实测与回退分析](../results/003-a6-swa-blocks/README.zh-CN.md) |
 | [004 A6 输出尾部分片](../results/004-a6-swa-output-tiles/README.zh-CN.md) | HC post 与 O-B 均用 54 组。同批 L0 核窗口缩短 26.502 µs，Device wall 缩短 26.295 µs | 290.068 µs | 377.707 µs | [分项结果与下界](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照) · [指标 JSON](../results/004-a6-swa-output-tiles/metrics.json) |
+| [005 最新主线与新版 SWA](../results/005-main-swa/README.zh-CN.md) | A5 同卡复测纯主线与迁移版。新版图融合 O-B 和 mHC post，A6 按 54 个 1C1V 核组重新分片 | | | [阶段报告](../results/005-main-swa/README.zh-CN.md) · [指标 JSON](../results/005-main-swa/metrics.json) |
 
 ## 追加一个阶段
 
-在 `results/` 下按顺序新建目录，例如 `005-<改动名>/`。该目录的 `README.zh-CN.md` 记录改了什么、对照哪一阶段、实测差值和输出校验。`metrics.json` 保存同口径的汇总值。完成实测后在上表追加一行，链接本阶段报告和指标 JSON。各阶段保留各自的提交号、采集等级与轮次，方便复核收益。
+在 `results/` 下按顺序新建目录，例如 `006-<改动名>/`。该目录的 `README.zh-CN.md` 记录改了什么、对照哪一阶段、实测差值和输出校验。`metrics.json` 保存同口径的汇总值。完成实测后在上表追加一行，链接本阶段报告和指标 JSON。各阶段保留各自的提交号、采集等级与轮次，方便复核收益。
 
 每轮实测结束后，将通过输出校验且有性能收益的分片并入默认配置，删除已完成对照的临时开关。历史方案通过该阶段的提交和指标复核。

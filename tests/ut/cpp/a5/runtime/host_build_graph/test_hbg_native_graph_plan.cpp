@@ -318,6 +318,7 @@ struct NativeViewFixture {
     scheduler_test::BasicGraphBuffer<8> original;
     NativeGraphHostPlan plan;
     NativeGraphReadonlyImage readonly_image;
+    std::unique_ptr<void, decltype(&std::free)> native_backing{nullptr, &std::free};
     std::unique_ptr<void, decltype(&std::free)> backing{nullptr, &std::free};
     SchedulerGraphView graph{};
     AicoreSchedulerLayout layout{};
@@ -375,39 +376,29 @@ struct NativeViewFixture {
                     }
                 }
             }
-            if (!scheduler_plan_layout(
-                    plan.bindings.size(), &layout, false, trace_count, requirements, false, false,
-                    readonly_image.bytes.size()
-                ))
+            if (!scheduler_plan_layout(plan.bindings.size(), &layout, false, trace_count, requirements))
                 throw std::runtime_error("scheduler layout");
             if (!scheduler_plan_task_catalog(task_metadata, workers / 3, layout.total_size, &catalog_plan))
                 throw std::runtime_error("task catalog plan");
             layout.total_size = catalog_plan.total_size;
-            header.image_bytes = layout.total_size;
         }
-        backing.reset(
-            std::aligned_alloc(
-                SCHEDULER_STATE_BASE_ALIGNMENT, (header.image_bytes + SCHEDULER_STATE_BASE_ALIGNMENT - 1) /
-                                                    SCHEDULER_STATE_BASE_ALIGNMENT * SCHEDULER_STATE_BASE_ALIGNMENT
-            )
-        );
-        if (!backing) throw std::bad_alloc();
-        std::memset(backing.get(), 0, header.image_bytes);
-        if (runtime_state &&
-            !scheduler_init_data_from_layout(backing.get(), layout, reinterpret_cast<uint64_t>(backing.get())))
-            throw std::runtime_error("scheduler init");
+        native_backing.reset(std::aligned_alloc(SCHEDULER_STATE_ALIGNMENT, readonly_image.bytes.size()));
+        if (!native_backing) throw std::bad_alloc();
+        std::memcpy(native_backing.get(), readonly_image.bytes.data(), readonly_image.bytes.size());
         std::memcpy(
-            static_cast<std::byte *>(backing.get()) + sizeof(SchedulerRunControl),
-            readonly_image.bytes.data() + sizeof(SchedulerRunControl),
-            readonly_image.bytes.size() - sizeof(SchedulerRunControl)
+            static_cast<std::byte *>(native_backing.get()) + readonly_image.header_offset, &header, sizeof(header)
         );
-        std::memcpy(static_cast<std::byte *>(backing.get()) + readonly_image.header_offset, &header, sizeof(header));
         graph = original.graph();
         graph.task_count = plan.bindings.size();
-        graph.scheduler_state_address = reinterpret_cast<uint64_t>(backing.get());
-        graph.scheduler_state_bytes = header.image_bytes;
+        graph.native_graph_address = reinterpret_cast<uint64_t>(native_backing.get());
+        graph.native_graph_bytes = header.image_bytes;
         graph.native_header_offset = readonly_image.header_offset;
         if (runtime_state) {
+            const auto bytes = CHIP_ALIGN_UP(layout.total_size, SCHEDULER_STATE_BASE_ALIGNMENT);
+            backing.reset(std::aligned_alloc(SCHEDULER_STATE_BASE_ALIGNMENT, bytes));
+            if (!backing) throw std::bad_alloc();
+            if (!scheduler_init_data_from_layout(backing.get(), layout, reinterpret_cast<uint64_t>(backing.get())))
+                throw std::runtime_error("scheduler init");
             std::copy(
                 task_metadata.begin(), task_metadata.end(),
                 scheduler_state_at<SchedulerTaskMetadata>(backing.get(), layout.task_metadata_offset)
@@ -420,12 +411,12 @@ struct NativeViewFixture {
     }
     SchedulerNativeGraphHeader &header() {
         return *reinterpret_cast<SchedulerNativeGraphHeader *>(
-            static_cast<std::byte *>(backing.get()) + readonly_image.header_offset
+            static_cast<std::byte *>(native_backing.get()) + readonly_image.header_offset
         );
     }
     SchedulerGraphTemplate &definition() {
         return *reinterpret_cast<SchedulerGraphTemplate *>(
-            static_cast<std::byte *>(backing.get()) + header().templates_offset
+            static_cast<std::byte *>(native_backing.get()) + header().templates_offset
         );
     }
 };
@@ -452,7 +443,9 @@ TEST(HbgNativeGraphPlan, CanonicalFaninConnectsGraphControlsAcrossInstances) {
             }
         }
     }
-    ASSERT_TRUE(scheduler_validate_dependencies(view.graph, metadata, {0}));
+    SchedulerDependencyPlan dependencies;
+    ASSERT_TRUE(scheduler_plan_dependencies(view.graph, metadata, {0}, dependencies));
+    EXPECT_EQ(dependencies.sinks, (std::vector<uint32_t>{11}));
     std::vector<std::pair<int64_t, int64_t>> edges;
     for (int64_t consumer = 0; consumer < view.graph.task_count; ++consumer) {
         SchedulerFaninView fanin{};
@@ -472,7 +465,7 @@ TEST(HbgNativeGraphPlan, CanonicalFaninConnectsGraphControlsAcrossInstances) {
     SchedulerTaskCatalogPlan ordered;
     ASSERT_TRUE(scheduler_plan_task_catalog(metadata, 1, 64, &ordered));
     std::string order_error;
-    ASSERT_TRUE(scheduler_order_task_catalog(view.graph, metadata, {0}, &ordered, &order_error)) << order_error;
+    ASSERT_TRUE(scheduler_order_task_catalog(dependencies, metadata, &ordered, &order_error)) << order_error;
     EXPECT_EQ(ordered.catalogs[1], (std::vector<int64_t>{0, 2, 3, 4, 7, 8, 9, 11}));
     for (const auto &[producer, consumer] : edges)
         EXPECT_LT(ordered.task_ranks[producer], ordered.task_ranks[consumer]);
@@ -484,19 +477,23 @@ TEST(HbgNativeGraphPlan, CanonicalFaninConnectsGraphControlsAcrossInstances) {
     EXPECT_EQ(ordered.order_rows[second.child_begin].next_mix_ref, UINT32_MAX);
     EXPECT_LT(ordered.order_rows[first.exit_ref].rank, ordered.order_rows[second.enter_ref].rank);
     EXPECT_EQ(ordered.order_rows[11].required_floor[1], ordered.order_rows[second.child_begin].rank + 1);
-    EXPECT_FALSE(scheduler_validate_dependencies(view.graph, metadata, {view.graph.task_count}));
+    EXPECT_FALSE(scheduler_plan_dependencies(view.graph, metadata, {view.graph.task_count}, dependencies));
+    // A side branch consumes the first Graph directly, alongside the second Graph.
+    view.original.executable(3, 0, {1});
+    ASSERT_TRUE(scheduler_plan_dependencies(view.graph, metadata, {0}, dependencies));
+    EXPECT_EQ(dependencies.sinks, (std::vector<uint32_t>{second.exit_ref, 11}));
 }
 
 TEST(HbgNativeGraphPlan, AccessConstructionDoesNotObserveNativeBacking) {
     SchedulerGraphView wire = scheduler_ordinary_graph_view(4096, 1, 0);
-    wire.scheduler_state_address = SCHEDULER_STATE_ALIGNMENT;
-    wire.scheduler_state_bytes = 1024 * 1024;
-    wire.native_header_offset = sizeof(SchedulerRunControl);
+    wire.native_graph_address = SCHEDULER_STATE_ALIGNMENT;
+    wire.native_graph_bytes = 1024 * 1024;
+    wire.native_header_offset = SCHEDULER_STATE_ALIGNMENT;
     ASSERT_TRUE(scheduler_native_header_extent_valid(
-        wire.scheduler_state_address, wire.scheduler_state_bytes, wire.native_header_offset
+        wire.native_graph_address, wire.native_graph_bytes, wire.native_header_offset
     ));
     const SchedulerGraphAccess access(wire);
-    EXPECT_EQ(access.scheduler_state_address, wire.scheduler_state_address);
+    EXPECT_EQ(access.native_graph_address, wire.native_graph_address);
     EXPECT_EQ(access.native_header_offset, wire.native_header_offset);
 }
 
@@ -558,19 +555,19 @@ TEST(HbgNativeGraphPlan, AccessAlternatesDefinitionsWithoutSkippingNodeBounds) {
     EXPECT_FALSE(scheduler_native_node_checked(access, -1, &node));
     EXPECT_FALSE(scheduler_native_node_checked(access, view.graph.task_count, &node));
     auto *bindings = reinterpret_cast<SchedulerNodeBinding *>(
-        static_cast<std::byte *>(view.backing.get()) + view.header().bindings_offset
+        static_cast<std::byte *>(view.native_backing.get()) + view.header().bindings_offset
     );
     bindings[1].instance_index = view.header().instance_count;
     EXPECT_FALSE(scheduler_native_node_checked(access, 1, &node));
     bindings[1].instance_index = 0;
     auto *instances = reinterpret_cast<SchedulerGraphInstance *>(
-        static_cast<std::byte *>(view.backing.get()) + view.header().instances_offset
+        static_cast<std::byte *>(view.native_backing.get()) + view.header().instances_offset
     );
     instances[0].exit_ref = view.header().node_count;
     EXPECT_FALSE(scheduler_native_node_checked(access, 1, &node));
     instances[0].exit_ref = instances[0].child_begin + instances[0].child_count;
     auto *child = reinterpret_cast<SchedulerGraphChildPlan *>(
-        static_cast<std::byte *>(view.backing.get()) + view.definition().child_plans_offset
+        static_cast<std::byte *>(view.native_backing.get()) + view.definition().child_plans_offset
     );
     child->tensor_count = MAX_TENSOR_ARGS + 1;
     SchedulerTaskPayloadArguments arguments{};
@@ -587,12 +584,7 @@ TEST(HbgNativeGraphPlan, AccessorsMapShellDependenciesToExitAndGateRootsByEnter)
     ASSERT_TRUE(scheduler_graph_view_valid(view.graph));
     EXPECT_GT(view.graph.task_count, view.graph.task_window_last_index + 1);
     for (int64_t ref = 1; ref < 10; ++ref) {
-        uint32_t count = 0;
         int64_t producer = -1;
-        ASSERT_EQ(scheduler_node_fanin_count(view.graph, ref, &count), SchedulerGraphResult::OK) << ref;
-        ASSERT_EQ(count, 1) << ref;
-        ASSERT_EQ(scheduler_node_fanin_ref(view.graph, ref, 0, &producer), SchedulerGraphResult::OK) << ref;
-        EXPECT_EQ(producer, ref - 1) << ref;
         SchedulerFaninView fanin{};
         ASSERT_EQ(scheduler_node_fanin_view(view.graph, ref, &fanin), SchedulerGraphResult::OK) << ref;
         ASSERT_EQ(fanin.count, 1u);
@@ -618,23 +610,14 @@ TEST(HbgNativeGraphPlan, NativeFaninAndExitReadersDoNotApplyTheTopLevel128Limit)
     std::iota(rows.back().begin(), rows.back().end(), 0);
     DefinitionFixture body(rows);
     NativeViewFixture view(body, {0});
-    uint32_t count = 0;
-    ASSERT_EQ(scheduler_node_fanin_count(view.graph, 1024, &count), SchedulerGraphResult::OK);
-    EXPECT_EQ(count, 1023);
-    int64_t producer = -1;
-    ASSERT_EQ(scheduler_node_fanin_ref(view.graph, 1024, 1022, &producer), SchedulerGraphResult::OK);
-    EXPECT_EQ(producer, 1023);
     DefinitionFixture disconnected(std::vector<std::vector<uint16_t>>(1024), true);
     NativeViewFixture empty_body(disconnected, {0});
-    ASSERT_EQ(scheduler_node_fanin_count(empty_body.graph, 1025, &count), SchedulerGraphResult::OK);
-    EXPECT_EQ(count, 1024);
-    ASSERT_EQ(scheduler_node_fanin_ref(empty_body.graph, 1025, 1023, &producer), SchedulerGraphResult::OK);
-    EXPECT_EQ(producer, 1024);
     for (const auto &[graph, consumer, expected_count] :
          {std::tuple{view.graph, 1024, 1023}, std::tuple{empty_body.graph, 1025, 1024}}) {
         SchedulerFaninView fanin{};
         ASSERT_EQ(scheduler_node_fanin_view(graph, consumer, &fanin), SchedulerGraphResult::OK);
         ASSERT_EQ(fanin.count, expected_count);
+        int64_t producer = -1;
         for (uint32_t index = 0; index < fanin.count; ++index) {
             ASSERT_EQ(scheduler_fanin_ref(fanin, consumer, index, &producer), SchedulerGraphResult::OK);
             EXPECT_EQ(producer, index + 1);
@@ -642,12 +625,24 @@ TEST(HbgNativeGraphPlan, NativeFaninAndExitReadersDoNotApplyTheTopLevel128Limit)
     }
 }
 
+TEST(HbgNativeGraphPlan, RejectsDistinctTopLevelSourcesMappedToTheSameProducer) {
+    DefinitionFixture body(std::vector<std::vector<uint16_t>>{{}});
+    NativeViewFixture view(body, {UINT32_MAX, 0, UINT32_MAX});
+    view.original.executable(2, 0, {0, 1});
+    const int64_t ref = view.graph.task_count - 1;
+    SchedulerTaskShape shape{};
+    ASSERT_EQ(scheduler_classify_task_shape(view.graph, ref, &shape), SchedulerGraphResult::OK);
+    auto *completions = scheduler_state_at<int64_t>(view.native_backing.get(), view.header().completion_refs_offset);
+    completions[0] = completions[1];
+    EXPECT_EQ(scheduler_classify_task_shape(view.graph, ref, &shape), SchedulerGraphResult::INVALID_FANIN_ID);
+}
+
 TEST(HbgNativeGraphPlan, ReadersRejectForgedHeaderRegionsAndInstanceBindings) {
     DefinitionFixture body(std::vector<std::vector<uint16_t>>{{}});
     NativeViewFixture view(body, {0});
     ASSERT_TRUE(scheduler_graph_view_valid(view.graph));
     auto graph = view.graph;
-    graph.scheduler_state_bytes = view.readonly_image.header_offset;
+    graph.native_graph_bytes = view.readonly_image.header_offset;
     EXPECT_FALSE(scheduler_graph_view_valid(graph));
     graph = view.graph;
     graph.native_header_offset = UINT64_MAX - 127;
@@ -661,15 +656,19 @@ TEST(HbgNativeGraphPlan, ReadersRejectForgedHeaderRegionsAndInstanceBindings) {
     EXPECT_FALSE(scheduler_graph_view_valid(view.graph));
     header.bindings_offset = bindings_offset;
     auto &definition = view.definition();
-    const auto rows_offset = definition.fanin_offsets_offset;
-    definition.fanin_offsets_offset = header.readonly_end_offset;
-    uint32_t count = 0;
-    EXPECT_NE(scheduler_node_fanin_count(view.graph, 1, &count), SchedulerGraphResult::OK);
-    definition.fanin_offsets_offset = rows_offset;
-    auto *bindings =
-        reinterpret_cast<SchedulerNodeBinding *>(static_cast<std::byte *>(view.backing.get()) + header.bindings_offset);
+    auto *children = reinterpret_cast<SchedulerGraphChildPlan *>(
+        static_cast<std::byte *>(view.native_backing.get()) + definition.child_plans_offset
+    );
+    const auto initial_count = children[0].fanin_count;
+    children[0].fanin_count = UINT32_MAX;
+    SchedulerFaninView fanin{};
+    EXPECT_NE(scheduler_node_fanin_view(view.graph, 1, &fanin), SchedulerGraphResult::OK);
+    children[0].fanin_count = initial_count;
+    auto *bindings = reinterpret_cast<SchedulerNodeBinding *>(
+        static_cast<std::byte *>(view.native_backing.get()) + header.bindings_offset
+    );
     bindings[1].instance_index = 99;
-    EXPECT_NE(scheduler_node_fanin_count(view.graph, 1, &count), SchedulerGraphResult::OK);
+    EXPECT_NE(scheduler_node_fanin_view(view.graph, 1, &fanin), SchedulerGraphResult::OK);
 }
 
 namespace {
@@ -698,10 +697,12 @@ SchedulerLocalState ready_worker(NativeViewFixture &view, uint32_t type, uint64_
     config.task_catalog_offset = view.catalog_plan.header_offset;
     config.prepared =
         scheduler_state_at<SchedulerPreparedLayout>(view.backing.get(), view.layout.prepared_layout_offset);
+    if (config.prepared != nullptr) local.run_epoch = config.prepared->run_epoch;
     config.runtime_worker_count = 30;
     config.cluster_count = 10;
     config.self_lane = type == 0 ? 0 : 1 + rank % 2;
     config.self_core_type = type;
+    config.engine_catalog = scheduler_task_catalog(view.backing.get(), view.catalog_plan.header, config.self_core_type);
     const uint64_t cluster = type == 0 ? rank : rank / 2;
     for (uint32_t lane = 0; lane < 3; ++lane) {
         config.worker_ids[lane] = cluster * 3 + lane;
@@ -756,20 +757,16 @@ TEST(HbgNativeGraphPlan, ZeroFlagLiveControlRemainsACanonicalDependency) {
     SchedulerFaninView fanin{};
     ASSERT_EQ(scheduler_node_fanin_view(view.graph, 2, &fanin), SchedulerGraphResult::OK);
     uint32_t next = 0;
-    bool ready = false;
-    ASSERT_TRUE(scheduler_observe_fanin_prefix(view.graph, view.backing.get(), &local, run, 2, fanin, next, &ready));
-    EXPECT_FALSE(ready);
+    ASSERT_TRUE(scheduler_observe_fanin_prefix(view.graph, view.backing.get(), &local, run, 2, fanin, next));
     EXPECT_EQ(next, 0u);
     EXPECT_FALSE(scheduler_completion_done(control->completion_state));
     // Zero-shape metadata does not make a native live CONTROL_DUMMY Host-done.
     metadata[1].logical_block_num = 0;
-    ASSERT_TRUE(scheduler_observe_fanin_prefix(view.graph, view.backing.get(), &local, run, 2, fanin, next, &ready));
-    EXPECT_FALSE(ready);
+    ASSERT_TRUE(scheduler_observe_fanin_prefix(view.graph, view.backing.get(), &local, run, 2, fanin, next));
     EXPECT_EQ(next, 0u);
     metadata[1].logical_block_num = 1;
     scheduler_gm_store(control->completion_state, scheduler_completion_completed_state(1));
-    ASSERT_TRUE(scheduler_observe_fanin_prefix(view.graph, view.backing.get(), &local, run, 2, fanin, next, &ready));
-    EXPECT_TRUE(ready);
+    ASSERT_TRUE(scheduler_observe_fanin_prefix(view.graph, view.backing.get(), &local, run, 2, fanin, next));
     EXPECT_EQ(next, fanin.count);
     EXPECT_EQ(scheduler_read_error(run), 0u);
 }
@@ -953,7 +950,7 @@ struct ControlFixture : NativeViewFixture {
     explicit ControlFixture(const DefinitionFixture &definition) :
         NativeViewFixture(definition, {0}, true) {
         run = static_cast<SchedulerRunControl *>(backing.get());
-        run->expected_task_count = graph.task_count;
+
         for (uint32_t worker = 0; worker < 3; ++worker) {
             auto &local = locals[worker];
             auto &config = local.config;
@@ -965,6 +962,7 @@ struct ControlFixture : NativeViewFixture {
             config.cluster_count = 1;
             config.self_lane = static_cast<uint8_t>(worker);
             config.self_core_type = worker == 0 ? 0 : 1;
+            config.engine_catalog = scheduler_task_catalog(backing.get(), catalog_plan.header, config.self_core_type);
             config.worker_ids[0] = 0;
             config.worker_ids[1] = 1;
             config.worker_ids[2] = 2;
@@ -975,7 +973,11 @@ struct ControlFixture : NativeViewFixture {
                 slot.state = SchedulerDispatchSlotState::READY;
         }
     }
-    uint64_t completed() const { return scheduler_test::resolved_count(run); }
+    uint64_t completed() const {
+        return scheduler_test::completed_gm_records(
+            scheduler_state_at<SchedulerTaskControl>(backing.get(), layout.task_controls_offset), graph.task_count
+        );
+    }
 };
 }  // namespace
 
@@ -1021,9 +1023,6 @@ TEST(HbgNativeGraphPlan, HostInitializedDummyChainProgressesWithFullKernelSlots)
 TEST(HbgNativeGraphPlan, IndependentControlsRespectEachServiceBudget) {
     DefinitionFixture body(std::vector<std::vector<uint16_t>>(130), true);
     ControlFixture view(body);
-    uint32_t completed = 0;
-    view.run->run_completed_read_address = reinterpret_cast<uint64_t>(&completed);
-    view.run->run_completed_add_address = reinterpret_cast<uint64_t>(&completed);
 
     bool progress = false;
     ASSERT_TRUE(
@@ -1126,7 +1125,7 @@ struct BoundArgumentsFixture {
     NativeGraphArguments arguments{};
     explicit BoundArgumentsFixture(NativeViewFixture &view, uint32_t index) {
         instance = reinterpret_cast<SchedulerGraphInstance *>(
-                       static_cast<std::byte *>(view.backing.get()) + view.header().instances_offset
+                       static_cast<std::byte *>(view.native_backing.get()) + view.header().instances_offset
                    ) +
                    index;
         boundary.buffer.addr = 0x100000 + index * 0x10000;
@@ -1314,7 +1313,7 @@ struct NativeMixFixture : NativeViewFixture {
         NativeViewFixture(cooperative_argument_definition(mix, mix_mask), {0}, true, worker_count),
         bound(*this, 0) {
         run = static_cast<SchedulerRunControl *>(backing.get());
-        run->expected_task_count = graph.task_count;
+
         auto *contexts = scheduler_state_at<SchedulerWorkerContext>(backing.get(), layout.worker_contexts_offset);
         for (uint32_t worker = 0; worker < worker_count; ++worker) {
             const uint32_t cluster = worker / 3;
@@ -1327,6 +1326,7 @@ struct NativeMixFixture : NativeViewFixture {
             auto &config = locals[worker].config;
             config.graph = &graph;
             config.prepared = scheduler_state_at<SchedulerPreparedLayout>(backing.get(), layout.prepared_layout_offset);
+            if (config.prepared != nullptr) locals[worker].run_epoch = config.prepared->run_epoch;
             config.shared_context = contexts + worker;
             config.graph_summary_offset = layout.graph_summary_offset;
             config.worker_contexts_offset = layout.worker_contexts_offset;
@@ -1337,6 +1337,7 @@ struct NativeMixFixture : NativeViewFixture {
             config.cluster_count = worker_count / 3;
             config.self_lane = self_lane;
             config.self_core_type = self_lane == 0 ? 0 : 1;
+            config.engine_catalog = scheduler_task_catalog(backing.get(), catalog_plan.header, config.self_core_type);
             for (uint32_t lane = 0; lane < 3; ++lane)
                 config.worker_ids[lane] = cluster * 3 + lane;
             locals[worker].cluster_signal = &signals[cluster];
@@ -1356,7 +1357,7 @@ struct NativeMixFixture : NativeViewFixture {
 };
 }  // namespace
 
-TEST(HbgNativeGraphPlan, HostArgumentsRemainBoundWhileMixWaitsForGraphEnterAndPartner) {
+TEST(HbgNativeGraphPlan, HostArgumentsRemainBoundAsMixEntersAfterGraphEnter) {
     NativeMixFixture view(true);
     auto *base = view.backing.get();
     auto *control = scheduler_task_control_at(base, &view.locals[1], view.child());
@@ -1379,7 +1380,7 @@ TEST(HbgNativeGraphPlan, HostArgumentsRemainBoundWhileMixWaitsForGraphEnterAndPa
         bool progress = false;
         ASSERT_TRUE(scheduler_cluster_mix_service(view.graph, base, &view.locals[1], view.run, 0, &progress));
         EXPECT_EQ(scalars[0], 71u);
-        EXPECT_NE(view.locals[1].mix_groups[0].phase, SchedulerGmMixPhase::RUNNING);
+        EXPECT_EQ(view.locals[1].mix_groups[0].phase, SchedulerGmMixPhase::RUNNING);
     }
 }
 
@@ -1415,12 +1416,10 @@ TEST(HbgNativeGraphPlan, NativeMixDistributesOnlyTheActualChildLanes) {
             const auto &owned = view.locals[lane].execution_at(SCHEDULER_CLUSTER_MIX_EXECUTION);
             const bool participates = mask.has(static_cast<SubtaskSlot>(lane));
             EXPECT_EQ(owned.state, participates ? SchedulerDispatchSlotState::READY : SchedulerDispatchSlotState::FREE);
+            EXPECT_EQ(view.signals[0].groups[0].arrived[lane], 0u);
             if (participates) {
                 EXPECT_EQ(owned.task_ref, view.child());
                 EXPECT_EQ(owned.subtask_slot, lane);
-                EXPECT_EQ(view.signals[0].groups[0].arrived[lane], view.signals[0].groups[0].armed_generation);
-            } else {
-                EXPECT_EQ(view.signals[0].groups[0].arrived[lane], 0u);
             }
         }
         EXPECT_EQ(view.run->scheduler_error, 0u);
@@ -1459,9 +1458,9 @@ TEST(HbgNativeGraphPlan, ReadonlyTopologySizeDoesNotDependOnRecordedArgumentPool
     EXPECT_EQ(argument_view.readonly_image.bytes.size(), plain_view.readonly_image.bytes.size());
     EXPECT_GT(argument_view.definition().args_bytes, plain_view.definition().args_bytes);
     argument_view.plan.definitions[0].image.clear();
-    uint32_t count = 0;
-    EXPECT_EQ(scheduler_node_fanin_count(argument_view.graph, 1, &count), SchedulerGraphResult::OK);
-    EXPECT_EQ(count, 1u);
+    SchedulerFaninView fanin{};
+    ASSERT_EQ(scheduler_node_fanin_view(argument_view.graph, 1, &fanin), SchedulerGraphResult::OK);
+    EXPECT_EQ(fanin.count, 1u);
     EXPECT_TRUE(scheduler_graph_view_valid(argument_view.graph));
 }
 

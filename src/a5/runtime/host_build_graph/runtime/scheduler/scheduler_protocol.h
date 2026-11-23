@@ -21,7 +21,7 @@ inline __aicore__ uint64_t scheduler_cycles() {
 #if defined(__CPU_SIM)
     return sys_cnt_now_ticks();
 #elif defined(__CCE_AICORE__)
-    return get_sys_cnt_aicore();
+    return get_sys_cnt();
 #else
     return 0;
 #endif
@@ -41,11 +41,11 @@ static inline __aicore__ bool scheduler_protocol_bind(__gm__ void *base, const L
     if (base == nullptr || local == nullptr || local->config.graph == nullptr ||
         local->config.graph_summary_offset == 0)
         return false;
-    if (local->profiling != nullptr) local->profiling->protocol_layout_offset = 0;
+    if (__builtin_expect(local->profiling != nullptr, false)) local->profiling->protocol_layout_offset = 0;
     auto *summary = scheduler_state_at<SchedulerGraphSummary>(base, local->config.graph_summary_offset);
     scheduler_observe_cache_line(&summary->protocol_layout_offset);
     const uint64_t offset = summary->protocol_layout_offset;
-    if (offset == 0) return true;
+    if (__builtin_expect(offset == 0, true)) return true;
     if (local->profiling == nullptr || (offset & (SCHEDULER_STATE_ALIGNMENT - 1)) != 0 ||
         offset > UINT64_MAX - reinterpret_cast<uintptr_t>(base) - sizeof(SchedulerProtocolLayout))
         return false;
@@ -108,7 +108,8 @@ static inline __aicore__ bool scheduler_protocol_bind(__gm__ void *base, const L
 
 template <typename Local>
 inline __aicore__ __gm__ SchedulerProtocolLayout *scheduler_protocol_layout_at(__gm__ void *base, const Local *local) {
-    if (local == nullptr || local->profiling == nullptr || local->profiling->protocol_layout_offset == 0)
+    if (local == nullptr || __builtin_expect(local->profiling == nullptr, true) ||
+        local->profiling->protocol_layout_offset == 0)
         return nullptr;
     return scheduler_state_at<SchedulerProtocolLayout>(base, local->profiling->protocol_layout_offset);
 }
@@ -163,7 +164,8 @@ static inline __aicore__ bool scheduler_protocol_stamp(
 
 template <typename Local>
 inline __aicore__ bool scheduler_protocol_enabled(const Local *local) {
-    return local != nullptr && local->profiling != nullptr && local->profiling->protocol_layout_offset != 0;
+    return local != nullptr && __builtin_expect(local->profiling != nullptr, false) &&
+           local->profiling->protocol_layout_offset != 0;
 }
 
 template <typename Local>
@@ -245,10 +247,9 @@ static inline __aicore__ __gm__ SchedulerProtocolExecutionTrace *scheduler_proto
     return scheduler_state_at<SchedulerProtocolExecutionTrace>(base, layout->executions_offset) + index;
 }
 
-template <typename Local, typename Ready>
-static inline __aicore__ void scheduler_protocol_payload_publication(
-    __gm__ void *base, Local *local, uint32_t slot_index, const Ready &ready, bool before
-) {
+template <typename Local>
+static inline __aicore__ void
+scheduler_protocol_payload_publication(__gm__ void *base, Local *local, uint32_t slot_index, bool before) {
     auto *layout = scheduler_protocol_layout_at(base, local);
     if (layout == nullptr) return;
     if (slot_index >= SCHEDULER_LOCAL_EXECUTION_COUNT) {
@@ -283,7 +284,10 @@ static inline __aicore__ void scheduler_protocol_payload_publication(
         record->worker_index = static_cast<uint32_t>(local->worker_id());
         record->pending_slot = scheduler_trace_source_index(slot_index);
         record->subtask_slot = slot.subtask_slot;
-        record->ready_source = static_cast<uint32_t>(ready.source);
+        record->ready_source = static_cast<uint32_t>(
+            slot_index < SCHEDULER_EXECUTION_TOKEN_COUNT ? SchedulerReadySource::CATALOG :
+                                                           SchedulerReadySource::COOPERATIVE
+        );
     } else {
         if (record->publication_count == 0 || record->worker_index != local->worker_id() ||
             record->task_ref != slot.task_ref || record->pending_slot != scheduler_trace_source_index(slot_index) ||

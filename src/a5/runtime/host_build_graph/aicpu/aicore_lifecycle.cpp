@@ -113,7 +113,7 @@ void AicoreLifecycle::handshake_partition(Runtime *runtime, int32_t tidx, int32_
         handshake_failed_.store(true, std::memory_order_release);
         return;
     }
-    Handshake *handshakes = runtime->dev.workers;
+    Handshake *handshakes = runtime->get_workers();
     const int32_t lo = static_cast<int32_t>((static_cast<int64_t>(tidx) * core_count_) / nthreads);
     const int32_t hi = static_cast<int32_t>((static_cast<int64_t>(tidx + 1) * core_count_) / nthreads);
     const uint32_t physical_core_count = platform_get_physical_cores_count();
@@ -201,11 +201,6 @@ int32_t AicoreLifecycle::post_handshake_init(Runtime *runtime) {
     if (scheduler_state_base == nullptr || run_control == nullptr) return -1;
     // No AICore can observe READY yet. Replay resets the same owned registers
     // before any publisher or waiter from this invocation can access them.
-    if (run_control->run_completed_read_address != 0) {
-        *reinterpret_cast<volatile uint32_t *>(run_control->run_completed_read_address) = 0;
-        run_control->resolved_task_count = 0;
-        wmb();
-    }
     if (bootstrap_context->done_notifications_offset != 0) {
         const auto *addresses =
             scheduler_state_at<uint64_t>(scheduler_state_base, bootstrap_context->done_notifications_offset);
@@ -237,20 +232,6 @@ int32_t AicoreLifecycle::post_handshake_init(Runtime *runtime) {
             // Only a chain head has no credit prefix. The run has not started;
             // there is no reset or transfer after READY.
             if (counter.threshold == credits) *reinterpret_cast<volatile uint32_t *>(counter.read_address) = 0;
-        }
-        wmb();
-    }
-    const auto *notification_summary =
-        scheduler_state_at<SchedulerGraphSummary>(scheduler_state_base, bootstrap_context->graph_summary_offset);
-    if (notification_summary->async_layout_offset != 0) {
-        const auto *async =
-            scheduler_state_at<SchedulerAsyncLayout>(scheduler_state_base, notification_summary->async_layout_offset);
-        const auto *directory =
-            scheduler_state_at<SchedulerAsyncDirectoryWord>(scheduler_state_base, async->check_directory_offset);
-        const uint64_t halves = (static_cast<uint64_t>(async->group_count) + 31) / 32;
-        for (uint64_t half = 0; half < halves; ++half) {
-            const uint64_t address = directory[half / 2].notification_addresses[half % 2];
-            if (address != 0) *reinterpret_cast<volatile uint32_t *>(address) = 0;
         }
         wmb();
     }
@@ -386,7 +367,7 @@ int32_t AicoreLifecycle::post_handshake_init(Runtime *runtime) {
 void AicoreLifecycle::publish_context_partition(Runtime *runtime, int32_t thread_idx) {
     const int32_t lo = static_cast<int32_t>((static_cast<int64_t>(thread_idx) * core_count_) / aicpu_thread_num_);
     const int32_t hi = static_cast<int32_t>((static_cast<int64_t>(thread_idx + 1) * core_count_) / aicpu_thread_num_);
-    Handshake *handshakes = runtime->dev.workers;
+    Handshake *handshakes = runtime->get_workers();
     SchedulerWorkerContext *bootstrap_context = aicore_scheduler_bootstrap_context(runtime);
     if (bootstrap_context == nullptr) return;
     AicpuThreadLifecycleTrace *trace = thread_lifecycle_trace(thread_idx);
@@ -430,10 +411,10 @@ int32_t AicoreLifecycle::wait_bootstrap_complete(Runtime *runtime) {
     const uint64_t timeout_cycles = resident_scheduler_timeout_cycles();
     uint32_t error_poll_count = 0;
     while (true) {
-        if (run_control->bootstrap_complete != 0) break;
+        if (aicpu_observe_gm(run_control->bootstrap_complete) != 0) break;
         if (++error_poll_count == 64) {
             error_poll_count = 0;
-            if (run_control->scheduler_error != 0) {
+            if (aicpu_observe_gm(run_control->scheduler_error) != 0) {
                 // Error details are published before the error marker.
                 rmb();
                 log_aicore_scheduler_error_identity(run_control, "bootstrap");
@@ -521,7 +502,7 @@ int32_t AicoreLifecycle::finish_shutdown_partition(int32_t thread_idx, Runtime *
     }
     for (size_t i = 0; i < count; ++i) {
         if (released[i]) {
-            Handshake *report = &runtime->dev.workers[core_ids[i]];
+            Handshake *report = &runtime->get_workers()[core_ids[i]];
             cache_invalidate_range(report, sizeof(*report));
             rmb();
             // This line is already needed for retirement. Save its endpoints
@@ -571,9 +552,7 @@ void AicoreLifecycle::collect_run_swimlane_records(Runtime *runtime) {
     const auto level = get_chip_swimlane_level();
     const uint64_t epoch = get_platform_run_result_epoch();
     auto phase = [&](uint64_t worker, SchedPhaseKind kind, uint64_t start, uint64_t end, uint64_t loop, TaskId task) {
-        if (level < ChipSwimlaneLevel::SCHED_PHASES || worker >= static_cast<uint64_t>(core_count_) || start == 0 ||
-            end < start)
-            return;
+        if (worker >= static_cast<uint64_t>(core_count_) || start == 0 || end < start) return;
         ChipSwimlaneAicpuSchedPhaseRecord record{};
         record.start_time = start;
         record.end_time = end;
@@ -582,61 +561,62 @@ void AicoreLifecycle::collect_run_swimlane_records(Runtime *runtime) {
         record.tasks_processed = 1;
         record.phase_data.task_id = task;
         record.participant_has_task = 1;
-        record.participant_kind = runtime->dev.workers[worker].core_type == CoreType::AIC ?
+        record.participant_kind = runtime->get_workers()[worker].core_type == CoreType::AIC ?
                                       SchedPhaseParticipantKind::Aic :
                                       SchedPhaseParticipantKind::Aiv;
         record.participant_worker_id = static_cast<uint32_t>(worker);
-        record.participant_physical_core_id = runtime->dev.workers[worker].physical_core_id;
+        record.participant_physical_core_id = runtime->get_workers()[worker].physical_core_id;
         chip_swimlane_aicpu_record_staged_phase(kDiagnosticDumpLane, record);
     };
+    const uint64_t bytes = context->scheduler_state_bytes;
+    const uint64_t trace_limit =
+        context->trace_cells_offset <= bytes ?
+            std::min<uint64_t>(
+                (bytes - context->trace_cells_offset) / sizeof(SchedulerTaskTrace), uint64_t{UINT32_MAX} + 1
+            ) :
+            0;
     for (uint64_t task = 0; task < context->graph_task_count; ++task) {
         if (!scheduler_task_is_executable(metadata[task].flags)) continue;
         const auto identity = aicore_scheduler_public_identity(graph, task);
         if (!identity.is_valid()) continue;
-        for (uint32_t block = 0; block < metadata[task].logical_block_num; ++block) {
-            for (uint8_t subtask = 0; subtask < SUBTASK_SLOT_COUNT; ++subtask) {
-                if (!metadata[task].active_mask.has(static_cast<SubtaskSlot>(subtask))) continue;
-                const uint64_t index = scheduler_task_trace_index(
-                    metadata[task].trace_index_base, metadata[task].active_mask, static_cast<SubtaskSlot>(subtask),
-                    block
-                );
-                const uint64_t bytes = context->scheduler_state_bytes;
-                if (index > UINT32_MAX || context->trace_cells_offset > bytes ||
-                    index >= (bytes - context->trace_cells_offset) / sizeof(SchedulerTaskTrace))
-                    continue;
-                const auto &trace = traces[index];
-                if (trace.valid == 0 || trace.task_ref != task ||
-                    trace.worker_id >= static_cast<uint64_t>(core_count_) || trace.execution_run_epoch != epoch ||
-                    trace.kernel_start_cycles == 0 || trace.kernel_end_cycles < trace.kernel_start_cycles)
-                    continue;
-                if (level >= ChipSwimlaneLevel::SCHEDULE_TIMING &&
-                    (trace.dispatch_end_cycles == 0 || trace.complete_start_cycles < trace.kernel_end_cycles))
-                    continue;
-                const uint64_t receive =
-                    trace.ready_observe_cycles != 0 && trace.kernel_start_cycles >= trace.ready_observe_cycles ?
-                        trace.kernel_start_cycles - trace.ready_observe_cycles :
-                        0;
-                ChipSwimlaneAicoreTaskRecord record{
-                    trace.kernel_start_cycles, trace.kernel_end_cycles, identity, static_cast<uint32_t>(index),
-                    static_cast<uint32_t>(std::min(receive, uint64_t{UINT32_MAX}))
-                };
-                chip_swimlane_aicpu_record_staged_task(
-                    static_cast<int>(trace.worker_id), kDiagnosticDumpLane, record, trace.dispatch_end_cycles,
-                    trace.complete_start_cycles
-                );
-                phase(
-                    trace.worker_id, SchedPhaseKind::StateProbe, trace.state_probe_start_cycles,
-                    trace.state_probe_end_cycles, trace.dispatch_loop_iter, identity
-                );
-                phase(
-                    trace.worker_id, SchedPhaseKind::Dispatch, trace.dispatch_start_cycles, trace.dispatch_end_cycles,
-                    trace.dispatch_loop_iter, identity
-                );
-                phase(
-                    trace.worker_id, SchedPhaseKind::Complete, trace.complete_start_cycles, trace.complete_end_cycles,
-                    trace.complete_loop_iter, identity
-                );
-            }
+        const uint64_t first = metadata[task].trace_index_base;
+        const uint64_t cells =
+            static_cast<uint64_t>(metadata[task].logical_block_num) * metadata[task].active_mask.count();
+        const uint64_t end = std::min(first + cells, trace_limit);
+        for (uint64_t index = first; index < end; ++index) {
+            const auto &trace = traces[index];
+            if (trace.valid == 0 || trace.task_ref != task || trace.worker_id >= static_cast<uint64_t>(core_count_) ||
+                trace.execution_run_epoch != epoch || trace.kernel_start_cycles == 0 ||
+                trace.kernel_end_cycles < trace.kernel_start_cycles)
+                continue;
+            if (level >= ChipSwimlaneLevel::SCHEDULE_TIMING &&
+                (trace.dispatch_end_cycles == 0 || trace.complete_start_cycles < trace.kernel_end_cycles))
+                continue;
+            const uint64_t receive =
+                trace.ready_observe_cycles != 0 && trace.kernel_start_cycles >= trace.ready_observe_cycles ?
+                    trace.kernel_start_cycles - trace.ready_observe_cycles :
+                    0;
+            ChipSwimlaneAicoreTaskRecord record{
+                trace.kernel_start_cycles, trace.kernel_end_cycles, identity, static_cast<uint32_t>(index),
+                static_cast<uint32_t>(std::min(receive, uint64_t{UINT32_MAX}))
+            };
+            chip_swimlane_aicpu_record_staged_task(
+                static_cast<int>(trace.worker_id), kDiagnosticDumpLane, record, trace.dispatch_end_cycles,
+                trace.complete_start_cycles
+            );
+            if (level < ChipSwimlaneLevel::SCHED_PHASES) continue;
+            phase(
+                trace.worker_id, SchedPhaseKind::StateProbe, trace.state_probe_start_cycles,
+                trace.state_probe_end_cycles, trace.dispatch_loop_iter, identity
+            );
+            phase(
+                trace.worker_id, SchedPhaseKind::Dispatch, trace.dispatch_start_cycles, trace.dispatch_end_cycles,
+                trace.dispatch_loop_iter, identity
+            );
+            phase(
+                trace.worker_id, SchedPhaseKind::Complete, trace.complete_start_cycles, trace.complete_end_cycles,
+                trace.complete_loop_iter, identity
+            );
         }
     }
     int32_t core_ids[kMaxWorkers];
@@ -722,13 +702,6 @@ bool AicoreLifecycle::settle_run_diagnostics(Runtime *runtime, bool graph_comple
         return false;
     }
     auto *counter_context = aicore_scheduler_bootstrap_context(runtime);
-    // All publishers have retired. Preserve the observed progress in the GM
-    // diagnostic image without racing the fallback's per-task FAA writers.
-    auto *retired_run = aicore_scheduler_run_control(counter_context);
-    if (retired_run != nullptr && retired_run->run_completed_read_address != 0) {
-        retired_run->resolved_task_count = aicore_scheduler_resolved_count(retired_run);
-        wmb();
-    }
     if (counter_context != nullptr && counter_context->completion_counters_offset != 0) {
         auto *base = aicore_scheduler_state_base(counter_context);
         const auto *summary = scheduler_state_at<SchedulerGraphSummary>(base, counter_context->graph_summary_offset);

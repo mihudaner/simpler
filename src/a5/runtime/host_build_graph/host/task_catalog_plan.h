@@ -12,17 +12,19 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
-#include <deque>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "scheduler/scheduler_task_catalog.h"
 #include "dependency_plan.h"
+#include "host/control_folding.h"
+#include "task_catalog_deferral.h"
 
 struct SchedulerTaskCatalogPlan {
+    uint32_t cluster_count{0};
     uint64_t header_offset{0};
     uint64_t total_size{0};
     SchedulerTaskCatalogHeader header{};
@@ -42,15 +44,19 @@ struct SchedulerTaskOrder {
     std::vector<uint32_t> task_ranks;
 };
 
+// Sorting owns these scratch successor rows. Deduplicate in place and reuse them for the rank check.
 inline bool scheduler_topological_task_order(
-    std::vector<std::vector<int64_t>> successors, SchedulerTaskOrder *order, std::string *error = nullptr
+    std::vector<std::vector<int64_t>> &successors, const std::vector<SchedulerTaskMetadata> &metadata,
+    uint32_t clusters, bool defer_side_tasks, SchedulerTaskOrder *order, std::string *error = nullptr
 ) {
     const auto fail = [&](const std::string &message) {
         if (error != nullptr) *error = message;
         return false;
     };
     const size_t count = successors.size();
-    if (order == nullptr || count > INT32_MAX) return fail("invalid topological task count");
+    if (order == nullptr || count > INT32_MAX || metadata.size() != count || clusters == 0 ||
+        clusters > SCHEDULER_CLUSTER_CAPACITY)
+        return fail("invalid task ordering inputs");
     for (const auto &row : successors)
         for (const auto successor : row)
             if (successor < 0 || static_cast<uint64_t>(successor) >= count)
@@ -92,6 +98,8 @@ inline bool scheduler_topological_task_order(
     std::vector<uint32_t> ranks(count, 0);
     for (size_t rank = 0; rank < count; ++rank)
         ranks[topological[rank]] = static_cast<uint32_t>(rank);
+    if (defer_side_tasks)
+        scheduler_defer_side_tasks(successors, metadata, clusters, levels, bottom_levels, topological, ranks);
     *order = {std::move(topological), std::move(levels), std::move(bottom_levels), std::move(ranks)};
     if (error != nullptr) error->clear();
     return true;
@@ -177,254 +185,338 @@ inline bool scheduler_apply_task_order(
     return true;
 }
 
-inline bool scheduler_order_task_catalog(
-    const SchedulerGraphAccess &graph, const std::vector<SchedulerTaskMetadata> &metadata,
-    const std::vector<int64_t> &completed, SchedulerTaskCatalogPlan *plan, std::string *error = nullptr
+inline bool scheduler_can_defer_side_tasks(
+    bool native_graph, bool has_deferred_work, uint64_t control_count,
+    const std::vector<SchedulerTaskMetadata> &metadata
 ) {
-    const auto fail = [&](const std::string &message) {
-        if (error != nullptr) *error = message;
-        return false;
+    if (native_graph || has_deferred_work || control_count != 0) return false;
+    return std::none_of(metadata.begin(), metadata.end(), [](const SchedulerTaskMetadata &task) {
+        return scheduler_task_has_predicate(task.flags);
+    });
+}
+
+// An edge strictly decreases bottom level, so descending bottom level is topological.
+// Only reorder consecutive synchronous ordinary tasks. Keep every resource or async
+// boundary at its original rank, including when a dependency is external to this graph.
+inline void scheduler_prioritize_ordinary_segments(
+    const std::vector<SchedulerTaskMetadata> &metadata, const std::vector<LaneMask> &async_lanes,
+    const SchedulerDependencyPlan &deps, const std::vector<std::vector<int64_t>> &successors, uint32_t clusters,
+    SchedulerTaskOrder &order
+) {
+    const auto movable = [&](int64_t ref) {
+        const auto flags = metadata[ref].flags;
+        return scheduler_task_is_executable(flags) && !scheduler_task_is_inline(flags) &&
+               !scheduler_task_is_mix(flags) && !scheduler_task_requires_sync_start(flags) &&
+               !scheduler_task_has_predicate(flags) && async_lanes[ref].is_empty();
     };
-    const size_t count = metadata.size();
-    if (plan == nullptr || count > INT32_MAX || count != graph.task_count || plan->header.task_count != count ||
-        plan->descriptors.size() != SCHEDULER_EXECUTION_ENGINE_COUNT)
-        return fail("invalid task catalog dimensions");
-    std::vector<bool> active(count, true);
-    for (const int64_t ref : completed) {
-        if (!scheduler_task_ref_valid(graph, ref)) return fail("invalid completed task " + std::to_string(ref));
-        active[ref] = false;
-    }
-    std::vector<std::vector<int64_t>> successors(count);
-    for (size_t consumer = 0; consumer < count; ++consumer) {
-        if (!active[consumer]) continue;
-        SchedulerFaninView view{};
-        if (scheduler_node_fanin_view(graph, consumer, &view) != SchedulerGraphResult::OK)
-            return fail("invalid fanin view at task " + std::to_string(consumer));
-        for (uint32_t edge = 0; edge < view.count; ++edge) {
-            int64_t producer = SCHEDULER_TASK_REF_INVALID;
-            if (scheduler_fanin_ref(view, consumer, edge, &producer) != SchedulerGraphResult::OK)
-                return fail("invalid data predecessor at task " + std::to_string(consumer));
-            successors[producer].push_back(static_cast<int64_t>(consumer));
+    auto &refs = order.task_order;
+    std::vector<uint8_t> pending(refs.size());
+    std::vector<int64_t> packed;
+    for (auto begin = refs.begin(); begin != refs.end();) {
+        if (!movable(*begin)) {
+            ++begin;
+            continue;
         }
+        const auto end = std::find_if_not(begin, refs.end(), movable);
+        std::stable_sort(begin, end, [&](int64_t left, int64_t right) {
+            return order.task_bottom_levels[left] > order.task_bottom_levels[right];
+        });
+        // Give the critical branch first choice. Independent siblings may use the rest of
+        // this wave if every predecessor already precedes them in the new directory.
+        for (auto it = begin; it != end; ++it)
+            pending[*it] = 1;
+        packed.clear();
+        for (auto it = begin; it != end; ++it) {
+            const auto first = *it;
+            if (!pending[first]) continue;
+            packed.push_back(first);
+            pending[first] = 0;
+            const auto &task = metadata[first];
+            std::array<uint32_t, 2> free{clusters, clusters * PLATFORM_AIV_CORES_PER_BLOCKDIM};
+            const size_t engine = task.active_mask.has_aic() ? 0 : 1;
+            if (task.logical_block_num >= free[engine]) continue;
+            free[engine] -= task.logical_block_num;
+            // Use the latest executable predecessor; folded controls often fan out to the whole graph.
+            int64_t fork = -1;
+            for (const auto pred : deps.fanin[first]) {
+                if (!scheduler_task_is_executable(metadata[pred].flags) ||
+                    scheduler_task_is_inline(metadata[pred].flags))
+                    continue;
+                if (fork < 0 || order.task_ranks[pred] > order.task_ranks[fork]) fork = pred;
+            }
+            if (fork < 0) continue;
+            // Packing is optional. Inspect at most one wave of candidate siblings per first task.
+            // Successor rows are sorted by ref. On wide forks, start just after this child so
+            // later waves can still pack their nearby siblings without rescanning the entire row.
+            const auto &siblings = successors[fork];
+            const size_t budget = clusters * PLATFORM_CORES_PER_BLOCKDIM;
+            auto sibling_it =
+                siblings.size() > budget ? std::upper_bound(siblings.begin(), siblings.end(), first) : siblings.begin();
+            for (size_t checked = 0; checked < std::min(siblings.size(), budget); ++checked) {
+                if (sibling_it == siblings.end()) sibling_it = siblings.begin();
+                const auto next = *sibling_it++;
+                if (!pending[next] || order.task_levels[next] > order.task_levels[first]) continue;
+                const auto &sibling = metadata[next];
+                auto &remaining = free[sibling.active_mask.has_aic() ? 0 : 1];
+                if (sibling.logical_block_num > remaining ||
+                    std::any_of(deps.fanin[next].begin(), deps.fanin[next].end(), [&](int64_t pred) {
+                        return pending[pred] != 0;
+                    }))
+                    continue;
+                remaining -= sibling.logical_block_num;
+                packed.push_back(next);
+                pending[next] = 0;
+            }
+        }
+        std::copy(packed.begin(), packed.end(), begin);
+        for (auto it = begin; it != end; ++it)
+            order.task_ranks[*it] = static_cast<uint32_t>(it - refs.begin());
+        begin = end;
     }
+}
+
+// A fixed-wave MIX can be prepared before an independent, later-submitted ordinary branch.
+// Keep its predecessors and the other direct inputs to its consumers ahead of it.
+inline void scheduler_advance_fixed_mix(
+    const std::vector<std::vector<int64_t>> &successors, const std::vector<SchedulerTaskMetadata> &metadata,
+    const std::vector<LaneMask> *async_lanes, SchedulerTaskOrder &order
+) {
+    auto &refs = order.task_order;
+    size_t begin = 0;
+    for (size_t rank = 0; rank < refs.size(); ++rank) {
+        const auto ref = refs[rank];
+        const auto flags = metadata[ref].flags;
+        const bool synchronous = scheduler_task_is_executable(flags) && !scheduler_task_is_inline(flags) &&
+                                 !scheduler_task_has_predicate(flags) &&
+                                 (async_lanes == nullptr || (*async_lanes)[ref].is_empty());
+        if (synchronous && !scheduler_task_is_mix(flags) && !scheduler_task_requires_sync_start(flags)) continue;
+        if (synchronous && scheduler_task_is_mix(flags) && scheduler_task_has_fixed_owners(flags)) {
+            size_t pos = rank;
+            while (pos > begin && refs[pos - 1] > ref) {
+                // Advancing the vector directory must not take a pure Cube branch's earlier execution opportunity.
+                if (metadata[refs[pos - 1]].active_mask.has_aic()) break;
+                const auto &consumers = successors[refs[pos - 1]];
+                if (std::any_of(consumers.begin(), consumers.end(), [&](int64_t child) {
+                        return child == ref ||
+                               std::binary_search(successors[ref].begin(), successors[ref].end(), child);
+                    }))
+                    break;
+                --pos;
+            }
+            std::rotate(refs.begin() + pos, refs.begin() + rank, refs.begin() + rank + 1);
+            for (size_t i = pos; i <= rank; ++i)
+                order.task_ranks[refs[i]] = static_cast<uint32_t>(i);
+        }
+        begin = rank + 1;
+    }
+}
+
+inline bool scheduler_order_task_catalog(
+    const SchedulerDependencyPlan &decoded, const std::vector<SchedulerTaskMetadata> &metadata,
+    SchedulerTaskCatalogPlan *plan, std::string *error = nullptr, bool defer_side_tasks = false,
+    const std::vector<LaneMask> *async_lanes = nullptr
+) {
+    const size_t count = metadata.size();
+    if (plan == nullptr || plan->header.task_count != count || decoded.fanin.size() != count ||
+        plan->descriptors.size() != SCHEDULER_EXECUTION_ENGINE_COUNT)
+        return false;
+    std::vector<std::vector<int64_t>> successors(count);
+    for (size_t consumer = 0; consumer < count; ++consumer)
+        for (const auto producer : decoded.fanin[consumer])
+            successors[producer].push_back(static_cast<int64_t>(consumer));
     SchedulerTaskOrder ordered;
-    if (!scheduler_topological_task_order(successors, &ordered, error)) return false;
-    auto &ranks = ordered.task_ranks;
-    for (size_t predecessor = 0; predecessor < count; ++predecessor)
-        for (const int64_t successor : successors[predecessor])
-            if (ranks[predecessor] >= ranks[successor]) return fail("task ordering violates a predecessor constraint");
+    if (!scheduler_topological_task_order(successors, metadata, plan->cluster_count, defer_side_tasks, &ordered, error))
+        return false;
+    if (async_lanes != nullptr) {
+        if (async_lanes->size() != count) return false;
+        scheduler_prioritize_ordinary_segments(
+            metadata, *async_lanes, decoded, successors, plan->cluster_count, ordered
+        );
+    }
+    if (defer_side_tasks || async_lanes != nullptr)
+        scheduler_advance_fixed_mix(successors, metadata, async_lanes, ordered);
+    for (size_t producer = 0; producer < count; ++producer)
+        for (const auto consumer : successors[producer])
+            if (ordered.task_ranks[producer] >= ordered.task_ranks[consumer]) {
+                if (error != nullptr) *error = "task ordering violates a predecessor constraint";
+                return false;
+            }
     return scheduler_apply_task_order(std::move(ordered), metadata, plan, error);
 }
 
-// Zero/single-consumer joins can move their dependencies to that consumer
-// without increasing the edge count. The unpublished ordinary image owns the
-// supplied pool; tensor/scalar regions and physical issuance order stay fixed.
-// The caller has validated inline task shapes and fixed the issuance order.
-template <typename Storage>
-inline bool scheduler_fold_ordinary_controls(
-    Storage *storage, int32_t *fanin_pool, uint64_t fanin_capacity, std::vector<SchedulerTaskMetadata> *metadata,
-    std::vector<int64_t> *completed, std::string *error = nullptr
+// The two terminal MIX Calls have one immutable identity per physical lane. Additional inputs
+// into either MIX are allowed: their completion is still checked on the execution path.
+inline void scheduler_plan_terminal_mix_calls(
+    const SchedulerDependencyPlan &deps, const std::vector<SchedulerTaskMetadata> &metadata,
+    SchedulerTaskCatalogPlan &catalog
 ) {
-    const auto fail = [&](const std::string &message) {
-        if (error != nullptr) *error = message;
-        return false;
-    };
-    if (metadata == nullptr || completed == nullptr || metadata->size() > INT32_MAX ||
-        (!metadata->empty() && storage == nullptr) || (fanin_capacity != 0 && fanin_pool == nullptr))
-        return fail("invalid ordinary control image");
-    const size_t count = metadata->size();
-    const uintptr_t pool_begin = reinterpret_cast<uintptr_t>(fanin_pool);
-    if (fanin_capacity > (UINTPTR_MAX - pool_begin) / sizeof(int32_t)) return fail("invalid ordinary fanin pool");
-    const uintptr_t pool_end = pool_begin + fanin_capacity * sizeof(int32_t);
-    std::vector<bool> active(count, true), controls(count, false), queued(count, false);
-    for (const int64_t ref : *completed) {
-        if (ref < 0 || static_cast<uint64_t>(ref) >= count || !active[ref])
-            return fail("invalid completed control task");
-        active[ref] = false;
+    const auto &refs = catalog.catalogs[static_cast<uint32_t>(SchedulerExecutionEngine::AIV)];
+    if (refs.size() < 3 || deps.sinks.size() != 1 || refs.back() != deps.sinks[0]) return;
+    const auto first = refs.end() - 3;
+    for (unsigned i = 0; i < 3; ++i) {
+        const auto &task = metadata[first[i]];
+        const bool mix = i != 0;
+        const LaneMask lanes = mix ? scheduler_cluster_lanes() : LaneMask::aiv0();
+        if (task.active_mask != lanes || !scheduler_task_has_fixed_owners(task.flags) ||
+            scheduler_task_requires_sync_start(task.flags) || scheduler_task_has_predicate(task.flags) ||
+            task.logical_block_num != catalog.cluster_count * (mix ? 1 : PLATFORM_AIV_CORES_PER_BLOCKDIM))
+            return;
     }
-    std::deque<uint32_t> pending;
-    for (size_t ref = 0; ref < count; ++ref) {
-        if (!active[ref] || !scheduler_task_is_inline((*metadata)[ref].flags)) continue;
-        controls[ref] = true;
-        queued[ref] = true;
-        pending.push_back(static_cast<uint32_t>(ref));
-    }
-    if (pending.empty()) {
-        if (error != nullptr) error->clear();
-        return true;
-    }
-    std::vector<std::vector<int32_t>> fanin(count);
-    std::vector<std::set<uint32_t>> consumers(count);
-    uint64_t original_edges = 0;
-    for (size_t ref = 0; ref < count; ++ref) {
-        if (!active[ref]) continue;
-        const auto &payload = storage[ref].payload;
-        const int32_t edges = payload.fanin_count;
-        const auto *refs = payload.fanin_data();
-        const uintptr_t address = reinterpret_cast<uintptr_t>(refs);
-        if (edges < 0 || edges > SCHEDULER_GRAPH_MAX_FANIN ||
-            (edges != 0 && (refs == nullptr || address < pool_begin || address > pool_end ||
-                            static_cast<uint64_t>(edges) > (pool_end - address) / sizeof(int32_t))))
-            return fail("invalid control fanin row at task " + std::to_string(ref));
-        for (int32_t edge = 0; edge < edges; ++edge) {
-            const int32_t producer = refs[edge];
-            if (producer < 0 || static_cast<uint64_t>(producer) >= ref)
-                return fail("invalid control predecessor at task " + std::to_string(ref));
-            fanin[ref].push_back(producer);
-            consumers[producer].insert(static_cast<uint32_t>(ref));
+    for (unsigned i = 0; i < 2; ++i) {
+        bool linked = false;
+        for (size_t consumer = 0; consumer < deps.fanin.size(); ++consumer) {
+            if (deps.host_done[consumer]) continue;
+            const auto &fanin = deps.fanin[consumer];
+            if (std::find(fanin.begin(), fanin.end(), first[i]) == fanin.end()) continue;
+            if (consumer != static_cast<size_t>(first[i + 1])) return;
+            linked = true;
         }
-        original_edges += edges;
+        if (!linked) return;
     }
-    std::vector<int64_t> folded;
-    const auto enqueue = [&](uint32_t ref) {
-        if (active[ref] && controls[ref] && !queued[ref]) {
-            queued[ref] = true;
-            pending.push_back(ref);
+    catalog.header.terminal_mix_refs[0] = static_cast<uint32_t>(first[1]);
+    catalog.header.terminal_mix_refs[1] = static_cast<uint32_t>(first[2]);
+}
+
+// A member observes every data predecessor's logical completion before it applies its MIX floor.
+// Track only contiguous prefixes of ordinary work. A larger rank on an independent branch cannot
+// certify an earlier task. An uncertain edge or task contributes no completion proof.
+inline void scheduler_elide_proven_mix_floors(
+    const SchedulerDependencyPlan &deps, const std::vector<SchedulerTaskMetadata> &metadata,
+    const std::vector<LaneMask> &possible_async_lanes, SchedulerTaskCatalogPlan &catalog
+) {
+    using LaneFloors = std::array<uint32_t, PLATFORM_CORES_PER_BLOCKDIM>;
+    std::vector<LaneFloors> completed_prefix(metadata.size());
+    LaneFloors last_ordinary{};
+    for (const int64_t ref : catalog.task_order) {
+        const auto &task = metadata[ref];
+        if (deps.host_done[ref] || !scheduler_task_is_executable(task.flags) || scheduler_task_is_inline(task.flags))
+            continue;
+        auto &proof = completed_prefix[ref];
+        const bool known = !scheduler_task_has_predicate(task.flags) && possible_async_lanes[ref].is_empty();
+        if (known)
+            for (const int64_t pred : deps.fanin[ref])
+                for (size_t lane = 0; lane < proof.size(); ++lane)
+                    proof[lane] = std::max(proof[lane], completed_prefix[pred][lane]);
+
+        auto &row = catalog.order_rows[ref];
+        const auto lanes = scheduler_task_claim_lanes(task.flags, task.active_mask).merged_with(task.active_mask);
+        if (scheduler_task_is_mix(task.flags)) {
+            // Keep the full peer protocol if even one participating lane can owe earlier work.
+            bool all_clear = known;
+            for (size_t lane = 0; lane < proof.size(); ++lane)
+                if (lanes.has(static_cast<SubtaskSlot>(lane)) && proof[lane] < last_ordinary[lane]) all_clear = false;
+            if (all_clear) std::fill_n(row.required_floor, proof.size(), 0u);
+        } else {
+            for (size_t lane = 0; lane < proof.size(); ++lane) {
+                if (!lanes.has(static_cast<SubtaskSlot>(lane))) continue;
+                if (known && proof[lane] >= last_ordinary[lane]) proof[lane] = row.rank + 1;
+                last_ordinary[lane] = row.rank + 1;
+            }
         }
-    };
-    while (!pending.empty()) {
-        const uint32_t ref = pending.front();
-        pending.pop_front();
-        queued[ref] = false;
-        if (!active[ref] || consumers[ref].size() > 1) continue;
-        const uint32_t consumer = consumers[ref].empty() ? UINT32_MAX : *consumers[ref].begin();
-        std::vector<int32_t> merged;
-        if (consumer != UINT32_MAX) {
-            for (const int32_t producer : fanin[consumer])
-                if (producer != static_cast<int32_t>(ref)) merged.push_back(producer);
-            merged.insert(merged.end(), fanin[ref].begin(), fanin[ref].end());
-            std::sort(merged.begin(), merged.end());
-            merged.erase(std::unique(merged.begin(), merged.end()), merged.end());
-            if (merged.size() > SCHEDULER_GRAPH_MAX_FANIN) continue;
-        }
-        std::vector<int32_t> affected = fanin[ref];
-        for (const int32_t producer : fanin[ref])
-            consumers[producer].erase(ref);
-        if (consumer != UINT32_MAX) {
-            affected.insert(affected.end(), fanin[consumer].begin(), fanin[consumer].end());
-            for (const int32_t producer : fanin[consumer])
-                consumers[producer].erase(consumer);
-            fanin[consumer] = std::move(merged);
-            for (const int32_t producer : fanin[consumer])
-                consumers[producer].insert(consumer);
-            enqueue(consumer);
-        }
-        active[ref] = false;
-        fanin[ref].clear();
-        folded.push_back(ref);
-        for (const int32_t producer : affected)
-            enqueue(static_cast<uint32_t>(producer));
     }
+}
+
+// The original topology fixes issue order. Fold pure controls with at most one consumer within the fan-in limit.
+inline std::vector<int64_t> scheduler_fold_ordinary_controls(
+    std::vector<std::vector<int64_t>> &fanin, const std::vector<bool> &host_done,
+    const std::vector<SchedulerTaskMetadata> &metadata, uint64_t capacity
+) {
+    std::vector<bool> active(fanin.size()), controls(fanin.size());
+    bool has_live_control = false;
+    for (size_t ref = 0; ref < fanin.size(); ++ref) {
+        active[ref] = !host_done[ref];
+        controls[ref] = active[ref] && scheduler_task_is_inline(metadata[ref].flags);
+        has_live_control |= controls[ref];
+    }
+    if (!has_live_control) return {};
+
     uint64_t edges = 0;
     for (const auto &row : fanin)
         edges += row.size();
-    if (edges > original_edges) return fail("control folding increased the edge count");
-    // Aliased input rows can occupy less storage than their logical edge count.
-    // Keep that valid image intact when a separate-row repack would not fit.
-    if (folded.empty() || edges > fanin_capacity) {
-        if (error != nullptr) error->clear();
-        return true;
-    }
-    uint64_t cursor = 0;
-    for (size_t ref = 0; ref < count; ++ref) {
-        auto &payload = storage[ref].payload;
-        payload.fanin_count = static_cast<int32_t>(fanin[ref].size());
-        payload.fanin.set(fanin[ref].empty() ? nullptr : fanin_pool + cursor);
-        if (!fanin[ref].empty()) std::copy(fanin[ref].begin(), fanin[ref].end(), fanin_pool + cursor);
-        cursor += fanin[ref].size();
-    }
-    for (const int64_t ref : folded) {
-        (*metadata)[ref] = {};
-        completed->push_back(ref);
-    }
-    std::sort(completed->begin(), completed->end());
-    if (error != nullptr) error->clear();
-    return true;
+    if (edges <= capacity)
+        return scheduler_fold_control_fanin(fanin, std::move(active), controls, SCHEDULER_GRAPH_MAX_FANIN);
+
+    // Aliased rows can represent more logical edges than the pool holds.
+    // Fold a copy when separate rows could exceed the pool capacity.
+    auto packed = fanin;
+    auto folded = scheduler_fold_control_fanin(packed, std::move(active), controls, SCHEDULER_GRAPH_MAX_FANIN);
+    if (folded.empty()) return {};
+    edges = 0;
+    for (const auto &row : packed)
+        edges += row.size();
+    if (edges > capacity) return {};
+    fanin = std::move(packed);
+    return folded;
 }
 
-// Resident ordinary tasks confirm all fanin DONE before execution or predicate
-// skipping. Their logical DONE therefore certifies their transitive predecessors.
-// The caller owns the unpublished image and has already fixed the issue order.
+// Reduce transitive edges in the decoded rows and derive the final dependencies. Keep row addresses stable
+// unless folding succeeds; repacked rows start at offsets determined by their lengths before reduction.
 template <typename Storage>
 inline bool scheduler_prepare_ordinary_fanin(
-    Storage *storage, const std::vector<uint32_t> &task_ranks, const std::vector<int64_t> &completed,
+    Storage *storage, int32_t *pool, uint64_t capacity, std::vector<SchedulerTaskMetadata> &metadata,
+    std::vector<int64_t> &completed, SchedulerTaskCatalogPlan &catalog, SchedulerDependencyPlan &dependencies,
     std::string *error = nullptr
 ) {
-    const auto fail = [&](const std::string &message) {
-        if (error != nullptr) *error = message;
+    auto &rows = dependencies.fanin;
+    const auto folded = scheduler_fold_ordinary_controls(rows, dependencies.host_done, metadata, capacity);
+    if (folded.size() > catalog.header.control_count) {
+        if (error != nullptr) *error = "folded control count exceeds the task catalog";
         return false;
-    };
-    const size_t count = task_ranks.size();
-    if (count > INT32_MAX || (count != 0 && storage == nullptr)) return fail("invalid ordinary fanin image");
-    std::vector<bool> active(count, true);
-    for (const int64_t ref : completed) {
-        if (ref < 0 || static_cast<uint64_t>(ref) >= count) return fail("invalid completed fanin task");
-        active[ref] = false;
     }
-    // Validate all live rows before changing any of them. Completed nodes may
-    // retain stale incoming references, as in task-catalog ordering.
-    std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
-    ranges.reserve(count);
-    for (size_t consumer = 0; consumer < count; ++consumer) {
-        if (!active[consumer]) continue;
-        const auto &payload = storage[consumer].payload;
-        const int32_t edges = payload.fanin_count;
-        const auto *refs = payload.fanin_data();
-        if (task_ranks[consumer] >= count || edges < 0 || edges > SCHEDULER_GRAPH_MAX_FANIN ||
-            (edges != 0 && refs == nullptr))
-            return fail("invalid ordinary fanin row at task " + std::to_string(consumer));
-        for (int32_t edge = 0; edge < edges; ++edge) {
-            const int32_t producer = refs[edge];
-            if (producer < 0 || static_cast<uint64_t>(producer) >= consumer || task_ranks[producer] >= count)
-                return fail("invalid ordinary predecessor at task " + std::to_string(consumer));
+    if (folded.empty()) {
+        std::vector<std::pair<uintptr_t, uintptr_t>> ranges;
+        for (size_t ref = 0; ref < rows.size(); ++ref) {
+            if (rows[ref].empty()) continue;
+            const auto begin = reinterpret_cast<uintptr_t>(storage[ref].payload.fanin_data());
+            ranges.emplace_back(begin, begin + rows[ref].size() * sizeof(int32_t));
         }
-        if (edges != 0) {
-            const uintptr_t begin = reinterpret_cast<uintptr_t>(refs);
-            const uint64_t bytes = static_cast<uint64_t>(edges) * sizeof(int32_t);
-            if (bytes > UINTPTR_MAX - begin) return fail("invalid ordinary fanin extent");
-            ranges.emplace_back(begin, begin + bytes);
+        std::sort(ranges.begin(), ranges.end());
+        for (size_t i = 1; i < ranges.size(); ++i)
+            if (ranges[i].first < ranges[i - 1].second) {
+                dependencies.collect_sinks();
+                return true;
+            }
+    } else {
+        catalog.header.control_count -= folded.size();
+        for (const auto ref : folded) {
+            metadata[ref] = {};
+            dependencies.host_done[ref] = true;
+            completed.push_back(ref);
         }
+        std::sort(completed.begin(), completed.end());
     }
-    // Both compaction and sorting overwrite the row. Aliased rows are valid,
-    // but this helper owns no spare pool capacity to separate them safely.
-    // Preserve the entire input before any mutation when live rows overlap.
-    std::sort(ranges.begin(), ranges.end());
-    for (size_t index = 1; index < ranges.size(); ++index) {
-        if (ranges[index].first < ranges[index - 1].second) {
-            if (error != nullptr) error->clear();
-            return true;
+    std::vector<uint64_t> ancestors(rows.size(), 0);
+    uint64_t cursor = 0;
+    for (size_t ref = 0; ref < rows.size(); ++ref) {
+        auto &row = rows[ref];
+        auto &payload = storage[ref].payload;
+        if (!folded.empty()) {
+            payload.fanin.set(row.empty() ? nullptr : pool + cursor);
+            cursor += row.size();
+            if (row.empty()) payload.fanin_count = 0;
         }
-    }
-    // Bit d-1 denotes a predecessor d refs earlier. The bounded window retains
-    // distant edges and costs one Host word per task, independent of DAG depth.
-    std::vector<uint64_t> ancestors(count, 0);
-    for (size_t consumer = 0; consumer < count; ++consumer) {
-        if (!active[consumer]) continue;
-        auto &payload = storage[consumer].payload;
-        auto *refs = payload.fanin_data();
-        uint64_t direct = 0;
-        uint64_t implied = 0;
-        for (int32_t edge = 0; edge < payload.fanin_count; ++edge) {
-            const size_t distance = consumer - refs[edge];
-            if (distance > 64) continue;
-            direct |= uint64_t{1} << (distance - 1);
-            if (distance < 64) implied |= ancestors[refs[edge]] << distance;
+        if (row.empty()) continue;
+        uint64_t direct = 0, implied = 0;
+        for (const auto producer : row) {
+            const size_t distance = ref - producer;
+            if (distance <= 64) direct |= uint64_t{1} << (distance - 1);
+            if (distance < 64) implied |= ancestors[producer] << distance;
         }
-        // Host-completed nodes never acquire ancestors: their historical fanin
-        // may be stale and was not observed by the resident scheduler.
-        ancestors[consumer] = direct | implied;
-        int32_t retained = 0;
-        for (int32_t edge = 0; edge < payload.fanin_count; ++edge) {
-            const size_t distance = consumer - refs[edge];
-            if (distance > 64 || (implied & (uint64_t{1} << (distance - 1))) == 0) refs[retained++] = refs[edge];
-        }
-        payload.fanin_count = retained;
-        if (retained < 2) continue;
-        std::stable_sort(refs, refs + payload.fanin_count, [&](int32_t left, int32_t right) {
-            return task_ranks[left] < task_ranks[right];
+        ancestors[ref] = direct | implied;
+        auto end = std::remove_if(row.begin(), row.end(), [&](int64_t producer) {
+            const size_t distance = ref - producer;
+            return distance <= 64 && (implied & (uint64_t{1} << (distance - 1))) != 0;
         });
+        std::stable_sort(row.begin(), end, [&](int64_t left, int64_t right) {
+            return catalog.task_ranks[left] < catalog.task_ranks[right];
+        });
+        std::transform(row.begin(), end, payload.fanin_data(), [](int64_t producer) {
+            return static_cast<int32_t>(producer);
+        });
+        row.erase(end, row.end());
+        payload.fanin_count = static_cast<int32_t>(row.size());
     }
-    if (error != nullptr) error->clear();
+    dependencies.collect_sinks();
     return true;
 }
 
@@ -436,6 +528,7 @@ inline bool scheduler_size_task_catalog(
         start_offset == 0)
         return false;
     SchedulerTaskCatalogPlan next{};
+    next.cluster_count = clusters;
     auto &header = next.header;
     header.task_count = metadata.size();
     next.descriptors.resize(SCHEDULER_EXECUTION_ENGINE_COUNT);

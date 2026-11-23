@@ -54,6 +54,25 @@ public:
         context.payload_per_core_[0][0].local_context.async_ctx.task_token = task;
         return context.deferred_slab_per_core_[0][0];
     }
+
+    static void dirty(SchedulerContext &context, ChipTaskSlotState &running, ChipTaskSlotState &pending) {
+        for (auto &state : context.core_exec_states_) {
+            state.reg_addr = 0x1234;
+            state.running_slot_state = &running;
+            state.pending_slot_state = &pending;
+            state.running_reg_task_id = 17;
+            state.pending_reg_task_id = 19;
+        }
+    }
+    static void expect_entry_reset(const SchedulerContext &context) {
+        for (const auto &state : context.core_exec_states_) {
+            EXPECT_EQ(state.reg_addr, 0u);
+            EXPECT_EQ(state.running_slot_state, nullptr);
+            EXPECT_EQ(state.pending_slot_state, nullptr);
+            EXPECT_EQ(state.running_reg_task_id, 0);
+            EXPECT_EQ(state.pending_reg_task_id, 0);
+        }
+    }
 };
 namespace aicpu_cache_maintenance {
 void invalidate_range_impl(const void *address, size_t bytes) { invalidations.emplace_back(address, bytes); }
@@ -90,12 +109,9 @@ TEST(EntryCacheDeinit, FailedSnapshotFallsBackToFullThroughExecutor) {
             ASSERT_EQ(invalidations.size(), 2u);
             EXPECT_EQ(invalidations[0].first, &runtime);
             EXPECT_EQ(invalidations[0].second, simpler::tmr::entry_tensor_offset + 4 * sizeof(Tensor));
-            EXPECT_EQ(
-                invalidations[1].first,
-                reinterpret_cast<const char *>(&runtime) + offsetof(DeviceRuntimeLaunchDesc, workers)
-            );
+            EXPECT_EQ(invalidations[1].first, runtime.get_workers());
         } else {
-            ASSERT_EQ(invalidations.size(), 1u);
+            ASSERT_EQ(invalidations.size(), 2u);
             EXPECT_EQ(invalidations[0].first, &runtime);
             EXPECT_EQ(invalidations[0].second, sizeof(runtime.dev));
         }
@@ -222,28 +238,6 @@ TEST(EntryCacheDeinit, WaitListTrackingFailureCannotCertifyCompleteRetirement) {
         EXPECT_EQ(header->sched_error_code.load(), code);
     }
 }
-
-class SchedulerContextTestPeer {
-public:
-    static void dirty(SchedulerContext &context, ChipTaskSlotState &running, ChipTaskSlotState &pending) {
-        for (auto &state : context.core_exec_states_) {
-            state.reg_addr = 0x1234;
-            state.running_slot_state = &running;
-            state.pending_slot_state = &pending;
-            state.running_reg_task_id = 17;
-            state.pending_reg_task_id = 19;
-        }
-    }
-    static void expect_entry_reset(const SchedulerContext &context) {
-        for (const auto &state : context.core_exec_states_) {
-            EXPECT_EQ(state.reg_addr, 0u);
-            EXPECT_EQ(state.running_slot_state, nullptr);
-            EXPECT_EQ(state.pending_slot_state, nullptr);
-            EXPECT_EQ(state.running_reg_task_id, 0);
-            EXPECT_EQ(state.pending_reg_task_id, 0);
-        }
-    }
-};
 
 TEST(EntryCacheDeinit, SchedulerEntryResetsPreviousRunStateBeforeValidation) {
     SchedulerContext context;

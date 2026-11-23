@@ -37,7 +37,8 @@ def _group(audit, block):
     mapping = [lane if lane in active else 255 for lane in range(3)]
     require(owner["released_seq"] == values, "incomplete MIX FIN observation")
     bank = audit.executions[block["index"]]["pending_slot"]
-    arrivals = []
+    all_arrivals = any(audit.tasks[ref]["required_floor"][i] for i in active)
+    arrivals = {}
     for i, lane in lanes.items():
         audit.record_identity(lane, ref)
         require(
@@ -51,7 +52,8 @@ def _group(audit, block):
             and lane["lane_subtasks"] == mapping,
             "MIX descriptor identity or placement mismatch",
         )
-        require(lane["arrived_seq"] == values, "incomplete MIX group arrival observation")
+        expected = values if all_arrivals else [generation if peer == i else 0 for peer in range(3)]
+        require(lane["arrived_seq"] == expected, "incomplete MIX group arrival observation")
         audit.check_opposite_source(
             ref,
             peers[i],
@@ -74,7 +76,7 @@ def _group(audit, block):
         release = audit.causal.bounded(
             ("FIN", ref, owner["block_idx"], i), point(lane, "release_before"), point(lane, "release_after")
         )
-        arrivals.append(arrival)
+        arrivals[i] = arrival
         audit.causal.add(release, point(owner, "releases_observed"))
         if audit.tasks[ref]["flags"] & SYNC:
             member = audit.member(ref, peers[i])
@@ -104,8 +106,8 @@ def _group(audit, block):
         audit.before(
             point(execution, "trace_published"), point(lane, "release_before"), "MIX FIN before local trace/return"
         )
-    for lane in lanes.values():
-        for arrival in arrivals:
+    for i, lane in lanes.items():
+        for arrival in arrivals.values() if all_arrivals else (arrivals[i],):
             audit.causal.add(arrival, point(lane, "arrivals_observed"))
     return bank
 

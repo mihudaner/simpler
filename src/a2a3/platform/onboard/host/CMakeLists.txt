@@ -81,7 +81,6 @@ list(APPEND HOST_RUNTIME_SOURCES
 list(APPEND HOST_RUNTIME_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../common/platform/onboard/host/device_runner_helpers.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../common/platform/onboard/host/kernel_platform_ops.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../common/platform/onboard/host/kernel_persistent_args.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../common/platform/onboard/host/device_phase_capture.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../common/platform/shared/host/device_fault_monitor_binding.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../../common/platform/onboard/host/aicore_pmu_lease.cpp"
@@ -130,6 +129,9 @@ endif()
 target_compile_definitions(host_runtime PRIVATE
     SIMPLER_PLATFORM_NAME="a2a3"
     SIMPLER_RUNTIME_NAME="${SIMPLER_RUNTIME_NAME}"
+    PTO_COMM_WORKSPACE_SDMA_SUPPORTED=1
+    PTO_COMM_WORKSPACE_URMA_SUPPORTED=0
+    PTO_COMM_WORKSPACE_RDMA_SUPPORTED=0
 )
 
 set(SIMPLER_PTO_ISA_BUILD_COMMIT "" CACHE STRING

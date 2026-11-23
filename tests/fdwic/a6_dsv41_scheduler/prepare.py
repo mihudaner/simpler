@@ -7,51 +7,23 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Export a fixed SWA fixture or compile only its required C++ kernels."""
+"""Build the latest model SWA replay from an upstream materialized A5 snapshot."""
 
 import argparse
-import gzip
-import hashlib
-import io
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import tarfile
-from concurrent.futures import ThreadPoolExecutor
+import tempfile
 from pathlib import Path
-from typing import NamedTuple
 
-HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[2]
-SUITE = HERE.parent / "dsv41_scheduler"
-FIXTURE = HERE / "fixtures"
-FLAVOR = "pypto_lib_latest"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-
-class SwaBlocks(NamedTuple):
-    quant: int
-    oa: int
-    ob: int = 32
-    post: int = 64
-
-    def specialized_kernels(self):
-        # These kernels change their tile ownership together with the plan.
-        return {k for k, active in ((23, self.ob == 54), (27, self.post == 54)) if active}
-
-
-A6_PLAN_BLOCKS = {
-    "merge-baseline": SwaBlocks(64, 32),
-    "quant54": SwaBlocks(54, 32),
-    "quant54-oa54": SwaBlocks(54, 54),
-    "post54-ob54": SwaBlocks(54, 54, ob=54, post=54),
-}
-DEFAULT_A6_PLAN = "post54-ob54"
-
-
-def digest(data):
-    return hashlib.sha256(data).hexdigest()
+from compile_kernels import HERE, REPO, SOURCES, SUITE, WORKLOAD, compile_kernel_set, sha256, swa_tasks
+from prepare_plan import build_converter, convert_plan, read_records, validate_source
 
 
 def save(path, data):
@@ -62,143 +34,160 @@ def capture(command):
     return subprocess.check_output([str(arg) for arg in command], text=True)
 
 
-def selected_records(tools, plan):
-    records = json.loads(capture([tools / "record-tool", "--records-json", plan]))
-    begin = next(i for i, r in enumerate(records) if r["op"] == 2 and r["id"] == 8)
-    end = next(i + 1 for i, r in enumerate(records) if r["op"] == 2 and r["id"] == 35)
-    tasks = [r for r in records[begin:end] if r["op"] == 2]
-    executions = sum(r["blocks"] * sum(k >= 0 for k in r["kernels"]) for r in tasks)
-    if len(tasks) != 16 or executions != 578:
-        raise ValueError("Expected the original SWA: 16 tasks and 578 kernel instances")
-    return sorted({k for r in tasks for k in r["kernels"] if k >= 0})
-
-
-def export_fixture(args):
-    source, destination = args.bundle.resolve(), args.output.resolve()
+def copy_snapshot(source, destination, tools):
     case = json.loads((source / "case.json").read_text())
-    if (case["flavor"], case["case"], case["device_count"]) != (FLAVOR, "swa", 1):
-        raise ValueError("Export requires a materialized pypto_lib_latest/swa bundle")
+    source_spec = json.loads((WORKLOAD / "source.json").read_text())["cases"]["swa"]
+    if (case["flavor"], case["case"], case["device_count"], case["source"]) != (
+        "pypto_lib_latest",
+        "swa",
+        1,
+        source_spec,
+    ):
+        raise ValueError("Expected a materialized SWA matching the current upstream model and task table")
     lines = (source / "rank0.txt").read_text().splitlines()
-    if lines[:2] != ["DSV41_NATIVE_V1", "1 0"] or (source / "slice.txt").read_text().split() != ["8", "35"]:
-        raise ValueError("Expected single-device SWA without communication")
-    signature = json.loads(capture([args.tools / "native-runner", "--describe-callable", source / "callable.bin"]))
-    used = selected_records(args.tools, source / "plan-rank0.bin")
-    files = {
-        name: (source / name).read_bytes() for name in ("rank0.txt", "slice.txt", "snapshot.txt", "plan-rank0.bin")
-    }
-    for line in lines[3 : 3 + int(lines[2])]:
-        name = shlex.split(line)[-1]
-        if Path(name).is_absolute() or ".." in Path(name).parts:
-            raise ValueError("Input files must be relative to the source bundle")
-        files[name] = (source / name).read_bytes()
-    for path in sorted((source / "reference").glob("*.bin")):
-        files[path.relative_to(source).as_posix()] = path.read_bytes()
-    if not any(name.startswith("reference/") for name in files):
-        raise ValueError("Missing original reference outputs")
-    files["case.json"] = (json.dumps({"case": "swa", "flavor": FLAVOR, "device_count": 1}) + "\n").encode()
-    metadata = {
-        "case": "swa",
-        "flavor": FLAVOR,
-        "device_count": 1,
-        "tasks": 16,
-        "executions": 578,
-        "source_model": json.loads((SUITE / "kernels" / FLAVOR / "manifest.json").read_text())["origin"],
-        "source_callable_sha256": digest((source / "callable.bin").read_bytes()),
-        "source_plan_sha256": digest(files["plan-rank0.bin"]),
-        "capture_abi": "dsv41/record.h TensorData; validate before rebuilding on another architecture",
-        "signature": signature["signature"],
-        "kernel_ids": used,
-        "files": {name: {"bytes": len(data), "sha256": digest(data)} for name, data in sorted(files.items())},
-    }
-    destination.mkdir(parents=True, exist_ok=False)
-    with (destination / "swa.tar.gz").open("wb") as raw:
-        with gzip.GzipFile(fileobj=raw, mode="wb", filename="", mtime=0) as compressed:
-            with tarfile.open(fileobj=compressed, mode="w") as archive:
-                for name, data in sorted(files.items()):
-                    info = tarfile.TarInfo(name)
-                    info.size, info.mode = len(data), 0o644
-                    archive.addfile(info, io.BytesIO(data))
-    save(destination / "fixture.json", metadata)
-    print(f"Exported {len(files)} input/plan/reference files; no kernel binaries")
+    if (
+        lines[:2] != ["DSV41_NATIVE_V1", "1 0"]
+        or (source / "slice.txt").read_text().split() != ["8", "34"]
+        or (source / "snapshot.txt").read_text().split() != ["rank0"]
+        or (source / "rank1.txt").exists()
+    ):
+        raise ValueError("Expected a completed single-device SWA snapshot")
+    plan = source / "plan-rank0.bin"
+    validate_source(read_records(tools / "record-tool", plan))
+    description = json.loads(capture([tools / "native-runner", "--describe-callable", source / "callable.bin"]))
+    manifest = json.loads((SOURCES / "manifest.json").read_text())
+    original = {k["id"]: k["signature"] for k in description["kernels"]}
+    if original != {k["func_id"]: k["signature"] for k in manifest["kernels"]}:
+        raise ValueError("Source callable signatures differ from the model kernel manifest")
+    signature = description["signature"]
+    base = manifest["entry_signature"]
+    extras = len(case["ranks"][0]["boundary_buffers"])
+    if signature != base + [3] * extras:
+        raise ValueError("Snapshot entry signature differs from source and captured boundary buffers")
+    files = {"case.json", "rank0.txt", "slice.txt", "snapshot.txt", "plan-rank0.bin"}
+    tensors = lines[3 : 3 + int(lines[2])]
+    if len(tensors) != int(lines[2]) or len(tensors) != len(signature):
+        raise ValueError("Snapshot tensor count differs from the entry signature")
+    references = set()
+    for index, line in enumerate(tensors):
+        fields = shlex.split(line)
+        filename = Path(fields[-1])
+        if len(filename.parts) != 1 or filename.name in (".", "..") or filename.is_absolute():
+            raise ValueError(f"Invalid input path for tensor {index}")
+        size = int(fields[2])
+        actual = (source / filename).stat().st_size
+        if (
+            fields[0] not in ("DEVICE", "HOST")
+            or fields[-2] not in ("REPEAT", "RAW")
+            or size < 1
+            or actual < 1
+            or (size % actual if fields[-2] == "REPEAT" else size != actual)
+        ):
+            raise ValueError(f"Input initializer does not cover tensor {index}")
+        files.add(filename.as_posix())
+        if signature[index] in (2, 3) and fields[0] == "DEVICE":
+            reference = f"reference/{index}.bin"
+            if (source / reference).stat().st_size not in (1, size):
+                raise ValueError(f"Reference length differs for tensor {index}")
+            references.add(reference)
+    if not references or references != {p.relative_to(source).as_posix() for p in (source / "reference").glob("*.bin")}:
+        raise ValueError("Snapshot reference set differs from writable device tensors")
+    hashes = {}
+    for name in sorted(files | references):
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / name, target)
+        hashes[name] = sha256(target)
+    return {"signature": signature, "files": hashes, "reference_count": len(references)}
 
 
-def unpack_fixture(directory):
-    metadata = json.loads((FIXTURE / "fixture.json").read_text())
-    with tarfile.open(FIXTURE / "swa.tar.gz", "r:gz") as archive:
-        members = archive.getmembers()
-        if sorted(member.name for member in members) != sorted(metadata["files"]):
-            raise ValueError("Fixture member list differs from its manifest")
+FIXTURE = HERE / "fixtures"
+ARCHIVE = "swa.tar.xz"
+
+
+def freeze(args):
+    source, output = args.bundle.resolve(), args.output.resolve()
+    if output.exists():
+        raise ValueError("Fixture output already exists; use a new directory")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as temp:
+        files = Path(temp) / "files"
+        packed = Path(temp) / "packed"
+        packed.mkdir()
+        metadata = copy_snapshot(source, files, args.tools.resolve())
+        shutil.copyfile(source / "callable.bin", files / "callable.bin")
+        hashes = {**metadata["files"], "callable.bin": sha256(files / "callable.bin")}
+        archive = packed / ARCHIVE
+        with tarfile.open(archive, "w:xz", format=tarfile.USTAR_FORMAT) as tar:
+            for name in sorted(hashes):
+                path = files / name
+                member = tarfile.TarInfo(name)
+                member.size, member.mode = path.stat().st_size, 0o644
+                with path.open("rb") as data:
+                    tar.addfile(member, data)
+        save(
+            packed / "fixture.json",
+            {
+                "source_revision": args.source_revision,
+                "model": json.loads((SOURCES / "manifest.json").read_text())["origin"],
+                "case": "pypto_lib_latest/swa",
+                "reference_count": metadata["reference_count"],
+                "source": json.loads((source / "case.json").read_text())["source"],
+                "archive": ARCHIVE,
+                "archive_sha256": sha256(archive),
+                "files": hashes,
+            },
+        )
+        packed.rename(output)
+
+
+def unpack_fixture(destination, fixture=FIXTURE):
+    manifest = json.loads((fixture / "fixture.json").read_text())
+    archive = fixture / ARCHIVE
+    if manifest["archive"] != ARCHIVE or sha256(archive) != manifest["archive_sha256"]:
+        raise ValueError("Bundled SWA archive checksum differs from the fixture manifest")
+    hashes = manifest["files"]
+    with tarfile.open(archive, "r:xz") as tar:
+        members = tar.getmembers()
+        if sorted(member.name for member in members) != sorted(hashes):
+            raise ValueError("Bundled SWA member list differs from the fixture manifest")
         for member in members:
-            path = Path(member.name)
-            if not member.isfile() or path.is_absolute() or ".." in path.parts:
-                raise ValueError("Invalid fixture member")
-            stream = archive.extractfile(member)
-            assert stream is not None
-            data = stream.read()
-            expected = metadata["files"][member.name]
-            if len(data) != expected["bytes"] or digest(data) != expected["sha256"]:
-                raise ValueError(f"Fixture content changed: {member.name}")
-            target = directory / path
+            if not member.isfile() or Path(member.name).is_absolute() or ".." in Path(member.name).parts:
+                raise ValueError(f"Invalid SWA fixture member: {member.name}")
+            target = destination / member.name
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(data)
-    return metadata
-
-
-def compile_a5(args, sources, kernels, binary_dir):
-    # Compiler helpers are imported only for building, never for fixture checks.
-    sys.path[:0] = [str(REPO), str(REPO / "python")]
-    from simpler_setup.a5_input_cache import annotate_a5_hbg_text  # noqa: PLC0415
-    from simpler_setup.compile_pool import compile_slot, compile_worker_budget  # noqa: PLC0415
-    from simpler_setup.elf_parser import extract_text_section  # noqa: PLC0415
-    from simpler_setup.kernel_compiler import KernelCompiler  # noqa: PLC0415
-
-    compiler = KernelCompiler(args.platform)
-
-    def compile_one(kernel):
-        source = sources / kernel["source"]
-        includes = compiler.get_orchestration_include_dirs("host_build_graph")
-        includes += [str(sources / item) for item in kernel["include_dirs"]]
-        with compile_slot():
-            binary = extract_text_section(
-                compiler.compile_incore(
-                    str(source),
-                    core_type=kernel["core_type"],
-                    pto_isa_root=str(args.pto_isa.resolve()),
-                    extra_include_dirs=includes,
-                )
-            )
-        target = binary_dir / f"kernel-{kernel['func_id']}.bin"
-        target.write_bytes(binary)
-        registration = target
-        annotated = annotate_a5_hbg_text(binary, kernel["core_type"])
-        if annotated != binary:
-            registration = target.with_suffix(".hbg")
-            registration.write_bytes(annotated)
-        print(f"Compiled SWA kernel {kernel['func_id']}: {kernel['name']}", flush=True)
-        return {
-            "id": kernel["func_id"],
-            "source": source.relative_to(REPO).as_posix(),
-            "source_sha256": digest(source.read_bytes()),
-            "binary_sha256": digest(binary),
-            "bytes": len(binary),
-            "file": target.name,
-            "registration_file": registration.name,
-        }
-
-    with compile_worker_budget(args.jobs), ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        return list(pool.map(compile_one, kernels))
+            data = tar.extractfile(member)
+            if data is None:
+                raise ValueError(f"Missing SWA fixture payload: {member.name}")
+            with data, target.open("wb") as output:
+                shutil.copyfileobj(data, output)
+            if sha256(target) != hashes[member.name]:
+                raise ValueError(f"Bundled SWA file checksum differs: {member.name}")
+    return manifest
 
 
 def build(args):
-    if args.platform != "a6" and args.a6_plan is not None:
-        raise ValueError("--a6-plan requires --platform a6")
     if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
         raise ValueError("Need positive --jobs and --pto-isa containing include/pto")
     build_dir = (args.build_dir or HERE / "build" / args.platform).resolve()
-    bundle, tools = build_dir / "bundle.preparing", build_dir / "host"
-    if bundle.exists() or (build_dir / "bundle").exists():
-        raise ValueError("Bundle already exists; use a new --build-dir for another build")
-    bundle.mkdir(parents=True)
+    build_dir.mkdir(parents=True, exist_ok=True)
+    if (build_dir / "bundle").exists():
+        raise ValueError("Bundle already exists; use a new --build-dir")
+    with tempfile.TemporaryDirectory(prefix="bundle.preparing-", dir=build_dir) as temporary:
+        bundle = Path(temporary) / "bundle"
+        bundle.mkdir()
+        if args.bundle is None:
+            source = Path(temporary) / "source"
+            unpack_fixture(source)
+        else:
+            source = args.bundle.resolve()
+        build_bundle(args, build_dir, bundle, source)
+        bundle.rename(build_dir / "bundle")
+    print(f"Built {args.platform} replay bundle: {build_dir / 'bundle'} (offline)")
+
+
+def build_bundle(args, build_dir, bundle, source):
+    tools = build_dir / "host"
     subprocess.run(
         [
             "cmake",
@@ -229,14 +218,11 @@ def build(args):
         ],
         check=True,
     )
-    metadata = unpack_fixture(bundle)
-    if selected_records(tools, bundle / "plan-rank0.bin") != metadata["kernel_ids"]:
-        raise ValueError("Captured plan does not match the selected SWA kernels")
-    sources = SUITE / "kernels" / FLAVOR
-    manifest = json.loads((sources / "manifest.json").read_text())
-    kernels = [k for k in manifest["kernels"] if k["func_id"] in metadata["kernel_ids"]]
-    if sorted(k["func_id"] for k in kernels) != metadata["kernel_ids"]:
-        raise ValueError("SWA kernel sources are incomplete")
+    metadata = copy_snapshot(source, bundle, tools)
+    tasks = swa_tasks()
+    ids = {k for _, slots in tasks.values() for k in slots if k >= 0}
+    manifest = json.loads((SOURCES / "manifest.json").read_text())
+    kernels = [k for k in manifest["kernels"] if k["func_id"] in ids]
     save(
         bundle / "name_map.json",
         {
@@ -247,45 +233,60 @@ def build(args):
     )
     binary_dir = build_dir / "kernels"
     binary_dir.mkdir(exist_ok=True)
+    compiled = compile_kernel_set(args.platform, args.pto_isa, binary_dir, args.jobs)
+    executions = sum(blocks * sum(k >= 0 for k in slots) for blocks, slots in tasks.values())
     if args.platform == "a6":
-        sys.path.insert(0, str(HERE))
-        from compile_kernels import compile_kernel_set  # noqa: PLC0415
-        from prepare_plan import convert_plan  # noqa: PLC0415
-
-        a6_plan = args.a6_plan or DEFAULT_A6_PLAN
-        compiled = compile_kernel_set(
-            "a6",
-            args.pto_isa,
-            binary_dir,
-            args.jobs,
-            metadata["kernel_ids"],
-            A6_PLAN_BLOCKS[a6_plan].specialized_kernels(),
-        )["kernels"]
-        if not all(record["passed"] for record in compiled):
-            raise RuntimeError("A6 kernel compilation failed; see kernels/summary.json")
         converter = tools / "adapt-plan"
-        subprocess.run(
-            [
-                args.cxx,
-                "-std=c++17",
-                "-O2",
-                f"-I{SUITE / 'production'}",
-                f"-I{REPO / 'src/common'}",
-                f"-I{REPO / 'src/common/task_interface'}",
-                str(HERE / "adapt_plan.cpp"),
-                "-o",
-                str(converter),
-            ],
-            check=True,
-        )
+        build_converter(args.cxx, converter)
         plan = bundle / "plan-rank0.bin"
         converted = build_dir / "plan-a6.bin"
-        _, executions = convert_plan(tools / "record-tool", converter, plan, converted, a6_plan)
+        executions = convert_plan(tools / "record-tool", converter, plan, converted)
         converted.replace(plan)
+    runner = tools / "native-runner"
+    original_callable = source / "callable.bin"
+    if args.platform == "a5":
+        # Original full-model registration fixes the starting cache set of every kernel.
+        # Validate the rebuilt active images and keep every child at its source offset.
+        image = original_callable.read_bytes()
+        layout = json.loads(capture([runner, "--describe-layout", original_callable]))
+        children = {k["id"]: k for k in layout["kernels"]}
+        for record in compiled:
+            child = children[record["id"]]
+            offset, size = child["binary_offset"], child["binary_size"]
+            if image[offset : offset + size] != (binary_dir / record["file"]).read_bytes():
+                raise ValueError(f"A5 kernel differs from the source snapshot: {record['name']}")
+        subprocess.run(
+            [runner, "--repack-orchestration", original_callable, tools / "libreplay.so", bundle / "callable.bin"],
+            check=True,
+        )
     else:
-        compiled = compile_a5(args, sources, kernels, binary_dir)
-        executions = 578
+        assemble_a6(tools, bundle, build_dir, binary_dir, compiled, kernels, metadata)
+    case_path = bundle / "case.json"
+    case = json.loads(case_path.read_text())
+    case["source"]["executions"] = executions
+    save(case_path, case)
+    save(
+        build_dir / "build.json",
+        {
+            "platform": args.platform,
+            "source_commit": capture(["git", "-C", REPO, "rev-parse", "HEAD"]).strip(),
+            "model": manifest["origin"],
+            "tasks": len(tasks),
+            "executions": executions,
+            "source_snapshot_files": metadata["files"],
+            "reference_count": metadata["reference_count"],
+            "source_callable_sha256": sha256(original_callable),
+            "plan_sha256": sha256(bundle / "plan-rank0.bin"),
+            "callable_sha256": sha256(bundle / "callable.bin"),
+            "runner_sha256": sha256(tools / "native-runner"),
+            "replay_sha256": sha256(tools / "libreplay.so"),
+            "pto_isa_commit": capture(["git", "-C", args.pto_isa, "rev-parse", "HEAD"]).strip(),
+            "kernels": compiled,
+        },
+    )
 
+
+def assemble_a6(tools, bundle, build_dir, binary_dir, compiled, kernels, metadata):
     sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
     from build_sources import capability_words  # noqa: PLC0415
 
@@ -318,54 +319,28 @@ def build(args):
     }
     if json.loads(capture([tools / "native-runner", "--describe-callable", bundle / "callable.bin"])) != expected:
         raise ValueError("Assembled replay callable differs from the SWA signatures")
-    case_path = bundle / "case.json"
-    case = json.loads(case_path.read_text())
-    case["source"] = {"executions": executions}
-    save(case_path, case)
-    save(
-        build_dir / "build.json",
-        {
-            "platform": args.platform,
-            **({"a6_plan": a6_plan} if args.platform == "a6" else {}),
-            "source_commit": capture(["git", "-C", REPO, "rev-parse", "HEAD"]).strip(),
-            "pto_isa_commit": capture(["git", "-C", args.pto_isa, "rev-parse", "HEAD"]).strip(),
-            "fixture_sha256": digest((FIXTURE / "swa.tar.gz").read_bytes()),
-            "callable_sha256": digest((bundle / "callable.bin").read_bytes()),
-            "kernels": compiled,
-            "tasks": 16,
-            "executions": executions,
-            "plan_sha256": digest((bundle / "plan-rank0.bin").read_bytes()),
-            "replay_sha256": digest((tools / "libreplay.so").read_bytes()),
-            "runner_sha256": digest((tools / "native-runner").read_bytes()),
-        },
-    )
-    if any(name in {"torch", "pypto"} or name.startswith(("torch.", "pypto.")) for name in sys.modules):
-        raise RuntimeError("Unexpected model Python dependency during SWA build")
-    bundle.rename(build_dir / "bundle")
-    print(f"Built {args.platform} replay bundle: {build_dir / 'bundle'} (offline)")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    export = commands.add_parser("export", help="Maintainer: export the existing SWA snapshot once")
-    export.add_argument("--bundle", type=Path, required=True)
-    export.add_argument("--tools", type=Path, required=True)
-    export.add_argument("--output", type=Path, default=FIXTURE)
-    compile_case = commands.add_parser("build", help="Compile only SWA and the native replay tools")
+    freezer = commands.add_parser("freeze", help="Export a verified upstream materialized SWA into a portable archive")
+    freezer.add_argument("--bundle", type=Path, required=True)
+    freezer.add_argument("--tools", type=Path, required=True, help="Matching native-runner and record-tool directory")
+    freezer.add_argument("--source-revision", required=True, help="Commit used for the upstream A5 capture")
+    freezer.add_argument("--output", type=Path, required=True)
+    compile_case = commands.add_parser("build", help="Compile SWA kernels and assemble a native replay")
     compile_case.add_argument("--platform", choices=["a5", "a6"], default="a5")
     compile_case.add_argument(
-        "--a6-plan", choices=A6_PLAN_BLOCKS, help=f"A6 SWA partition (default: {DEFAULT_A6_PLAN})"
+        "--bundle", type=Path, help="Override bundled SWA with materialized cases/pypto_lib_latest/swa"
     )
     compile_case.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
     compile_case.add_argument("--build-dir", type=Path)
-    compile_case.add_argument(
-        "--cxx", default=os.environ.get("CXX", "c++"), help="Host compiler for CMake and the A6 plan converter"
-    )
+    compile_case.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     compile_case.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()
-    if args.command == "export":
-        export_fixture(args)
+    if args.command == "freeze":
+        freeze(args)
     else:
         build(args)
 

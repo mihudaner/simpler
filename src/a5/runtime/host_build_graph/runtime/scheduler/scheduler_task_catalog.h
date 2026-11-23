@@ -22,6 +22,7 @@ struct alignas(64) SchedulerTaskCatalogHeader {
     uint64_t entry_count{0};
     uint64_t order_offset{0};
     uint32_t first_mix_ref{UINT32_MAX};
+    uint32_t terminal_mix_refs[2]{UINT32_MAX, UINT32_MAX};
 };
 
 // Indexed by expanded node ref. A threshold is one past the last earlier
@@ -63,21 +64,20 @@ static_assert(
 
 struct SchedulerTaskCatalog {
     __gm__ const int64_t *refs{nullptr};
-    uint64_t count{0};
-    uint64_t task_count{0};
+    uint64_t count{UINT64_MAX};
 };
 
 inline __aicore__ SchedulerTaskCatalog
 scheduler_task_catalog(__gm__ void *base, const __gm__ SchedulerTaskCatalogHeader &pool, uint32_t engine) {
-    if (engine >= SCHEDULER_EXECUTION_ENGINE_COUNT) return {nullptr, 0, UINT64_MAX};
+    if (engine >= SCHEDULER_EXECUTION_ENGINE_COUNT || pool.task_count > INT32_MAX) return {};
     const auto *descriptors = scheduler_state_at<SchedulerTaskCatalogDescriptor>(base, pool.descriptors_offset);
     const auto &descriptor = descriptors[engine];
-    return {scheduler_state_at<int64_t>(base, descriptor.entries_offset), descriptor.capacity, pool.task_count};
+    if (descriptor.capacity > pool.task_count) return {};
+    return {scheduler_state_at<int64_t>(base, descriptor.entries_offset), descriptor.capacity};
 }
 
 inline __aicore__ bool scheduler_task_catalog_valid(const SchedulerTaskCatalog &catalog) {
-    return catalog.count <= catalog.task_count && catalog.task_count <= INT32_MAX &&
-           (catalog.count == 0 || catalog.refs != nullptr);
+    return catalog.refs != nullptr;
 }
 
 // Called once after READY acquire. All subsequent descriptor reads are of

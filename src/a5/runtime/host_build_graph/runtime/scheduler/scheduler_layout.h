@@ -31,11 +31,11 @@ struct AicoreSchedulerLayout {
     uint64_t total_size;
     uint64_t task_count;
     uint64_t run_control_offset;
-    uint64_t native_readonly_end_offset;
     uint64_t aicpu_lifecycle_traces_offset;
     uint64_t worker_contexts_offset;
     uint64_t task_metadata_offset;
     uint64_t task_controls_offset;
+    uint64_t sinks_offset;
     uint64_t done_notifications_offset;
     uint64_t completion_counters_offset;
     uint64_t trace_cells_offset;

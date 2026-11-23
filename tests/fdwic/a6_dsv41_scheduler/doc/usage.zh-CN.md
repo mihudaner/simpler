@@ -1,88 +1,59 @@
-# SWA 使用方法：构建、运行与调优复测
+# SWA 005 的构建与运行
 
-[优化阶段索引](a6-optimization.zh-CN.md) · [优化前基线](../results/00-baseline/README.zh-CN.md) · [按 PR 口径测量及采集详细泳道](a6-environment.zh-CN.md)
+005 对应主线 `48fd8fef3` 的 PyPTO-lib 原生 SWA。A5 的测量对照使用同一份单卡快照，纯主线与迁移版分别加载自己的 HBG 运行库。[005 结果和复测入口](../results/005-main-swa/README.zh-CN.md)
 
-## 首次运行 A5
+## 单卡运行
 
-在仓库根目录加载对应 CANN 环境、激活项目 `.venv`，执行：
-
-```bash
-# 构建与本分支匹配的运行时；关闭额外调度／编排打点。
-python simpler_setup/build_runtimes.py --platforms a5 \
-  --runtime host_build_graph --runtime percounter \
-  --profiling-dfx 1 --profiling-orch 0 --profiling-sched 0 --profiling-tensormap 0
-
-# 解开固定输入，编译 SWA 的 19 个核及原生回放工具。
-python -I tests/fdwic/a6_dsv41_scheduler/prepare.py build \
-  --platform a5 --pto-isa build/pto-isa --jobs 4
-
-# 自动经 task-submit 申请 1 卡，顺序测 HBG 和 percounter。
-python -I tests/fdwic/a6_dsv41_scheduler/run.py \
-  --output outputs/swa-a5-r001
-```
-
-**默认口径：每种调度 1 次预热、10 次 L0 正式测量，逐轮校验。** 编译在申请设备前完成，两种调度使用同一张卡。
-
-| 需求 | 参数／操作 |
-| ---- | ---------- |
-| 只测一种调度 | 给 `run.py` 加 `--runtime host_build_graph` 或 `--runtime percounter` |
-| 指定运行时库 | `--runtime-lib` 指向已编译运行时的 `a5/onboard` 目录 |
-| 重新构建用例 | 给 build 和 run 指定同一个新的 `--build-dir`；默认目录为用例目录 `build/a5/` |
-| 再测一轮 | 使用新的 `--output`；脚本拒绝覆盖已有结果 |
-| 查看结果 | 输出目录的 `summary.json`；各调度子目录保留原生结果、console 和 Host 端点日志 |
-| 离线检查输入包 | `python -I tests/fdwic/a6_dsv41_scheduler/test_fixture.py`，不占设备 |
-
-`prepare.py export` 供维护者从已有 SWA 快照更新夹具，正常构建无需执行；参数见 `prepare.py export --help`。构建入口同时接受 `--platform a5` 和 `--platform a6`。
-
-## 修改后要重做哪些步骤
-
-**只改调度算法且 ABI、算子、输入契约不变时，重编 runtime，再用同一个 SWA 包复测。** 不需要重新生成模型代码或跑完整 forward。
-
-| 改动 | 需要重做 | 可以保留 |
-| ---- | -------- | -------- |
-| 调度算法 | 重编匹配的运行时，重新测量和校验 | 输入、参考、核与任务图 |
-| Tensor／调用 ABI | 重编受影响的 runner、适配器、核，并重建不兼容的 plan／包 | 经核对仍兼容的输入与计算逻辑 |
-| 算子逻辑、shape、任务图 | 更新相应源码、清单、输入和参考，再编译组包 | 未受影响的材料 |
-| A5 迁到 A6 | 适配平台与工具链、检查核及 plan，重编目标包 | 可兼容复用的 C++、输入和参考 |
-
-典型调优顺序：**同一用例测基线 → 修改调度器 → 重编 runtime → 同一包复测 → 比较耗时并检查输出。** 切换 Git 分支不会自动更新磁盘上的运行库。详细泳道应另采，不混入 L0 性能样本。
-
-## A6 复现前的构建环境
-
-**本页前面的运行命令目前仅适用于 A5；A6 用下文的单卡入口，设备执行还需要 A6 HBG 运行库。** 首轮 A6 只构建／运行 HBG，不默认连跑 percounter。
-
-原生工具的 [CMakeLists.txt](../../dsv41_scheduler/production/CMakeLists.txt) 声明最低 3.20；现有 [AICore 运行时构建](../../../../src/a5/platform/onboard/aicore/CMakeLists.txt) 还实际使用了 Makefile 生成器的 `DEPFILE` 支持，要求 CMake 3.20。因此沿用这条构建路径时，不能只调低版本声明。
-
-建议在项目 `.venv` 提供 `cmake>=3.20` 和当前入口使用的 Ninja，不升级系统 CMake，也不改用户全局环境；复现时记录 `command -v cmake ninja` 和各自版本。3.20 是当前构建链要求，不是 A6 芯片本身的硬要求。若选择其他生成器或兼容旧版本，需要验证依赖追踪和重编行为。
-
-Host 的 x86_64 C++ 工具、AICPU 的 aarch64 交叉编译器、AICore 的 `dav-920r1-*` ccec 目标分别配置。没有 task-submit 的 A6 机器按实际设备占用方式提供执行入口，不能直接复用本页的 A5 队列命令。已核实环境见 [迁移说明](a6-migration.zh-CN.md#平台与工具链)，待补验证见 [当前 A6 任务单](a6-environment.zh-CN.md)。
-
-## 单卡 A6 SWA
-
-在 A6 机器上进入本分支仓库根目录，加载 CANN、激活项目 venv。如需在新 worktree 安装 Simpler，可用 `python -m pip install --no-build-isolation -e . -Cbuild.targets=build_package_a6` 选择 A6 的构建目标。以下命令在同一个 shell 中执行。每次创建独立的回放目录和输出目录，可与原工作树并存。构建不占卡。
+在仓库根目录加载匹配的 CANN，激活本工作树的项目虚拟环境。PTO-ISA 使用主线固定的 `45435c06`。构建工具需要 CMake、Ninja、C++ 和 CANN 针对目标芯片的编译器。
 
 ```bash
+source /usr/local/Ascend/cann/set_env.sh
+source .venv/bin/activate
+export PYTHONNOUSERSITE=1
 case_dir=tests/fdwic/a6_dsv41_scheduler
-mkdir -p "$case_dir/build"
-swa_verify_dir=$(mktemp -d "$case_dir/build/verify-a6-XXXXXXXX")
-git rev-parse HEAD
-python simpler_setup/build_runtimes.py --platforms a6 --runtime host_build_graph \
+platform=a6                  # 在 A5 上改为 a5
+python simpler_setup/build_runtimes.py --platforms "$platform" --runtime host_build_graph \
   --profiling-dfx 1 --profiling-orch 0 --profiling-sched 0 --profiling-tensormap 0
-python -I "$case_dir/prepare.py" build --platform a6 --pto-isa build/pto-isa \
-  --build-dir "$swa_verify_dir/replay"
+python -I "$case_dir/prepare.py" build --platform "$platform" --pto-isa build/pto-isa \
+  --build-dir "build/005-swa-$platform"
 ```
 
-用已分配的单卡启动。下例使用逻辑设备 0，按实际分配调整。独立的 CANN 日志目录方便失败时定位最早的设备报错。
+A6 在已分配的逻辑卡上运行，示例取设备 0。默认执行一次 HBG 用于数值验收。A5 可由 `task-submit` 自动分配单卡。
 
 ```bash
-mkdir -p "$swa_verify_dir/ascend-log"
-ASCEND_PROCESS_LOG_PATH="$(realpath "$swa_verify_dir/ascend-log")" \
-  python -I "$case_dir/run.py" --build-dir "$swa_verify_dir/replay" --device 0 \
-  --runtime-lib build/lib/a6/onboard --output "$swa_verify_dir/run"
+python -I "$case_dir/run.py" --build-dir build/005-swa-a6 --device 0 \
+  --runtime-lib build/lib/a6/onboard --output outputs/005-swa-a6
+# A5 环境
+python -I "$case_dir/run.py" --build-dir build/005-swa-a5 --runtime host_build_graph \
+  --runtime-lib build/lib/a5/onboard --output outputs/005-swa-a5
 ```
 
-默认零预热、执行一次 HBG。通过时 runner 正常返回，`run/rank0/result.json` 记录 `passed`、`snapshot_inputs`、`validated_against_fused_prefix` 为 true，包含对固定参考的 30 个可写 Device buffer 检查。失败时先看 `run/rank0/console.log` 及本次 `ascend-log` 中最早的异常。[当前任务单](a6-environment.zh-CN.md)
+输出目录包含原生 runner 日志及逐轮数值校验。采集 A5 的 L0/L1/L2 对照、同步下界和代表轮泳道，使用 [005 的同卡脚本](../results/005-main-swa/collect-pair.sh)。每次复测使用新的输出目录。
 
-A6 省略分片参数时使用已测的 004 组合 `post54-ob54`，每轮 616 个执行实例。复测 003 用 `--a6-plan quant54-oa54`，核对 t20 扩组可用 `quant54`，复测合并后原分片可用 `merge-baseline`。[003 实测](../results/003-a6-swa-blocks/README.zh-CN.md) · [004 同卡对照](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照)
+## 从原始 forward 刷新单卡快照
 
-单独定位构建失败时，可用 [compile_kernels.py](../compile_kernels.py) 查看逐核诊断，或用 [prepare_plan.py](../prepare_plan.py) 检查 Host 对 2735 条记录的解码与 A6 分片转换。
+在 A5 上构建生产工具和匹配的运行库。原始 forward 需要两张卡同步起跑，使用测试套件的 device-start gate。SWA 前缀输入和最终参考随后在单卡上生成。请保留 gate 对应的原始运行库，供单卡准备使用。[生产套件构建说明](../../dsv41_scheduler/README.md#prepare-and-run)
+
+```bash
+suite=tests/fdwic/dsv41_scheduler
+bash "$suite/build.sh" --pto-isa "$PWD/build/pto-isa"
+python "$suite/production/device_start_gate.py" --runtime-dir build/lib/a5/onboard \
+  --output-dir build/005-gate
+python "$suite/production/prepare.py" build/005-gate/runtime/a5/onboard build/005-prepared \
+  --case swa --build-dir "$suite/build/portable"
+python -I "$case_dir/prepare.py" build --platform a6 \
+  --bundle build/005-prepared/cases/pypto_lib_latest/swa --build-dir build/005-swa-a6-fresh
+```
+
+A5 复用原 callable 的注册位置并比较 19 个活跃核的指令区。A6 从源代码重编这 19 个核，按实际 1C1V 改写五个任务的分片。输入和参考取自同一快照。只改调度时可沿用快照和算子包，重编运行库再测；图、算子或 ABI 有变化时应重新校对计划、输入和参考。
+
+## 离线检查
+
+```bash
+python -I "$case_dir/test_fixture.py"
+python -I "$case_dir/compile_kernels.py" --platform a6 --output build/005-a6-kernels-check
+python -I "$case_dir/prepare_plan.py" --plan build/005-prepared/cases/pypto_lib_latest/swa/plan-rank0.bin \
+  --record-tool "$suite/build/portable/host/record-tool" --output build/005-a6-plan-check
+```
+
+004 的 `post54-ob54` 是旧图分片。005 的 t34 已经融合 O-B 和 mHC post，当前 A6 组合固定为每轮 660 次业务核执行。旧图对照见 [004 归档](../results/004-a6-swa-output-tiles/README.zh-CN.md)。

@@ -40,6 +40,8 @@ struct SchedulerImage {
     SchedulerGraphSummary summary{};
     std::array<AicpuThreadLifecycleTrace, kParticipants> traces{};
     SchedulerTaskMetadata metadata{};
+    SchedulerTaskControl task{};
+    uint32_t sink{};
 };
 
 struct RegisterTransport {
@@ -138,7 +140,7 @@ int32_t platform_retire_aicore_group(const AicoreExitTarget *targets, size_t cou
     const bool success = participant != transport->failed_participant;
     for (size_t i = 0; i < count; ++i) {
         const int core = register_index(targets[i].reg_addr);
-        EXPECT_EQ(targets[i].teardown, &transport->runtime->dev.teardown_gates[core]);
+        EXPECT_EQ(targets[i].teardown, &transport->runtime->get_teardown_gates()[core]);
         ++transport->retired[core];
         if (released != nullptr) released[i] = success;
     }
@@ -186,15 +188,18 @@ protected:
             context.aicpu_lifecycle_traces_offset = offsetof(SchedulerImage, traces);
             context.task_metadata_offset = offsetof(SchedulerImage, metadata);
             context.graph_task_count = 1;
-            auto &report = runtime->dev.workers[i];
+            context.scheduler_state_bytes = sizeof(SchedulerImage);
+            context.task_controls_offset = offsetof(SchedulerImage, task);
+            auto &report = runtime->get_workers()[i];
             report.physical_core_id = i;
             report.core_type = i == 0 ? CoreType::AIC : CoreType::AIV;
             report.aicore_done = i + 1;
             report.report_epoch = kEpoch;
         }
         image->control.bootstrap_complete = 1;
-        image->control.expected_task_count = 1;
-        image->control.resolved_task_count = 1;
+        image->control.sink_count = 1;
+        image->control.sinks_offset = offsetof(SchedulerImage, sink);
+        image->task.completion_state = scheduler_completion_completed_state(3);
         image->control.aic_worker_demand = 1;
         image->control.aiv_worker_demand = 2;
         image->summary.worker_count = kParticipants;
@@ -324,24 +329,29 @@ TEST_F(ResidentEntryResult, BothResidentModesReturnSuccessThroughTheMixedTopolog
     }
 }
 
-TEST_F(ResidentEntryResult, EmptyAndHostCompletedGraphsRequireNoDeviceProgressCredits) {
+TEST_F(ResidentEntryResult, EmptyAndHostCompletedGraphsRetireWithoutSinks) {
     for (uint64_t host_tasks : {0u, 1u}) {
         SCOPED_TRACE(host_tasks);
         configure(SCHEDULER_RUNTIME_MODE_RESIDENT_PENDING);
         runtime->dev.host_total_tasks = host_tasks;
         for (auto &context : image->contexts)
             context.graph_task_count = host_tasks;
-        image->control.expected_task_count = host_tasks;
         image->control.inline_completed_count = host_tasks;
-        image->control.resolved_task_count = 0;
-        uint32_t stale_progress = 7;
-        image->control.run_completed_read_address = reinterpret_cast<uint64_t>(&stale_progress);
-        image->control.run_completed_add_address = reinterpret_cast<uint64_t>(&stale_progress);
+        image->control.sink_count = 0;
         EXPECT_EQ(execute(), (std::array<int32_t, kParticipants>{0, 0, 0}));
-        EXPECT_EQ(stale_progress, 0u);
-        EXPECT_EQ(image->control.resolved_task_count, 0u);
         EXPECT_EQ(device_run_result_terminal(result, kEpoch).state, DeviceRunTerminalState::Succeeded);
     }
+}
+
+TEST_F(ResidentEntryResult, AnInvalidSinkFailsTheRunAndEveryCoreRetires) {
+    image->sink = 1;  // Only task 0 exists.
+    const auto statuses = execute();
+    for (const int32_t status : statuses)
+        EXPECT_EQ(status, -SIMPLER_ERROR_INVALID_ARGS);
+    EXPECT_EQ(header.error_code.load(), SIMPLER_ERROR_INVALID_ARGS);
+    EXPECT_EQ(image->control.error_site, static_cast<uint64_t>(SchedulerErrorSite::BLOCK_COMPLETION_INVALID));
+    EXPECT_EQ(device_run_result_terminal(result, kEpoch).state, DeviceRunTerminalState::Failed);
+    expect_normal_lifecycle();
 }
 
 TEST_F(ResidentEntryResult, TheActualLastEntryReturnsAnErrorClaimedAfterItsPeersReturned) {
@@ -414,8 +424,8 @@ TEST_F(ResidentEntryResult, InvalidModesRetireEveryReportedCoreAndPermitTheNextR
         );
         EXPECT_EQ(state->opened, (std::array<int, kParticipants>{0, 0, 0}));
         EXPECT_EQ(state->retired, (std::array<int, kParticipants>{1, 1, 1}));
-        for (const auto &report : runtime->dev.workers)
-            EXPECT_EQ(report.aicore_done, 0u);
+        for (size_t i = 0; i < RUNTIME_MAX_WORKER; ++i)
+            EXPECT_EQ(runtime->get_workers()[i].aicore_done, 0u);
         const auto terminal = device_run_result_terminal(result, kEpoch);
         EXPECT_EQ(terminal.state, DeviceRunTerminalState::Failed);
         EXPECT_EQ(terminal.code, -SIMPLER_ERROR_INVALID_ARGS);
@@ -430,14 +440,14 @@ TEST_F(ResidentEntryResult, InvalidModesRetireEveryReportedCoreAndPermitTheNextR
 TEST_F(ResidentEntryResult, DuplicateReportsInAnInvalidModeHaveOneRetirementOwner) {
     configure(UINT32_MAX);
     for (int32_t worker = 0; worker < kParticipants; ++worker)
-        runtime->dev.workers[worker].physical_core_id = 0;
+        runtime->get_workers()[worker].physical_core_id = 0;
     for (int32_t status : execute())
         EXPECT_NE(status, 0);
     EXPECT_EQ(state->opened, (std::array<int, kParticipants>{0, 0, 0}));
     EXPECT_EQ(state->retired, (std::array<int, kParticipants>{1, 0, 0}));
-    EXPECT_EQ(runtime->dev.workers[0].aicore_done, 0u);
-    EXPECT_EQ(runtime->dev.workers[1].aicore_done, 2u);
-    EXPECT_EQ(runtime->dev.workers[2].aicore_done, 3u);
+    EXPECT_EQ(runtime->get_workers()[0].aicore_done, 0u);
+    EXPECT_EQ(runtime->get_workers()[1].aicore_done, 2u);
+    EXPECT_EQ(runtime->get_workers()[2].aicore_done, 3u);
     EXPECT_EQ(image->control.scheduler_error, 0u);
     EXPECT_EQ(device_run_result_terminal(result, kEpoch).state, DeviceRunTerminalState::Failed);
 }
@@ -470,9 +480,9 @@ TEST_F(ResidentEntryResult, FailedStartupKeepsAnUnacknowledgedCoreOwnedAndCannot
     for (int32_t status : statuses)
         EXPECT_NE(status, 0);
     EXPECT_EQ(state->retired, (std::array<int, kParticipants>{1, 1, 1}));
-    EXPECT_EQ(runtime->dev.workers[0].aicore_done, 1u);
-    EXPECT_EQ(runtime->dev.workers[1].aicore_done, 0u);
-    EXPECT_EQ(runtime->dev.workers[2].aicore_done, 0u);
+    EXPECT_EQ(runtime->get_workers()[0].aicore_done, 1u);
+    EXPECT_EQ(runtime->get_workers()[1].aicore_done, 0u);
+    EXPECT_EQ(runtime->get_workers()[2].aicore_done, 0u);
     EXPECT_EQ(device_run_result_terminal(result, kEpoch).state, DeviceRunTerminalState::Failed);
 }
 
@@ -547,7 +557,7 @@ TEST_F(ResidentEntryResult, InvalidAicpuThreadCountsHaveOneStartupAbortOwner) {
         EXPECT_EQ(state->exit_windows, (std::array<int, kParticipants>{1, 1, 1}));
         EXPECT_EQ(state->retired, (std::array<int, kParticipants>{1, 1, 1}));
         for (int32_t worker = 0; worker < kParticipants; ++worker)
-            EXPECT_EQ(runtime->dev.workers[worker].aicore_done, 0u);
+            EXPECT_EQ(runtime->get_workers()[worker].aicore_done, 0u);
         const auto terminal = device_run_result_terminal(result, kEpoch);
         EXPECT_EQ(terminal.state, DeviceRunTerminalState::Failed);
         EXPECT_EQ(terminal.code, -SIMPLER_ERROR_INVALID_ARGS);
@@ -570,7 +580,7 @@ TEST_F(ResidentEntryResult, InvalidAicpuThreadCountCannotReleaseReportsWithoutAn
     EXPECT_EQ(state->exit_windows, (std::array<int, kParticipants>{1, 1, 1}));
     EXPECT_EQ(state->retired, (std::array<int, kParticipants>{1, 1, 1}));
     for (int32_t worker = 0; worker < kParticipants; ++worker)
-        EXPECT_EQ(runtime->dev.workers[worker].aicore_done, static_cast<uint32_t>(worker + 1));
+        EXPECT_EQ(runtime->get_workers()[worker].aicore_done, static_cast<uint32_t>(worker + 1));
     EXPECT_EQ(device_run_result_terminal(result, kEpoch).state, DeviceRunTerminalState::Failed);
 }
 
@@ -596,7 +606,7 @@ TEST_F(ResidentEntryResult, FailedInitializationPreservesAnAlreadyPublishedAsync
     ASSERT_TRUE(record_aicore_scheduler_runtime_error(
         &image->control, SchedulerGraphResult::ASYNC_WAIT_OVERFLOW, SchedulerErrorSite::ASYNC_CONTEXT_INVALID
     ));
-    runtime->dev.workers[2].core_type = CoreType::AIC;
+    runtime->get_workers()[2].core_type = CoreType::AIC;
     EXPECT_EQ(
         execute(),
         (std::array<int32_t, kParticipants>{
@@ -611,7 +621,7 @@ TEST_F(ResidentEntryResult, FailedInitializationPreservesAnAlreadyPublishedAsync
 }
 
 TEST_F(ResidentEntryResult, FailedTopologyInitializationReturnsThroughTheActualAbortCleanup) {
-    runtime->dev.workers[2].core_type = CoreType::AIC;
+    runtime->get_workers()[2].core_type = CoreType::AIC;
     EXPECT_EQ(
         execute(), (std::array<int32_t, kParticipants>{
                        -SIMPLER_ERROR_INVALID_ARGS, -SIMPLER_ERROR_INVALID_ARGS, -SIMPLER_ERROR_INVALID_ARGS

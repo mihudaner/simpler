@@ -6,8 +6,11 @@
 // INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 // See LICENSE in the root of the software repository for the full text of the License.
 // -----------------------------------------------------------------------------------------------------------
-// Four-stream HC post mixing with ordered FP32 multiply and add.
+// Four-stream HC post mixing with FP32 fused multiply-add.
 #include <cstdint>
+#if defined(__CPU_SIM)
+#include <cmath>
+#endif
 #include <pto/pto-inst.hpp>
 #include "tensor.h"
 #include "intrinsic.h"
@@ -36,7 +39,7 @@ __tf__ __aicore__ inline void mix_streams(
     for (int h = first; h < first + count; ++h) {
         for (int k = 0; k < 2560; ++k) {
             float value = static_cast<float>(x[k]) * c[h];
-            for (int i = 0; i < 4; ++i) value = value + r[i * 2560 + k] * c[8 + i * 4 + h];
+            for (int i = 0; i < 4; ++i) value = std::fma(r[i * 2560 + k], c[8 + i * 4 + h], value);
             dst[h * 2560 + k] = value;
         }
     }
@@ -56,17 +59,21 @@ __tf__ __aicore__ inline void mix_streams(
                 vlds(coef, c, h, BRC_B32);
                 vmul(value, x0, coef, full, MODE_ZEROING);
                 vlds(coef, c, 8 + h, BRC_B32);
-                vmul(term, r0, coef, full, MODE_ZEROING);
-                vadd(value, value, term, full, MODE_ZEROING);
+                term = r0;
+                vmadd(term, coef, value, full, MODE_ZEROING);
+                value = term;
                 vlds(coef, c, 12 + h, BRC_B32);
-                vmul(term, r1, coef, full, MODE_ZEROING);
-                vadd(value, value, term, full, MODE_ZEROING);
+                term = r1;
+                vmadd(term, coef, value, full, MODE_ZEROING);
+                value = term;
                 vlds(coef, c, 16 + h, BRC_B32);
-                vmul(term, r2, coef, full, MODE_ZEROING);
-                vadd(value, value, term, full, MODE_ZEROING);
+                term = r2;
+                vmadd(term, coef, value, full, MODE_ZEROING);
+                value = term;
                 vlds(coef, c, 20 + h, BRC_B32);
-                vmul(term, r3, coef, full, MODE_ZEROING);
-                vadd(value, value, term, full, MODE_ZEROING);
+                term = r3;
+                vmadd(term, coef, value, full, MODE_ZEROING);
+                value = term;
                 vsts(value, dst, h * 2560 + k * 64, NORM_B32, full);
             }
         }
@@ -125,16 +132,10 @@ extern "C" __aicore__ void kernel_entry(__gm__ int64_t* args) {
     set_mask_norm();
     set_vector_mask(-1, -1);
     int worker = get_block_idx(args);
-#if defined(SWA_COMPACT_PARTITION)
-    const int chunks = args[5] * 2;
-    const int workers = get_block_num(args);
-    for (int chunk = worker; chunk < chunks; chunk += workers) process(args, chunk, 0, 4);
-#else
     int total = args[5] * 2, full = total / 64 * 64;
     for (int chunk = worker; chunk < full; chunk += 64) process(args, chunk, 0, 4);
     for (int tail = worker; tail < (total - full) * 4; tail += 64) {
         process(args, full + tail / 4, tail % 4, 1);
     }
-#endif
 #endif
 }

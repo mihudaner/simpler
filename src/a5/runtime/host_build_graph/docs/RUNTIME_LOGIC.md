@@ -346,9 +346,11 @@ commit — which names the byte count it asked for — rather than in the alloca
 
 ### 5.1 Mixed Tasks and Logical Blocks
 
-An active mask selects AIC, AIV0, and AIV1 lanes. `block_num` is a logical SPMD
-width and may exceed the physical device width when sync-start is not requested;
-the scheduler dispatches those blocks in waves.
+Task records reserve three logical slots, AIC, AIV0 and AIV1. A MIX block
+uses the physical lanes selected by its mask. An A5 cluster has all three
+lanes. An A6 cluster has AIC and AIV0. A pure vector block can run on any
+physical vector worker. The scheduler dispatches logical SPMD blocks in waves
+when `block_num` exceeds the physical width and sync-start is disabled.
 
 Before a slot is allocated or published, submission requires:
 
@@ -372,8 +374,9 @@ TensorMap maps tensor regions to producer task IDs. For every task:
 4. Each producer tracks its highest consumer local ID for completion metadata.
 
 The compact task payload stores original top-level fanins. Native Graph access
-maps them through `completion_refs`; child fanins use Definition-local indices,
-and roots depend on ENTER. EXIT depends on every sink. The canonical producer
+maps them through `completion_refs`. Each shared Definition child plan holds
+the start and count of its fanin indices. A MIX member resolves its instance
+once and uses that same node to receive its argument ranges. Roots depend on ENTER. EXIT depends on every sink. The canonical producer
 completion gate is the readiness proof for executable and control consumers.
 
 ## 6. Bootstrap and Dependencies
@@ -385,10 +388,10 @@ engine catalog and topology. No Graph child argument binding runs on the device:
 Host has already published those arguments and Calls.
 
 Each cluster has a run-initialized 128-byte atomic-only GM gate. When the graph
-uses MIX, AIV0 clears both SSBUF banks and publishes INIT. Host seeds INIT for
-graphs without MIX. After the first fill, AIC and any AIV1 publish DONE.
-AIV0 credits the cluster when the mask reaches 7 on A5 (1C2V) or 3 on A6
-(1C1V). The last cluster publishes `bootstrap_complete`; AICPU then releases
+uses MIX, AIV0 clears its cluster's SSBUF bank and publishes INIT. Host seeds
+INIT for graphs without MIX. After the first fill, AIC and any AIV1 publish
+DONE. AIV0 credits the cluster when the mask reaches 7 on A5 (1C2V) or 3 on
+A6 (1C1V). The last cluster publishes `bootstrap_complete`. AICPU releases
 each worker through DATA_MAIN_BASE on A5 or IPC0 on A6. A failed
 lane contributes no success, and no kernel may enter before this gate opens.
 
@@ -422,34 +425,102 @@ Call acquisition completes in the same bounded invocation; it has no pending-bui
 result or separate binding-ready bit. Cooperative preparation requires an explicit
 lane and rejects predicates; ordinary execution tokens retain predicate evaluation.
 
-The Host orders tasks by Kahn generation, descending bottom level, then stable
-node identity. The pure-AIC catalog and the AIV catalog (which includes MIX)
+When a MIX member first accepts a descriptor, it validates the task and caches
+the sync-start flag, async-input flag and required issue floor for its lane.
+The member reuses those values while waiting for admission. Fanin completion
+and the current issue floor are still checked before execution.
+
+The Host first orders tasks by Kahn generation, descending bottom level and
+node identity. Flat graphs with zero deferred groups, zero device control
+nodes and no predicates are eligible for a local change to this order. For
+each wide SPMD task S, the Host estimates how many AICs and AIVs can run
+its blocks concurrently. For MIX, it caps the block count at the cluster count
+before multiplying by the number of compute lanes of each type. On 32 A5 clusters,
+a multi-wave 1C1V task can use at most 32 AIVs. A pure AIV task can use both
+vector workers per cluster, up to 64 AIVs. On 54 A6 clusters, both a pure AIV wave
+and a 1C1V MIX wave use up to 54 AIVs. S may be pure or MIX and may request sync-start.
+Each narrow task B considers only the next S needing at least half the workers
+on B's engine. An intervening MIX or sync-start task ends the search. If B
+and that nearest S fit together, B keeps its position and the search stops
+there, even if a wider task follows. If several tasks qualify for S, the Host
+moves the nearest B in the original order to the position immediately after S.
+
+B must be an ordinary pure task on that engine, request fewer than half its
+workers and have no sync-start requirement. Their combined demand must exceed
+the engine's capacity, S must have a greater bottom level, and the two original
+generations must differ by at most one. B cannot pass a direct successor.
+Each S moves at most one B, and each B can move only once. Cooperative tasks
+retain their relative order. The Host verifies that each producer still
+precedes its consumer before rebuilding the per-lane issue floors.
+
+The smaller bottom level of B is a structural proxy for flexibility. For
+offline validation, compare traces with the same input shapes, kernels and
+block configuration. Measure the gap from B's last block completion to the
+earliest start of any direct successor, using the end of the measured run for
+a sink. For S, compare the earliest and latest block entries and completions
+and inspect the intervals during which the tasks overlap on the same engine.
+The observed gap can include waits for cores, other inputs and scheduling.
+It does not establish how far B can safely move in time. Host binding uses
+the static graph and resource demands.
+
+A synchronous kernel completes on return and may signal another rank. A kernel
+that needs a signal from another rank must declare deferred completion and
+register its wait. Local pipeline waits and synchronization among blocks in a
+sync-start cohort follow their existing protocols.
+
+The pure-AIC catalog and the AIV catalog (which includes MIX)
 project that order onto the two engines. Each worker advances its private
 cursor after confirming that the current task has supplied all its blocks.
 Cross-engine predecessors must also have closed their supply before a consumer
 can claim a block. The producer's completion gate separately controls when
-the consumer can execute. For a flat executable task without a predicate,
+the consumer can execute. For a dynamically distributed flat executable task without a predicate,
 the last valid block claim publishes `claim_seal == logical_block_num`.
 This seal proves all ordinary or MIX blocks have owners, so the supply check
 can advance the catalog without loading DONE. Native Graph nodes and
 predicated tasks still check logical completion, since they can finish without
 issuing every block. The consumer checks data dependencies before execution.
 
-Each core has two ordinary self-claim slots and two MIX member slots, one per
-SSBUF bank. Each ordinary slot can hold one block, and a core can hold at most
-one ordinary block of the same task. A successful claim fixes the ordinary
-slot and owner. A MIX member accepts a descriptor into its bank's slot. Both
-kinds of slot retain their identity from preparation through physical return
-and retirement. A blocked slot caches its confirmed fanin prefix while the
-scheduler services other slots and asynchronous work.
+For an exact wave, Host marks the expanded task with `SCHEDULER_TASK_FIXED_OWNER`.
+The AIC worker owns the block at its cluster index. A vector worker owns block
+`cluster_index * vectors_per_cluster + vector_index`. A5 uses two vector
+workers per cluster and A6 uses one. A 1C1V or 1C2V block maps to
+the block assigned to its cluster, where AIV0 publishes the original active mask.
+For a full Cube + Vector MIX wave with a power-of-two cluster count of at least eight,
+clusters whose index has bit 1 set flip the high index bit to select their block.
+All other clusters use their own index, including all 54 A6 clusters.
+This applies with either sync_start setting. Fixed assignment satisfies cross-engine supply as
+soon as the image is available. An owning core advances its own catalog only
+after binding its block or publishing its local MIX descriptor. The cluster
+floor, resource order, and actual fanin still guard execution. Per-task dynamic
+claim counters and the supply seal stay zero for these tasks.
+
+For a flat graph with no deferred groups, the Host can also prevalidate two
+terminal full-cluster MIX tasks after a full-width vector task. Each link must
+be the only live successor of the preceding task, and the last task must be
+the sole sink. All three tasks require fixed owners and disable sync-start.
+Each worker prebinds its two calls using the physical cluster mask, 7 on A5
+or 3 on A6. Other inputs to either MIX still gate execution.
+
+Each core has one ordinary self-claim slot and one MIX member slot. An
+ordinary claim fixes the slot and owner for one block. A MIX member accepts
+the descriptor from its cluster's SSBUF bank into its MIX slot. Both slots
+retain their identity from preparation through physical return and retirement.
+Each slot retains its fanin cursor and the current pending predecessor’s
+reference and completion source while the scheduler services other work.
+On retry, the worker checks for completion again. It clears the binding
+when the cursor advances or the slot is reused. The end of the fanin list
+indicates that all predecessors are ready.
 
 Once fanin completes, the worker publishes the payload in the same slot.
 A false predicate skips the function and retains its return obligations.
 Direct dispatch passes the selected slot index to the executor. Queued
 dispatch selects a slot from the local ready set. Both paths check the
-applicable epoch and cooperative entry conditions before invoking the Call.
-When a kernel returns with an outstanding deferred condition, CHECK follows
-the condition in the shared async directory.
+applicable epoch and cooperative entry conditions before invoking the Call. At MIX pickup the expected
+epoch comes from the validated run-local snapshot. Immediate picks reuse the
+worker's READY check; the generation acquire and owner check still gate entry.
+L2 profiling saves the trace index at READY for identity capture and retirement.
+When a kernel returns with outstanding deferred conditions, the registering worker
+retains its CHECK group and polls the pending entries from its local queue until they settle.
 
 ### 7.2 Business Execution and Cooperative Work
 
@@ -465,41 +536,74 @@ A kernel proven to have no such accesses skips both operations.
 AIV0 claims the MIX block and release-publishes its task, block, rank and lane
 mask in a cluster SSBUF bank. Each named worker accepts a stable generation
 once and prepares its own Call. Execution still requires fanin, ordering and
-the applicable sync-start permit. The bank can be reused after the accountant
-has observed every active member's matching FIN and acknowledged the generation.
-The proxy records its latest claim, the last group published to each bank,
-and an unpublished cancellation. The two bank identities survive a third claim. Each
-member records CLAIMED on receipt, ENTERED at the kernel boundary and RETURNED
-on physical return. Aborting an unpublished group leaves its members BUILT.
+the applicable sync-start permit. When a participating lane has an earlier
+conflicting pure sync-start cohort, every member publishes ARRIVED and waits
+for all active arrivals for this generation. Otherwise each member can enter
+after its local arrival. Deferred dependencies gate consumers at fan-in, and the
+scheduler loop services outstanding async conditions. Each returning member publishes its generation-tagged FIN. When AIV0 needs
+the bank again, or drains the run, it checks FIN for every named member.
+Protocol capture additionally records an accountant receipt.
+The proxy records its latest claim, the last group published to the bank,
+and an unpublished cancellation. The published identity survives a subsequent
+claim waiting for the bank. At L0–L3 the member keeps CLAIMED and ENTERED in
+its handle and publishes RETURNED in GM on physical return. While the cell is
+BUILT, Host exports null for entry and ownership. With L4 protocol capture,
+the member also publishes CLAIMED on receipt and ENTERED at its kernel call
+boundary. A timeout can therefore distinguish a claimed member waiting for
+fan-in from a member that reached that boundary. Run errors identify the
+failing operation. Aborting an unpublished group leaves its members BUILT.
+
+The final MIX entry permit reads the SSBUF generation with an acquire barrier.
+A synchronous member can enter the kernel directly after that acquire when
+task timing, PMU and argument capture are off. A prebound async group or
+possible consumption of an async input keeps the pre-call DDR barrier.
 
 After the kernel returns, its async registration is sealed. A MIX member
-records its physical return even when post-call sealing fails. The
-real physical return contributes once to the task's canonical completion gate;
-inactive MIX resource lanes contribute no execution. Trace/group retirement
-finishes under its existing ownership before the slot is safely reused.
+records the physical return even if sealing fails. On the CntNotify path each
+successful active member publishes its own physical credit P. An async-capable
+member also owes one condition credit Q, published at an empty seal or by the
+registering worker when its conditions hold. Each worker retains its current
+group, pending mask and condition cursor locally. Additional groups use
+per-group GM storage in FIFO order. Each pass checks at most eight conditions
+from one group and rotates outstanding groups. The worker may run independent
+kernels between checks. If the sole pending group has one COUNTER, its first
+unsatisfied check retains the validated address and threshold on the worker.
+Each pending retry samples that address once. A satisfied sample goes through
+the worker error check and descriptor validation before issuing the condition
+credit. Enqueuing another group or advancing the head invalidates the cached
+address. The resident loop continues its periodic error check between iterations.
+Consumers still consult the run-wide activation flag.
+
+A5 Host requires all requested CntNotify
+slots to be mapped and 32-byte aligned before publishing the image. A missing
+slot or invalid mapping fails preparation. On CPU/sim the GM accountant waits for
+every active member's successful FIN and contributes the active lane count in
+one update. Both paths retire the bank only after the successful FIN check.
 
 ### 7.3 Canonical Completion and Retirement
 
-`completion_state` encodes immutable total in bits 63:48, remaining computation
-in bits 47:32 and debt in bits 31:0. Initial state for T physical executions is
-`(T,T,T)`. A real return atomically subtracts `(1 << 32) + 1`, reducing both
-remaining computation and compute debt. Async conditions retain additional debt
-until their join completes. DONE requires a valid total and zero computation
-and debt; a kernel return alone is insufficient.
+On the GM path, `completion_state` encodes the immutable total in bits 63:48,
+remaining computation in bits 47:32 and debt in bits 31:0. The initial state
+for T physical executions is `(T,T,T)`. A contribution of K physical returns
+subtracts `K * ((1 << 32) + 1)`. The first nonempty async group adds one marker
+to the debt. Once all physical returns and pending groups settle, the closing
+or final-settlement operation grants one FINISH owner, which publishes DONE
+inline by changing `(T,0,1)` to `(T,0,0)`. A counted task reaches DONE when
+its P and Q contributions reach its CntNotify threshold.
 
-Each unique logical-task accountant immediately contributes one INC to a
-run-owned CntNotify. AICPU reads that count for progress and completion;
-Host-completed nodes remain separately counted. There is no per-worker pending
-count, batching threshold, timer or flush. Unmapped runs use one GM FAA per
-task. A6 uses this GM counter for run progress, GM completion gates for task
-dependencies, and the GM CHECK bitmap for deferred conditions.
-The reporting helper adds no DSB: existing completion publication and
-unconditional worker-retirement barriers preserve their respective ordering.
-After every core retires, AICPU snapshots the actual count into the GM
-`resolved_task_count` diagnostic field. Successors observe producer completion
-directly. Async CHECK keeps its exclusive lease and only settled logical
-completion reports progress; physical return with pending conditions does not.
-Trace publication, group release and safe reuse retain their ownership rules.
+Host records the live nodes with no live consumer after control folding and
+Graph expansion. After bootstrap, AICPU observes each sink's existing ADD
+threshold, SET notification or GM completion state. A completed sink stays
+complete. All sinks must settle before EXIT, including any asynchronous debt.
+A6 observes GM completion gates for the sinks.
+Independent terminal branches are checked separately. Host-only graphs have
+an empty sink list and still go through bootstrap and worker retirement.
+
+A long chain can progress while its sink stays pending. Only after the
+watchdog has seen no progress for half its budget does it sample intermediate
+state. Profiled retirement snapshots mapped counters for diagnostics. L4
+derives its resolved task count from the retired image and exports JSON `null`
+if a device task uses a counter without a valid retirement snapshot.
 
 On an error, a worker cancels only its provably owned unstarted handles to FAILED;
 it cannot invent a RETURNED Call, computation contribution or group-finished ACK.

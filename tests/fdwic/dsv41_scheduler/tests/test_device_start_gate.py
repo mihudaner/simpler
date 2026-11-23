@@ -108,21 +108,46 @@ def test_prepare_rejects_unwrapped_runtime_before_creating_output(tmp_path, gate
     runtime = snapshot(tmp_path / "wrapper", gate)
     (tmp_path / "wrapper/manifest.json").unlink()
     output = tmp_path / "prepared"
-    monkeypatch.setattr(sys, "argv", ["prepare.py", str(runtime), str(output), "--flavor", "pypto_lib"])
+    monkeypatch.setattr(sys, "argv", ["prepare.py", str(runtime), str(output), "--flavor", "pypto_lib_latest"])
     with pytest.raises(SystemExit) as error:
         prepare.main()
     assert error.value.code == 2
     assert not output.exists()
 
 
-def test_prepare_passes_valid_snapshot_to_capture(tmp_path, gate, monkeypatch):
+@pytest.mark.parametrize("selection", [[], ["--flavor", "all"], ["--flavor", "pypto_lib_latest"]])
+def test_prepare_passes_valid_snapshot_to_capture(tmp_path, gate, monkeypatch, selection):
     prepare = importlib.import_module("prepare")
     runtime = snapshot(tmp_path / "wrapper", gate)
     output = tmp_path / "prepared"
     calls = []
-    monkeypatch.setattr(sys, "argv", ["prepare.py", str(runtime), str(output), "--flavor", "pypto_lib"])
+    monkeypatch.setattr(sys, "argv", ["prepare.py", str(runtime), str(output), *selection])
     monkeypatch.setattr(prepare.subprocess, "run", lambda command, **kwargs: calls.append(command))
     monkeypatch.setattr(prepare, "export", lambda *args: [])
     prepare.main()
     assert len(calls) == 1 and calls[0][3] == str(runtime)
+    assert Path(calls[0][2]).name == "pypto_lib_latest"
     assert json.loads((output / "runtime.json").read_text())["path"] == str(runtime)
+
+
+def test_single_device_materialization_uses_matching_original_runtime(tmp_path, gate):
+    materialize = importlib.import_module("materialize")
+    runtime = snapshot(tmp_path / "wrapper", gate)
+    original = tmp_path / "original/a5/onboard"
+    manifest_path = tmp_path / "wrapper/manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    originals = {}
+    for relative in manifest["snapshot_files"]:
+        if relative.endswith(("device_start_gate.o", "libhost_runtime_impl.so")):
+            continue
+        path = original.parents[1] / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"original")
+        originals[relative] = {"source": str(path), "stamp": gate.file_stamp(path)}
+    manifest.update(source_runtime_dir=str(original), original_binaries=originals)
+    manifest_path.write_text(json.dumps(manifest))
+    assert materialize.single_device_runtime(original, "host_build_graph") == original
+    assert materialize.single_device_runtime(runtime, "host_build_graph") == original
+    (original / "host_build_graph/libhost_runtime.so").write_bytes(b"rebuilt")
+    with pytest.raises(ValueError, match="Original runtime changed"):
+        materialize.single_device_runtime(runtime, "host_build_graph")
