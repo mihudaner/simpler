@@ -260,3 +260,11 @@ A6 使用主线的 GM 完成路径。每个逻辑任务由唯一负责记账的�
 4. **结论范围明确：** 零权重夹具通过不代表真实权重精度；首轮不要求 percounter 或性能对比。后续计时分列 AICore 窗口、Device wall，并说明硬件、Host、SDK 与分片差异；L3 不混入 L0。
 
 本切片不验证 MoE。后续若扩展，需区分固定回放与 native Host 编排；原 `pypto_lib_latest/moe` 标记 `numerical_validation: false`，不能沿用 SWA 的数值校验结论，见 [原用例说明](../../dsv41_scheduler/README.md)。
+
+## A6 的待办
+
+【x】 atomic 性能 <- A6没问题
+【x】 dcache footprint (TCM prefetch)(Tightly Coupled Memory  TCM A6 l3单独的一块sram) 一些gm调度过程中的控制变量啥的放在gm Dcache miss就是几百ns, 可以尝试放在TCM.
+【】 SU速度 <- A6/A7都没特别改善
+
+所以当前的问题就是调度性能（task执行当前测试机器降频，执行速度比较慢）当前l2 不膨胀的泳道图的开销要结合方案理解清楚，然后对比a6的调度开销对比，性能可解释
