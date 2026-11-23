@@ -1,5 +1,5 @@
 {
-  "source_revision": "4400aea2adfec9684a7912642057de3be48e6ae2",
+  "source_revision": "48fd8fef30bc4d3aa95ce6f029bd61071271c7e8",
   "model": "hw-native-sys/pypto-lib dev/hbg@4cb74422616359b3f95c598b1f9cdd31cf4e4173 aicpu_orchestration_entry",
   "case": "pypto_lib_latest/swa",
   "reference_count": 25,
@@ -14,7 +14,7 @@
     "edge_table_sha256": "473aaacd1dfe0c71471e608f234d86d7dbd18721cf47b24bda58544a51df8bb7"
   },
   "archive": "swa.tar.xz",
-  "archive_sha256": "bcc1c0bf846d7d17fd9fd354ceb1df0c0dc392f7ff1bd97fb5794a9a12755fbc",
+  "archive_sha256": "42db48eb0752b9f3b758ac91dee5efc6e516b2c686fff597c8d553d1fda3cea2",
   "files": {
     "case.json": "ec5ca8f5ab9a635a3e8c83af078059cc6be8393f260a5bbe22805b5432dec0a1",
     "input-rank0-0.bin": "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7",
@@ -79,7 +79,7 @@
     "input-rank0-75.bin": "620bfdaa346b088fb49998d92f19a7eaf6bfc2fb0aee015753966da1028cb731",
     "input-rank0-8.bin": "e00e5eb9444182f352323374ef4e08ebcb784725fdd4fd612d7730540b3e0c8c",
     "input-rank0-9.bin": "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
-    "plan-rank0.bin": "6e19599baa1f08f35a92978c5fb1deef7b0a0c4afe0b37c667011575b09927fa",
+    "plan-rank0.bin": "8b64fd725d79bbb7c83321adc4b0989864048fcc99a2c1e157b1806c4e3df5f7",
     "rank0.txt": "411b070179220cd159828569eb66a43b5834cce11fff97fd624c91fabeee618c",
     "reference/24.bin": "ad2f14ea1cd742663928dec8f38581f27543f6f902ed8f1d305b01b486834da9",
     "reference/25.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
@@ -133,6 +133,6 @@
     "snapshot-input-85.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
     "snapshot-input-86.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
     "snapshot.txt": "89d8c3b37a1d94a22cb7e1768a19dc4d247dcf77ab2e8875f4d0ac69d3740e4d",
-    "callable.bin": "6f2e86d23ef97b69c6789e4e27ff5001fc13eceeb61627f7729ce30f362eb96a"
+    "callable.bin": "b0e3cd9a0eff97a94d2d2d68223f596ef52746dcef79931f1c19d146cf8d72f1"
   }
 }

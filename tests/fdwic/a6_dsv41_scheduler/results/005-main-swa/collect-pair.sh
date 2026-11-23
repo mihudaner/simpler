@@ -84,7 +84,9 @@ PY
         base=$out/$arm
         for level in 0 1 2; do
             options=()
-            [[ $level != 2 ]] || options+=(--trace "$base/swa-a5-$arm-hbg-L2.json.xz")
+            if [[ $arm == main && $level == 2 ]]; then
+                options+=(--trace "$base/swa-a5-main-hbg-L2.json.xz")
+            fi
             [[ ${DSV41_SHARED_DEVICE_CLOCK:-1} != 1 ]] || options+=(--shared-device-clock)
             "$DSV41_PYTHON" "$migrated/tests/fdwic/a6_dsv41_scheduler/performance.py" "$base/L$level" \
                 --platform a5 --level "$level" --json "$base/L$level/metrics.json" "${options[@]}"
