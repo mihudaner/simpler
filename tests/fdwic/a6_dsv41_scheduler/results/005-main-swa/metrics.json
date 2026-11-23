@@ -1739,7 +1739,18 @@
     "topology": "54C+54V",
     "executions": 660,
     "hardware_results": null,
-    "status": "awaiting_device_validation"
+    "status": "awaiting_device_retest_after_completion_counter_fix",
+    "failed_capture": {
+      "directory_on_device_host": "build/005-a6-QeZpqDMb",
+      "levels": [0, 1, 2],
+      "failed_run_index": 0,
+      "runtime_error": 507018,
+      "l0_aicore_error": 271,
+      "l0_die": 0,
+      "l0_aic_core": 1,
+      "l0_fault_elf_vma": "0xef2c4",
+      "resident_image_sha256": "8f71914174e16eb06cefdebac59307b0c53a9210cf34f3bf0307a0fb93281934"
+    }
   },
   "stages": {
     "original_forward": "task_20261123_155742_26768241734",

@@ -1,6 +1,6 @@
 # 005　最新主线的 SWA 与 A6 迁移
 
-2026-11-23 在同一张 A5 上，纯主线 `48fd8fef3` 与合并版 `ad69fb740`（merge 为 `cef3736bf`）的 HBG L0 核窗口分别为 **156.784 µs** 和 **156.190 µs**。合并版相对主线 -0.594 µs（-0.38%）。A5 两版的六组采集均通过数值校验。A6 已完成编译和真实输入组包，设备侧正确性与耗时待验证。[指标与逐轮样本](metrics.json)
+2026-11-23 在同一张 A5 上，纯主线 `48fd8fef3` 与合并版 `ad69fb740`（merge 为 `cef3736bf`）的 HBG L0 核窗口分别为 **156.784 µs** 和 **156.190 µs**。合并版相对主线 -0.594 µs（-0.38%）。A5 两版的六组采集均通过数值校验。A6 首次上板在完成计数时写地址 0，L0/L1/L2 首轮均失败。计数路径已修正，设备侧数值和耗时待复测。[指标与逐轮样本](metrics.json)
 
 ## 同一张 A5 的性能
 
@@ -10,7 +10,7 @@ Ascend950DT_9581，设备 1，任务 `task_20261123_155831_271358730317`。一�
 | ------------ | -----: | --------: | -----: | ----------: | --------------: | --------: |
 | A5 纯主线 `48fd8fef3` | 53.392 | 156.784 | 30.140 | 240.316 | 112.270 | 39.65% |
 | A5 迁移版 `ad69fb740` | 55.451 | 156.190 | 31.778 | 243.419 | 111.770 | 39.74% |
-| A6 迁移版（待上板） | | | | | | |
+| A6 迁移版（待复测） | | | | | | |
 
 两组 L0 的十轮范围分别为 154.643–159.657 µs 和 154.342–159.597 µs。两组范围重叠，本次同卡复测未观察到合并前后 A5 的 L0 计算性能有明显差异。
 
@@ -92,6 +92,23 @@ L0 核窗口从首个业务核开始到最后一个结束。计算前和计算�
 **旧图的“尾部两轮”指同一个任务分两批领 block。** 00 的 A6 泳道里，输出量化 t17 和末尾 HC post t27 各有 64 个 V block，54 个 V 核中有 10 个要领第二次。005 尾部的三个任务（源 t30、t33、t34）各提交 54 个 block。t30 输出量化和 t33 O-A 仍各有 64 个计算 tile，分给 54 个 block 后，10 个 block 在同一次核调用内各多算一个 tile。末尾 t34 已融合 HC post，54 个 block 各处理一个列块。按计划，这三项都能由 54 组一批接下；实际启动是否齐整、核内负载是否拖尾，留给 A6 泳道核验。[旧图两批的逐核观测](../00-baseline/README.zh-CN.md#合并前的-device-wall-增量落在哪些区间) · [输出量化](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/external/o_quant_vf.cpp) · [O-A 列切分](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/external/o_proj_a.cpp)
 
 图前部还有一个容量例外：源 t9 补零仍提交 80 个 V block，在 54 个 V 核上至少分两批执行。本例只给行号 72–79 补零（从 0 编号）。上板时可用源码号区分这项与输出尾部的三项。[补零核](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/aiv/zero_bf16_padding.cpp)
+
+### A6 完成计数故障 271
+
+2026-11-23，A6 的 005 回放完成组包（15 个计算任务、计划每轮 660 次核执行、30 个缓冲区准备完成）。L0、L1、L2 各自在 run 0 返回 507018，20 s 后超时，0/108 个 worker 获得退出确认。三组均无 `result.json`，本次没有可归档的 A6 性能或 L2 泳道。L0 原始证据位于板上用例目录下的 `build/005-a6-QeZpqDMb/L0/rank0/ascend/debug/plog/plog-4077897_20261123170320381.log:58`，以下寄存器和反汇编来自同次板端采集。
+
+| 核对项 | 板端证据 |
+| ------ | -------- |
+| Host 映射 | `planned_chains=4 mapped_chains=0 mapped_tasks=0`，Host 发布 `completion_counters_offset=0` |
+| 首发异常 | die 0 的 AIC core 1 报 271；入口 PC 为 `0x120055e0022c`，原始 current 为 `0x120055eef410` |
+| 触发指令 | SU 校正 PC 为 `0x120055eef2c4`。板上 ELF 的 `.text+0xef2c4` 为 `ST_DEV.b32 X26, [X3], #0`；`X3=0`、`X26=1`，即往地址 0 写 1 |
+| 失败镜像 | 常驻 `aicore_kernel.o` 的 SHA-256 为 `8f71914174e16eb06cefdebac59307b0c53a9210cf34f3bf0307a0fb93281934` |
+
+**根因与修复。** 主线 #3208 让 A5 真机在编译时假定 Host 已映射 CntNotify。A6 共用这段设备代码，Host 却用零偏移表示应走 GM。业务 block 返回时，常驻调度器跳过零偏移检查，误读计数器描述符的 `add_address`，最终在 `scheduler_notify_add` 写零地址。修复把“必有 CntNotify”的编译期假设限定在 A5 真机；A6 的普通完成、MIX 和异步完成分支共同遵循 Host 发布的映射状态。无映射时用已有 GM 完成状态记账。IPC0/IPC4 继续用于整轮启停和退出回执。[Host 发布偏移](../../../../../src/a5/runtime/host_build_graph/host/runtime_maker.cpp) · [设备端选择](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_memory.h) · [完成记账](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_completion.h) · [IPC 选址依据](../../doc/a6-migration.zh-CN.md#9-ipc-寄存器与退出协议)
+
+**离线验证。** 对生产代码的零偏移路径分别用 A5 和 A6 的 CCE 参数编译 C/V 探针，检查 `scheduler_execution_uses_counter(scheduler_execution_counter_at(base, 0, task))`。修复前两端的 C/V 都返回 1；修复后 A6 的 C/V 返回 0，A5 的 C/V 仍返回 1。两端的 HBG 完整运行库均已重编，A5 常驻 AICore 镜像与修复前逐字节相同。
+
+**复测口径。** 使用修复后的 HBG 运行库和同一份 005 回放包，先确认 A6 L0 生成 `result.json` 且数值通过，再采 L1 和 L2；L1 每个正式轮应覆盖 660 次业务核执行。[A6 复测命令](../../doc/a6-environment.zh-CN.md)
 
 ### 合并范围
 

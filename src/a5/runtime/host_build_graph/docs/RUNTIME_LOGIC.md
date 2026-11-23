@@ -576,7 +576,9 @@ Consumers still consult the run-wide activation flag.
 
 A5 Host requires all requested CntNotify
 slots to be mapped and 32-byte aligned before publishing the image. A missing
-slot or invalid mapping fails preparation. On CPU/sim the GM accountant waits for
+slot or invalid mapping fails preparation. A6 Host publishes a zero completion
+counter offset and the resident scheduler uses GM completion accounting.
+On A6 and CPU/sim the GM accountant waits for
 every active member's successful FIN and contributes the active lane count in
 one update. Both paths retire the bank only after the successful FIN check.
 

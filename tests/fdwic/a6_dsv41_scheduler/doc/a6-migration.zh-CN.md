@@ -179,7 +179,9 @@ C wait_intra_block(PIPE_S, 12) → 校验 ack、response
 | 任务确认与完成 | AICore 用 `set_ipc_reg_4()` 写，CP1 从**同一子核基址 + `0x5520`** 读 64 位。任务 ACK 写 `taskIdx`，FIN 写 `taskIdx \| 0x80000000`。 |
 | 结束本次运行 | AICPU 往每核 GM `waveBufferCpuToCore[0]` 写 GOODBYE（`0x88888888`）。AICore 轮询并处理退出，清理 IPC0/4，AICPU 随后复位槽位。接入时要保持先停止访问、后复用内存的顺序。 |
 
-A6 平台访问器将 C/V 命令与回执分别映射到 IPC0、IPC4。两类核的对应指令是 `MOV X0, IPC_REG_0` 与 `MOV IPC_REG_4, X0`。
+**如何确定偏移和核侧寄存器。** 参考实现 `373856cd828a0154173585bc8bffa8410ffacd53` 的 `GetAicoreRegInfoForDAVID` 给出 CP1 的视角：在 2 MiB 资源窗中选 C 窗首或 V 的 +1 MiB 子窗，再相对该子窗使用命令偏移 `+0x5500` 和回执偏移 `+0x5520`。本仓将两者分别定义为 `REG_SPR_DATA_MAIN_BASE_OFFSET` 和 `REG_SPR_COND_OFFSET`。在另一端，A6 的 `read_reg(DATA_MAIN_BASE)` 调用 `get_ipc_reg_0()`，`write_reg(COND, value)` 调用 `set_ipc_reg_4(value)`。实际 `dav-920r1` 的 C/V 产物反汇编可见 `MOV X0, IPC_REG_0` 与 `MOV IPC_REG_4, X0`。[窗口常量](../../../../src/a5/platform/include/common/platform_config.h) · [核侧读写](../../../../src/a5/platform/onboard/aicore/inner_kernel.h)
+
+**如何验证这两端接通。** Host 内存窗口实验用 A6 CP1 产物核对了两个偏移的 64 位访问及高低半字。早期 A6 核若仍写旧 COND，CP1 在 `+0x5520` 收不到退出 ACK。改成写 IPC4 后，迁移基线 SWA 的 54C＋54V 共 108 个 worker 完成启动与退出，30 个可写缓冲区均通过校验。005 报 271 的写操作发生在业务 block 完成记账阶段，故障地址为 0；该次失败单独归档。[启动与退出记录](#12-启动与退出修复) · [迁移基线](../results/00-baseline/README.zh-CN.md) · [005 完成计数故障](../results/005-main-swa/README.zh-CN.md#a6-完成计数故障-271)
 
 **同一条控制通道的两端。** AICPU 在目标核的窗口中按偏移读写，AICore 通过本核指令访问对应的寄存器。本仓 HBG 将“开始执行”和“本轮退出确认”约定为控制字，普通计算任务继续由 AICore 调度。两端的实现如下。
 
