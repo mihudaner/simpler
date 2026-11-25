@@ -107,6 +107,22 @@ class PerformanceTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "mismatched execution identity join"):
                     performance.capture_metrics(folder, "a5", 1, 2, self.core)
 
+    def test_a6_diagnostic_requires_five_t0_blocks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            folder = Path(temp)
+            write_capture(folder, 2)
+            table = performance.swa_tasks()
+            with patch.object(performance, "swa_tasks", return_value={8: table[8]}):
+                path = folder / "deps.json"
+                deps = json.loads(path.read_bytes())
+                for reported, selected in ((5, True), (20, False)):
+                    deps["tasks"][0]["block_num"] = reported
+                    path.write_text(json.dumps(deps))
+                    _, shapes, _ = performance.workload(folder, "a6", selected)
+                    self.assertEqual(shapes[0][0], reported)
+                    with self.assertRaisesRegex(ValueError, "differs from source"):
+                        performance.workload(folder, "a6", not selected)
+
     def test_l2_uses_checkpoint_schema_and_names_worker_without_optional_lifecycle(self):
         with tempfile.TemporaryDirectory() as temp:
             folder = Path(temp)

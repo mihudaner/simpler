@@ -31,13 +31,15 @@ struct Partition {
 
 int main(int argc, char **argv) {
     try {
-        if (argc != 3) throw std::runtime_error("Usage: adapt-plan input output");
+        if (argc != 3 && !(argc == 4 && std::string(argv[3]) == "--five-block-t0"))
+            throw std::runtime_error("Usage: adapt-plan input output [--five-block-t0]");
         // Task IDs in the pinned 15-task SWA match the source capture, including its prefix.
         std::map<uint64_t, Partition> partitions{
             {12, {{-1, 8, -1}, 64, {72, 80}, 54}},     {22, {{16, 17, 17}, 24, {72, 64, 128, 0, 0}, 48}},
             {30, {{-1, 21, -1}, 64, {72, 8, 80}, 54}}, {33, {{22, 23, 23}, 32, {8192, 72, 80, 80}, 54}},
             {34, {{24, 25, 25}, 32, {80, 128}, 54}},
         };
+        if (argc == 4) partitions.emplace(8, Partition{{-1, 6, -1}, 20, {80}, 5});
         std::ifstream input(argv[1], std::ios::binary);
         auto records = dsv41::read_records(input);
         const auto slice = dsv41::select_slice(records, 8, 34);

@@ -240,7 +240,7 @@ def build_bundle(args, build_dir, bundle, source):
         build_converter(args.cxx, converter)
         plan = bundle / "plan-rank0.bin"
         converted = build_dir / "plan-a6.bin"
-        executions = convert_plan(tools / "record-tool", converter, plan, converted)
+        executions = convert_plan(tools / "record-tool", converter, plan, converted, args.five_block_t0)
         converted.replace(plan)
     runner = tools / "native-runner"
     original_callable = source / "callable.bin"
@@ -272,6 +272,7 @@ def build_bundle(args, build_dir, bundle, source):
             "source_commit": capture(["git", "-C", REPO, "rev-parse", "HEAD"]).strip(),
             "model": manifest["origin"],
             "tasks": len(tasks),
+            "t0_blocks": 5 if args.five_block_t0 else tasks[8][0],
             "executions": executions,
             "source_snapshot_files": metadata["files"],
             "reference_count": metadata["reference_count"],
@@ -335,6 +336,9 @@ def main():
         "--bundle", type=Path, help="Override bundled SWA with materialized cases/pypto_lib_latest/swa"
     )
     compile_case.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
+    compile_case.add_argument(
+        "--five-block-t0", action="store_true", help="Use five A6 vector blocks for source task 8"
+    )
     compile_case.add_argument("--build-dir", type=Path)
     compile_case.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     compile_case.add_argument("--jobs", type=int, default=4)
@@ -342,6 +346,8 @@ def main():
     if args.command == "freeze":
         freeze(args)
     else:
+        if args.five_block_t0 and args.platform != "a6":
+            parser.error("--five-block-t0 requires --platform a6")
         build(args)
 
 

@@ -67,6 +67,13 @@ class FixtureTest(unittest.TestCase):
         self.assertEqual([r["id"] for r, s in zip(before, after, strict=True) if r != s], [12, 22, 30, 33, 34])
         fused = next(r for r in after if r["op"] == 2 and r["id"] == 34)
         self.assertEqual((fused["blocks"], fused["kernels"]), (54, [24, 25, -1]))
+        diagnostic = self.directory / "five-block-t0.bin"
+        self.assertEqual(convert_plan(self.tool, self.converter, original, diagnostic, five_block_t0=True), 645)
+        profile = read_records(self.tool, diagnostic)
+        expected = [dict(r, blocks=5) if r["op"] == 2 and r["id"] == 8 else r for r in after]
+        self.assertEqual(profile, expected)
+        with self.assertRaisesRegex(ValueError, "changed fields"):
+            check_conversion(before, profile)
         fused["sync"] ^= 1
         with self.assertRaisesRegex(ValueError, "changed fields"):
             check_conversion(before, after)

@@ -28,7 +28,7 @@ sys.path.insert(0, str(SUITE / "production"))
 
 from compile_kernels import swa_tasks  # noqa: E402
 from ideal_bound import complete_flat_dag  # noqa: E402
-from prepare_plan import A6_BLOCKS  # noqa: E402
+from prepare_plan import a6_partitions  # noqa: E402
 from timing import paired_spans  # noqa: E402
 
 from simpler_setup.tools.strace_timing import parse_span_records  # noqa: E402
@@ -47,7 +47,7 @@ PHASES = {
 }
 
 
-def workload(folder, platform):
+def workload(folder, platform, five_block_t0=False):
     source_shapes = swa_tasks()
     kernel_names = {
         row["func_id"]: row["name"]
@@ -70,10 +70,11 @@ def workload(folder, platform):
         or sources.keys() != shapes.keys()
     ):
         raise ValueError("Unexpected or duplicate replay tasks in SWA dependency capture")
+    partitions = a6_partitions(five_block_t0) if platform == "a6" else {}
     for target, source in sources.items():
         blocks, slots = source_shapes[source]
-        if platform == "a6" and source in A6_BLOCKS:
-            blocks, slots = A6_BLOCKS[source], [*slots[:2], -1]
+        if source in partitions:
+            blocks, slots = partitions[source], [*slots[:2], -1]
         if shapes[target] != (blocks, slots):
             raise ValueError(f"Replay task {target} differs from source SWA task {source} on {platform}")
     return sources, shapes, kernel_names
@@ -100,7 +101,7 @@ def lifecycle_metrics(raw, scale):
     return {key: covered_cycles(spans) * scale for key, spans in intervals.items()}
 
 
-def capture_metrics(folder, platform, level, epoch, core):
+def capture_metrics(folder, platform, level, epoch, core, five_block_t0=False):
     path = folder / "chip_swimlane_records.json"
     raw = json.loads(path.read_bytes())
     if raw["chip_swimlane_level"] != level or raw["metadata"]["runtime"] != "host_build_graph":
@@ -117,7 +118,9 @@ def capture_metrics(folder, platform, level, epoch, core):
         raise ValueError("Missing device execution identities")
     # The production decoder joins by (epoch, core, reg_task_id) and checks L2 milestones.
     tasks = read_perf_data(path)["tasks"]
-    sources, shapes, kernel_names = workload(folder, platform)
+    if five_block_t0 and level == 2 and any("schedule_checkpoints" not in task for task in tasks):
+        raise ValueError("Missing HBG L2 scheduling checkpoints")
+    sources, shapes, kernel_names = workload(folder, platform, five_block_t0)
     expected = {
         (tid, b, slot)
         for tid, (blocks, slots) in shapes.items()
@@ -296,7 +299,7 @@ def read_run(rank, level):
     return dev, cores[dev][1:], walls[dev][1:], host
 
 
-def measure(rank, platform, level, shared_device_clock):
+def measure(rank, platform, level, shared_device_clock, five_block_t0=False):
     dev, cores, walls, host = read_run(rank, level)
     samples, endpoints, kernel_samples = [], [], []
     for iteration, (core, wall) in enumerate(zip(cores, walls, strict=True), 1):
@@ -311,7 +314,9 @@ def measure(rank, platform, level, shared_device_clock):
                 raise ValueError("Cannot split endpoints on a shared 1 GHz device clock")
             sample.update(before=(t1 - t0) / 1000, after=(t3 - t2) / 1000)
         if level:
-            phases, kernels = capture_metrics(rank / f"run{iteration}", platform, level, iteration + 1, core)
+            phases, kernels = capture_metrics(
+                rank / f"run{iteration}", platform, level, iteration + 1, core, five_block_t0
+            )
             sample.update(phases)
             kernel_samples.append(kernels)
         samples.append(sample)
@@ -323,6 +328,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run", type=Path, help="Parent of rank0/")
     parser.add_argument("--platform", required=True, choices=("a5", "a6"))
+    parser.add_argument("--five-block-t0", action="store_true", help="Expect the five-block A6 t0 diagnostic plan")
     parser.add_argument("--level", required=True, type=int, choices=(0, 1, 2, 3))
     parser.add_argument("--trace", type=Path, help="Write one L2 or L3 .json.xz selected by median Device wall")
     parser.add_argument(
@@ -332,10 +338,14 @@ def main():
     )
     parser.add_argument("--json", type=Path, help="Save per-invocation measurements and averages")
     args = parser.parse_args()
+    if args.five_block_t0 and args.platform != "a6":
+        parser.error("--five-block-t0 requires --platform a6")
     rank = args.run / "rank0"
     if args.trace and args.level not in (2, 3):
         parser.error("--trace requires --level 2 or 3")
-    dev, samples, endpoints, kernel_samples = measure(rank, args.platform, args.level, args.shared_device_clock)
+    dev, samples, endpoints, kernel_samples = measure(
+        rank, args.platform, args.level, args.shared_device_clock, args.five_block_t0
+    )
     fields = set.union(*(set(sample) for sample in samples))
     if args.level >= 2:
         fields.update(PHASES)
@@ -351,6 +361,7 @@ def main():
             json.dump(
                 {
                     "platform": args.platform,
+                    "t0_blocks": 5 if args.five_block_t0 else swa_tasks()[8][0],
                     "device": dev,
                     "level": args.level,
                     "unit": "us",
