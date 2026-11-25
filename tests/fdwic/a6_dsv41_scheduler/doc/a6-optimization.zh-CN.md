@@ -11,6 +11,8 @@
 | [004 A6 输出尾部分片](../results/004-a6-swa-output-tiles/README.zh-CN.md) | HC post 与 O-B 均用 54 组。同批 L0 核窗口缩短 26.502 µs，Device wall 缩短 26.295 µs | 290.068 µs | 377.707 µs | [分项结果与下界](../results/004-a6-swa-output-tiles/README.zh-CN.md#同卡对照) · [指标 JSON](../results/004-a6-swa-output-tiles/metrics.json) |
 | [005 SWA 性能对照](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md) | A5 迁移版已采集同卡 L0、L1 下界与 L2 泳道；A6 五分块旧核稳定停在 t12，四核 C++ 组合待实测 | | | [性能对照](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md) · [问题定位](../results/005-swa-a5-baseline-a6-timeouts/issues.zh-CN.md) · [指标 JSON](../results/005-swa-a5-baseline-a6-timeouts/metrics.json) |
 
+006 保留原始 VF 和 Attention 的 20 个 HC collapse 分块，归档 Engram、SWA、C1A reuse、C1A reindex 四个 A6 板端包。正确性及超时现象待板端验证。[006 板端运行与用例范围](../results/006-main-case-coverage/README.zh-CN.md)
+
 ## 追加一个阶段
 
 在 `results/` 下按顺序新建目录，例如 `006-<改动名>/`。该目录的 `README.zh-CN.md` 记录改了什么、对照哪一阶段、实测差值和输出校验。`metrics.json` 保存同口径的汇总值。完成实测后在上表追加一行，链接本阶段报告和指标 JSON。各阶段保留各自的提交号、采集等级与轮次，方便复核收益。
