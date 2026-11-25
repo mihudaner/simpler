@@ -1,6 +1,6 @@
 # A6 SWA 迁移状态与适配说明
 
-本文记录 00–004 所用的 SWA 图、夹具与命令。005 的任务编号、分片和运行方法见[使用方法](usage.zh-CN.md)及[005 报告](../results/005-main-swa/README.zh-CN.md)。
+本文记录 00–004 所用的 SWA 图、夹具与命令。005 合并新版 SWA 后，A6 在首个向量算子 `hc_collapse_norm` 报 331。A6 C++ 核的尾部 marker 与 premix 输入重叠，20-block 的两个无 marker 版本均在 worker62 超时。5-block L2 在 t0 通过后转到 qkv_quant，worker62 的 block 8 缺 1 票。后续原版 qkv 已多次通过，最新三轮整图都在 t12 完成 0/12 时超时。临时标记与直写对照的结果已归档，当前五分块 C++ 回放待黄区验证。[上板步骤](a6-environment.zh-CN.md) · [005 合并记录与故障定位](../results/005-main-swa/README.zh-CN.md#a6-的-t0-向量指令故障-331) · [使用方法](usage.zh-CN.md)
 
 [返回用例索引](../README.zh-CN.md) · [性能优化阶段索引](a6-optimization.zh-CN.md) · [性能复测方法](a6-environment.zh-CN.md) · [构建与复现命令](usage.zh-CN.md)
 

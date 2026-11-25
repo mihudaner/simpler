@@ -1,12 +1,12 @@
 # SWA 独立用例
 
-005 使用主线 `48fd8fef3` 的原生 SWA 回放。算子来自固定版本 PyPTO-lib 的 C++ 和 VF 辅助代码。A5 与 A6 共用这一版计算图和来自原始 forward 的输入与参考输出。[005 数据与泳道](results/005-main-swa/README.zh-CN.md)
+005 使用主线 `48fd8fef3` 的原生 SWA 回放。当前默认用例将四个含导出 VF 的活跃核切换到两端共用的 C++ 实现。A5 与 A6 共用这一版计算图和来自原始 forward 的输入与参考输出。[005 数据与泳道](results/005-main-swa/README.zh-CN.md)
 
 | 项目 | 内容 |
 | ---- | ---- |
 | 计算图 | 源任务 t8 至 t34 中有 15 个计算任务，使用 19 个业务核。输出端 t34 把 O-B 和 mHC post 合为一个 MIX |
 | A5 | 32 个 1C2V 核组，每轮 632 次核执行 |
-| A6 | 54 个 1C1V 核组，调整 5 个任务的分片，每轮 660 次核执行。005 首轮在完成计数处报 271，修复后待上板复测。[故障记录](results/005-main-swa/README.zh-CN.md#a6-完成计数故障-271) |
+| A6 | 54 个 1C1V 核组，调整 5 个任务的分片，每轮 660 次核执行。005 首轮在完成计数处报 271，修复并重新组包后通过 bootstrap，随后执行进度超时（site 95）。t0 的导出核报 331，C++ 版本的 marker 记录在尾部未见 stage99。两组无 marker 的 20-block t0 均在 worker62 超时。5-block 原版的最新三轮板端反馈中，t4、t10 完成，t12 norm_rope_publish 的 12 个 block 全部领取、完成 0 份。t12 直写对照仍超时，当前改用共享 C++ 核在黄区复测。[271 记录](results/005-main-swa/README.zh-CN.md#a6-完成计数故障-271) · [331 定位和规避](results/005-main-swa/README.zh-CN.md#a6-的-t0-向量指令故障-331) |
 | 核与输入 | 两端各自编译核。固定输入与参考由原生 forward 提取，运行独立 SWA 只需单卡 |
 | 历史版本 | 00–004 使用上一版 SWA。004 的 A6 L0 为 290.068 µs，涉及 16 个任务和 616 个实例。[004 报告](results/004-a6-swa-output-tiles/README.zh-CN.md) |
 
@@ -20,7 +20,7 @@
 | 怎么构建、运行和复测 | [使用方法](doc/usage.zh-CN.md) | 命令、参数、输出位置、修改后需要重编什么 |
 | 为什么不依赖 PyPTO／PTOAS | [执行原理](doc/execution.zh-CN.md) | 已有材料、真实执行路径、依赖边界、全新算子的生成流程 |
 | A6 迁移完成了什么、怎样适配 | [迁移状态与适配说明](doc/a6-migration.zh-CN.md) | 开头勾选索引；逐项说明问题、改动、核实结论、验证范围和剩余缺口 |
-| 如何复测 A6 | [同口径复测](doc/a6-environment.zh-CN.md) | 同口径复测命令、待查问题和回答区 |
+| 如何复测 A6 | [同口径复测](doc/a6-environment.zh-CN.md) | 005 A6 新机组包、四核 C++ 回退、5-block 整层验证、L2 泳道与同卡 L0 对照 |
 | 性能优化到了哪个阶段 | [性能优化阶段索引](doc/a6-optimization.zh-CN.md) | 各阶段的改动、报告、指标 JSON 与可归档的泳道 |
 | 优化开始时 A5 和 A6 的性能如何 | [A5／A6 性能复测报告](results/00-baseline/README.zh-CN.md) | PR 的 L0 数据、Host 耗时、L3 的 AICPU 前后段拆解和详细泳道 |
 

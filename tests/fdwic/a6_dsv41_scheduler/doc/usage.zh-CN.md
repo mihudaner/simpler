@@ -45,7 +45,7 @@ python -I "$case_dir/prepare.py" build --platform a6 \
   --bundle build/005-prepared/cases/pypto_lib_latest/swa --build-dir build/005-swa-a6-fresh
 ```
 
-A5 复用原 callable 的注册位置并比较 19 个活跃核的指令区。A6 从源代码重编这 19 个核，按实际 1C1V 改写五个任务的分片。输入和参考取自同一快照。只改调度时可沿用快照和算子包，重编运行库再测；图、算子或 ABI 有变化时应重新校对计划、输入和参考。
+默认的 cpp 组在 A5、A6 上均重编并注册 19 个活跃核。仅历史 A5 对照组（--kernel-set 005-export）保留原 callable 的全部核位置。A6 按 1C1V 改写分片，黄区正式复测加 --five-block-t0，详见[黄区采集步骤](a6-environment.zh-CN.md)。输入和参考取自同一快照。只改调度时可沿用快照和算子包，重编运行库再测；图、算子或 ABI 有变化时应重新校对计划、输入和参考。
 
 ## 离线检查
 

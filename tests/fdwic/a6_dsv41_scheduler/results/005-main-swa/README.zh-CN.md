@@ -1,8 +1,48 @@
 # 005　最新主线的 SWA 与 A6 迁移
 
-2026-11-23 在同一张 A5 上，纯主线 `48fd8fef3` 与合并版 `ad69fb740`（merge 为 `cef3736bf`）的 HBG L0 核窗口分别为 **156.784 µs** 和 **156.190 µs**。合并版相对主线 -0.594 µs（-0.38%）。A5 两版的六组采集均通过数值校验。A6 首次上板在完成计数时写地址 0，L0/L1/L2 首轮均失败。计数路径已修正，设备侧数值和耗时待复测。[指标与逐轮样本](metrics.json)
+## 截至 11 月 25 日的问题定位
 
-## 同一张 A5 的性能
+**005 的 A6 完成记账故障已修复。旧导出核的五分块回放中，稳定阻塞点是 t12。当前首要怀疑是按 A5 调用及同步语义生成的 VF 在 A6 上的兼容性。** 四核 C++ 回退包已在 A5 通过数值校验并采到 L2，A6 包已编译，黄区整图校验和泳道待回传。
+
+| 现场 | 已确认 | 尚待验证 |
+| --- | --- | --- |
+| A6 完成通知，错误 271 | Host 发布的 CntNotify 映射为空，业务核仍走通知写入路径。改为按映射状态选择 GM 记账后，板端未再报 271 | 后续 site 95 是执行进度看门狗超时，需依同轮任务和核内证据定位 |
+| t0 导出核，错误 331 | AIV 报向量指令配置非法，采样 PC 落在 t0 核范围 | 具体哪条指令、哪项配置非法仍未锁定 |
+| t0 手写 C++，20 个 block | 两版各一轮均有 block2 被 worker62 领取后未完成。当前 A6 包的 t0 指纹 `a49b72218457` 与其中一版相符。改成五个 block 后，多轮整图越过 t0 | 分片改变了每个 block 的工作分配；当前四核组合在 20 个 block 下能否通过仍待复测 |
+| 五分块图中的 qkv 与 t12 | qkv block8 早期曾缺票，原版定点复测的 5 个有效轮次均通过。连续三轮原版整图均越过 qkv、t10，t12 的 12 个 block 全被领取，完成数始终为 0 | t12 已越过 helper5 调用点，去掉 TMOV 后仍超时。最后可见标记在 wait 前，无法确定是 VF 执行、事件交接还是相邻指令阻塞，也没有证据把它和早期单个 worker 缺票归为同因 |
+
+**A5 能跑通的源码依据。** 005 固定的 PyPTO-lib 在 A5 CI 指定 PyPTO `3db18db128`。该版代码生成器要求 VF 位于 A5 AIV 函数，生成调用时明确依赖“A5 VF 退出时寄存器指令已完成”这一语义。PTOAS 据调用方的读写信息安排搬运事件，并处理 VF 内部依赖。005 的 A6 导出核对照从已导出的调用方 C++ 与 helper LLVM IR 开始，替换目标 CPU、移除 A5 特性并适配标量移位指令，再按 A6 编译；该过程没有重新针对 A6 规划调用边界上的同步。这解释了为何 A5 的通过不能直接推广到 A6，具体阻塞机制仍需设备证据。[A5 CI 版本](https://github.com/hw-native-sys/pypto-lib/blob/4cb74422616359b3f95c598b1f9cdd31cf4e4173/.github/workflows/ci.yml#L264) · [VF 的目标与完成语义](https://github.com/hw-native-sys/pypto/blob/3db18db1286bdbb44266179e3aedae659174b711/src/codegen/pto/vf_codegen.cpp#L295-L298) · [A6 编译适配](../../compile_kernels.py#L49)
+
+**t12 的静态核对。** 6 行分支的 helper5 接收一个 UB 基址。按 LLVM 元素宽度换算后，scales、weight、input、cos 和 sin 的地址均与调用方的 tile 分配相符。本机 CANN 9.3.0 离线反汇编也显示，两端都生成了 VF 启动指令。这降低了“静态偏移算错”和“漏编 helper”的排查优先级；尚未取得挂起当时的 AIV 指令和事件状态。[调用方](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/aiv/norm_rope_publish.cpp#L1721) · [helper5 的指针计算](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/vf/norm_rope_publish/__pypto_vf_norm_rope_publish_5.ll#L86)
+
+**黄区下一步。** 先用 A6 五分块 C++ 包（callable `18c1b7c2b4b1`，plan `738a525244bc`）核对 25 份参考并采集 L2。若整图通过，单独切回旧 t12 可检验它是否足以复现；单独把 t0 恢复为 20 个 block 可检验早期缺票是否仍在。两项分开测。若五分块仍超时，先按本轮最早未完成任务重新定位。[黄区命令](../../doc/a6-environment.zh-CN.md#a6-单卡-l2-与-l0)
+
+## 11 月 24 日整图复测与 C++ 对照
+
+以下诊断数字来自当时的板端回传，标记值只适用于当时的诊断版本。旧包在 `5ee50f4` 重建时，baseline/stages 的 callable 分别为 `4380c66badb0`、`d602273fb073`，t12 为 `85561d2e9865`、`f46138a6362b`。两包的 qkv 为 `035cbc9add2d`，plan 为 `738a525244bc`。构建机早一批的 callable 分别为 `14984c9de251`、`d8737dbb9dfc`。
+
+| 对照 | 实际观察 | 定位结论 |
+| --- | --- | --- |
+| qkv 原版、NOP、PIPE_V | 各 5 个拿到 block8 探针的轮次均为 63/63/63；完整图中原版、屏障版均能越过 qkv | 早期 63/0/0 间歇出现。该 A/B 不足以证明缺屏障、参数错误或 AIV43 硬件异常 |
+| 原版五个 t0 block，连续 3 个有效轮次 | t0、t11 完成，t4 含 block8 完成，t10 有 64 份贡献。t12 的 12 个 block 全部 CLAIMED，remaining=12、debt=12，完成 0 份。后续未启动 | 稳定复现在 t12 已领取后的执行区间。单轮 t10 block20 的 AIV 未领取现象在重复对照中未持续出现 |
+| t12 stages、stages2、stages3 | 第一轮所有 block 的最后阶段为 37。细分后可见 37、60，个别到 62，均未见 63。37 在 helper5 调用之后，60、62 在 TMOV 链内 | 标量控制流已越过调用点；阶段写入不能证明 VF 已完成 |
+| t12 direct、direct2、direct3 | 保留 helper5 计算、目标 GM、事件与两次 TSTORE，去掉四级 TMOV；各版均未返回。direct3 看到 64/65，未见 66（wait 前）、67（wait 后） | 去掉 TMOV 不足以恢复完成；现有探针不能证明已经执行到 wait，更不能定性根因为丢事件 |
+
+### 共享 C++ 核的整图实测
+
+每组独立预热 1 轮、正式 10 轮，耗时为正式轮算术均值，单位 µs。表内为本轮 C++ 组的数据。
+
+| 平台与配置 | 等级 | 执行数/轮 | 核窗口 | Device wall | 输出校验 |
+| --- | --- | ---: | ---: | ---: | --- |
+| A5，源分片 | L0 | 632 | 156.774 | 243.592 | 通过，25 份参考 |
+| A5，源分片 | L2 | 632 | 172.356 | 595.582 | 通过，25 份参考 |
+| A6，5 个 t0 block | L0 / L2 | 645（计划） | 待测 | 待测 | 待黄区实测 |
+
+**实测提交与产物**　A5 构建记录的 HEAD 为 `5ee50f41a652`，当时工作树已包含四核 C++ 回退。实测包的 19 个核源文件 SHA-256 均与实现提交 `a07367697ac8` 一致；A5 callable 为 `75e9251b3fa1`，plan 为 `8b64fd725d79`。单卡设备 1，任务 `task_20261124_233121_1908163154`。L2 代表轮 run6，Device wall 594.098 µs。[本次 A5 代表轮泳道](swa-a5-cpp-L2.json.xz)
+
+表下提交号按实测时的构建记录保留。整理后的四核实现为 `72ffa134378d`。从该提交重建的 A6 五分块回放与原包（`a07367697ac8`）的 19 个业务核机器码、plan、callable 均相同。临时工作核及 t12 阶段标记已从运行时和业务核移除，黄区复测使用新包配套的运行库；A6 性能栏待整图数值验证后填写。
+
+## 11 月 23 日导出核对照的 A5 性能
 
 Ascend950DT_9581，设备 1，任务 `task_20261123_155831_271358730317`。一次分卡顺序跑两版 L0、L1 和 L2，共六组；每组独立预热 1 轮、正式 10 轮，表中为正式轮均值，单位 µs。两版共用同一 native runner、callable、输入和 25 个可写 Device 缓冲区参考，各加载自己的 Host、AICPU、AICore 运行库。A6 空栏留作后续同口径复测。
 
@@ -12,7 +52,7 @@ Ascend950DT_9581，设备 1，任务 `task_20261123_155831_271358730317`。一�
 | A5 迁移版 `ad69fb740` | 55.451 | 156.190 | 31.778 | 243.419 | 111.770 | 39.74% |
 | A6 迁移版（待复测） | | | | | | |
 
-两组 L0 的十轮范围分别为 154.643–159.657 µs 和 154.342–159.597 µs。两组范围重叠，本次同卡复测未观察到合并前后 A5 的 L0 计算性能有明显差异。
+上表实测 commit 为纯主线 `48fd8fef3`、迁移版 `ad69fb740`，以下历史 L1/L2 表沿用同一批次。两组 L0 的十轮范围分别为 154.643–159.657 µs 和 154.342–159.597 µs。两组范围重叠，本次同卡复测未观察到合并前后 A5 的 L0 计算性能有明显差异。
 
 L0 核窗口从首个业务核开始到最后一个结束。计算前和计算后取同轮设备系统计数器端点，60 个正式样本均核对了 1 GHz 频率和四端点顺序。每版 L1 按实测核体、依赖、MIX、同步启动和 32C/64V 容量建模，10 轮均求得最优值。距下界取 L0 核窗口除以本版 L1 下界再减 1。[计数器接口](../../../../../src/common/platform/include/aicpu/device_time.h) · [下界模型](../../../dsv41_scheduler/BOUND.md)
 
@@ -110,6 +150,50 @@ L0 核窗口从首个业务核开始到最后一个结束。计算前和计算�
 
 **复测口径。** 使用修复后的 HBG 运行库和同一份 005 回放包，先确认 A6 L0 生成 `result.json` 且数值通过，再采 L1 和 L2；L1 每个正式轮应覆盖 660 次业务核执行。[A6 复测命令](../../doc/a6-environment.zh-CN.md)
 
+### A6 复测在 bootstrap 超时
+
+板端反馈，修复 271 后的首次复测在 run 0 报 `bootstrap timeout: workers=108 dispatch_arrived=0 bootstrap_complete=0`，未生成 `result.json` 或 L2 泳道。AICPU 在放行业务核之前读到全局到达数为 0。A6 每组的 V0 先初始化组内信号，C 准备好首批任务后置位，V0 等组内就绪后才把全局到达数加 2。这个计数只反映已上报的完整核组，无法区分组内哪一步停住。本轮停在首次业务完成记账之前。[启动与组内计数](../../../../../src/a5/runtime/host_build_graph/aicore/resident_scheduler_impl.h)
+
+`7f0d4fe57` 改动的开关也用于首批任务准备。无待发布的 MIX、无计数映射且协议跟踪关闭时，A6 的 V0 会检查组内 MIX 描述符。现有超时日志无法判断核是否停在这里。后续板端重新 prepare 并使用配套 runner 和修复版运行库后通过了 bootstrap。板端将前一次失败归因于产物混用，具体不匹配的文件尚无两次板端指纹可对照。[首批任务准备](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_dispatch.h) · [MIX 描述符检查](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_cluster_mix.h)
+
+**修复前后组包对照。** 本地在 `7f0d4fe57` 重新 prepare，与留存的 `ad69fb740` 版 005 逐文件比对。回放包内全部 119 个文件（含计划、callable、输入和参考）、`native-runner` 和 `libreplay.so` 均逐字节一致。板端可先核对实际 runner 和回放包的指纹，再独立核对该进程加载的 Host、AICPU、AICore 和 dispatcher。注册日志里的 `aicore_image_hash` 覆盖 callable 内的业务核，常驻调度器镜像需核对 `aicore_kernel.o`。[005 包指纹](metrics.json) · [runner 加载入口](../../../dsv41_scheduler/production/runner.cpp) · [业务核指纹范围](../../../../../src/common/task_interface/chip_callable_layout.h)
+
+### A6 重新组包后执行超时（site 95）
+
+板端重新 prepare 并使用修复版运行库后通过 bootstrap，未再报 271，未见 AICore 异常。Host 仍为 `mapped_chains=0 mapped_tasks=0`。本轮设备日志为 `/tmp/opencode/005fix2-1qhy/rank0/ascend/debug/device-0/device-224035_20261123203901140.log`。`site=95` 对应 AICPU 执行进度看门狗。两次快照之间，15 个未完成任务的计数和领号字段均无变化。以下采用同轮完整日志，原先转述的 `task=18 total=32` 已由原始行校正。[15 行快照](metrics.json) · [超时快照字段](../../../../../src/a5/runtime/host_build_graph/aicpu/aicpu_executor.cpp)
+
+| 回放任务（源码） | 核类型 | 已记完成 / 总数 | next_block |
+| ---------------- | ------ | --------------: | ---------: |
+| t0（源 t8）hc_collapse_norm | V | 0 / 20 | 20 |
+| t8（源 t16）Q-A | C | 0 / 20 | 20 |
+| t11（源 t19）KV 投影 | C | 0 / 8 | 8 |
+| t18（源 t26）hc_linear | C | 3 / 4 | 4 |
+| t10（源 t18）Q-B | C+V0 | 0 / 64 | 0 |
+
+`source-task-map.txt` 按“源码号 回放号”写出，两行 `18 10`、`26 18` 与上表一致。快照合计 660 份中已记 3 份，全部来自回放 t18。它的 4 个普通 C block 已全部领号，每次成功返回向 GM 记 1 份，余数为 1；快照中没有缺失的 block 编号。Q-B 的 64 份计数全在，现有日志没有任何 MIX proxy 或 MIX members 行。MIX 的 V0 回执不能解释纯 C 任务 t18 的余数。[回放映射写入](../../../dsv41_scheduler/production/replay.cpp) · [普通返回记账](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_completion.h)
+
+005 留存的迁移版 A5 依赖图显示，两条支路的 t0 和 t18 均无业务前驱。t8、t11 虽已领号，执行仍依赖 t4，而 t4 经 t1 依赖 t0。排查应同时观察 t0 首批 V block 和 t18 四个 C block 的实际进入、返回及记账。按本轮任务顺序和 660 项计划，t0 的 prepared cell 索引为 0–19，t18 为 374–377，分别对应 block 0–3。在 CPU 上用 A6 的 54 组 1C1V、零 CntNotify 和 4 个纯 C block 做对照，3 个 block 记账后，第 4 个从尚未进入到空核函数已返回、尚未记账，两次读数都是 `total=4 remaining=1 debt=1 next_block=4`，其共享状态均为 `CLAIMED`。提交第 4 份完成后余数归零。全局超时的默认快照对每种状态最多列 8 项。[领号逻辑](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_issue.h) · [执行前等待](../../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_execution_tokens.h) · [超时逐项记录](../../../../../src/a5/runtime/host_build_graph/aicpu/aicore_scheduler_error.h)
+
+**同轮 atrace 将排查优先级指向 t0。** 板端只打印了 t0 的 cell 0–7，均为 V0 的 `CLAIMED`。多颗 AIV 的 `CURRENT_PC` 落在板端标注的 func 6 `hc_collapse_norm` 地址段；按该地址归属，采样时已有 V 核进入业务代码。单次 PC 快照不能区分仍在执行和卡在具体指令。板端没有 t18 的 cell 374–377，也未报告落在 `hc_linear` 内的 PC。两条支路各自可启动，现有记录无法把 t18 缺的一份归因于 t0。[板端 PC 和 cell 摘录](metrics.json)
+
+**板端 func 6 反汇编。** 以加载入口 `0x12000003b920` 为基准，多颗 AIV 的 `CURRENT_PC=0x12000003c2bc` 对应代码偏移 `+0x99c`、板端 ELF 地址 `0x199c`。附近依次为 `0x1988 WAIT_FLAGI_V.MTE3 #2`、`0x198c BAR.ALL`、从 `0x1990` 开始的返回现场恢复和 `0x19cc RET`。采样点在屏障之后 16 字节、RET 之前 48 字节。同轮另一个 AIV（core 0）的 `CURRENT_PC=0x12000003cafc` 位于该核 VF 辅助函数范围（`+0x11dc`）。这些样本将 t0 的首要排查范围缩到业务核内；现有快照没有流水线事件状态，无法锁定哪一个 wait，也无法由一条 PC 判定屏障已经完成。源码尾部依次等待事件 0、1、2，每组涵盖 V→MTE2、MTE3→MTE2、MTE3→V，再执行全流水线屏障。005 计划下每个 block 处理 4 行，现有采集没有各流水线事件的硬件状态。上述指令位置来自同轮板端反汇编。[t0 算子源码](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/aiv/hc_collapse_norm.cpp) · [板端采样](metrics.json)
+
+**004 对照。** 004 通过 A6 数值校验时，源 t8 使用 `_hc_collapse`（func 8，10 个 V block），其实现同样含 `pipe_barrier(PIPE_ALL)`。005 的源 t8 已换成 `hc_collapse_norm`（func 6，20 个 V block），编译时还单独链接六个 VF 辅助函数。004 验证的是旧核及其流水线顺序，不能据此判定新版哪个事件未满足。[004 验收](../004-a6-swa-output-tiles/README.zh-CN.md) · [005 任务表](../../../dsv41_scheduler/workloads/pypto_lib_latest/swa/tasks.tsv) · [005 核清单](../../../dsv41_scheduler/kernels/pypto_lib_latest/manifest.json)
+
+### A6 的 t0 向量指令故障 331
+
+**板端定位。** 首次 005 的 AIV 原始日志报 `core id=0, error code=331, current=0x12000003c2bc`。CANN 将 331 定义为 `VEC_INSTR_ILLEGAL_CFG_T0`，即硬件拒绝了一条 VF 指令的参数。该 PC 落在回放 t0（源 t8，func 6）`hc_collapse_norm` 内。另一次仅将 t0 减为 1 个 V block，仍为 `next_block=1 remaining=1`，采样 PC 对应 ELF `0x17f4`，位于调用辅助函数 `_2` 前的参数准备处。单个 t0 block 即可复现未完成。两次记录能把故障定位到 t0 的向量执行路径，尚不能判定哪项指令参数非法或哪条循环没有退出。AIC 的 271 已单独修复。[271 记录](#a6-完成计数故障-271) · [板端摘录和本地组包指纹](metrics.json)
+
+**合并带入的变化。** 上游先在 #1803 统一四路 FP32 的相加顺序、BF16 舍入和 RMSNorm，并把归一化分块改为每块 4 行。随后 #1862 把这段 C++ 改写为 PyPTO 的 `pl.reg_scope()`。005 随 Simpler #3179 引入导出物，t0 的 C++ 入口需要链接六个 A5 VF 辅助函数。A6 的构建脚本修改 LLVM 目标属性再编译这些辅助函数。A5 已通过固定参考校验，A6 可以编译和链接，但上板报告了上述 331。[数值与分块变更 #1803](https://github.com/hw-native-sys/pypto-lib/pull/1803) · [RegScope 改写 #1862](https://github.com/hw-native-sys/pypto-lib/pull/1862) · [SWA 导入 #3179](https://github.com/hw-native-sys/simpler/pull/3179)
+
+**A6 规避。** 取 #1862 父提交 `ad299c7f` 的 C++ 归一化分支，接到 005 的五参数入口（gamma、mix、输入、输出、token 数），由 A6 CCEC 直接编译。80 行仍分为 20 个 V block，四路依次相加、舍入到 BF16 再做 RMSNorm。A5 继续用主线导出物。新 A6 ELF 内由 C++ 生成一个本地向量函数，构建清单里 func 6 的 `vf_llvm` 为空。[上游 C++](https://github.com/hw-native-sys/pypto-lib/blob/ad299c7fc0c57091ae24ff17d52b0ae0506d5273/models/deepseek_v4_1_flash/kernels/hc_collapse.cpp#L95-L173) · [A6 核实现](../../kernels/hc_collapse_norm.cpp) · [构建选择](../../compile_kernels.py)
+
+**验证进度（2026-11-24）。** A6 已离线重新 prepare。同一工具链下，19 个活跃核中仅 func 6 的指令区变化，回放包共 119 个文件，仅 `callable.bin` 变化，计划、输入和 25 份参考均逐字节一致。A5 也重新 prepare，19 个活跃核与原快照逐字节匹配。夹具与性能统计的 6 项离线测试通过。这次组包的 C++ t0（`392fae8b8`）作为本轮对照。
+
+**C++ 核尾部超时。** 带 marker 的运行中，worker62（物理核 43）最后可见 stage35，下一条关键指令是 `BAR.ALL`。marker 覆盖了 premix 第 75–79 行，读端对最后一次写入的可见性也未验证，因而屏障是否返回仍未确定。无 marker 的寄存器归约候选保留了求和顺序和原有等待，离线核对两个最终 callable 只有 func 6 的机器码不同。黄区同卡 P0 各跑 1 轮，板端 func 6 指纹前缀分别为 `9e02d4ab`（原版）和 `a49b7221`（寄存器归约版）。两组均在 t0 block 2、owner 62 停在 CLAIMED，未完成 25 个输出校验。去掉 UB 散写不足以恢复整层执行。
+
+**5-block t0 板端结果。** 5-block 计划组包校验通过，15 个任务、645 次核执行。无标记 L2 首轮 t0 通过，随后纯 V 回放 t4 `qkv_quant` 停在 `total=54 remaining=1`，缺的是 `block=8 owner=62`，prepared cell 为 `CLAIMED`。25 项输出校验未执行，无 result.json、L2 泳道和 L0 数据。004 的 worker62 跑过 qkv_quant block 18，其 t0 未分到 worker62。临时改 worker context 的实验在 t0 读到三个 0，没有取得这次 t4 的有效对照。
+
 ### 合并范围
 
 合并提交 `cef3736bf` 的两个父提交是原适配分支 `1a89a12b4` 和主线 `48fd8fef3`。相对第一个父提交有 996 个变更文件，其中包括主线同期更新。相对第二个父提交有 96 个文件，84 个已出现在原 A6 分支的差异中。按目录计，独立 A6 用例、夹具、文档和历史结果 43 个，共用 SWA 套件 11 个，平台与 HBG 运行时 25 个，构建与分析工具 10 个，测试与 lint 7 个。#2978 与既有适配重叠 7 个文件，合并保留了公共任务 ID、共享运行资源与 A6 的生命周期明细偏移。后续运行器修复改在已有的 5 个文件内，005 报告及测量文件另计。
@@ -117,6 +201,21 @@ L0 核窗口从首个业务核开始到最后一个结束。计算前和计算�
 原始双卡 forward 需要每 rank 4,218,097,664 字节的激活空间。#2978 合入后的首轮准备在 2 GiB 限制处返回 -1004。只为完整双卡 HBG forward 配置 4 GiB 后重新从原始 forward 生成输入。两版单卡 SWA 复测仍使用 2 GiB 和同一个 runner。
 
 正式归档的夹具有 118 个文件，逐个 SHA256 与本次原始 forward 导出的 SWA 匹配。两端从随仓夹具重新组包，A5 保留全部 81 个注册核的位置，A6 编出全部 19 个活跃核，二者使用相同的 25 份输出参考。A5 独立入口还在设备 0 通过单独的 1 次预热和 10 次正式轮校验，任务为 `task_20261123_160428_296472426588`。这批独立入口数据另作正确性验证。[快照指纹](../../fixtures/fixture.json)
+
+### e56 三阶段读回
+
+黄区在 `e56ed1cea` 的同一轮 A6 L2 回传了以下四行。Host 已启用 `worker=62 cells=645`。每列非零值是实际逻辑 worker 编号加一；0 表示快照未观察到该标记。
+
+| 回放任务 | block | worker | pre | post | complete |
+| -------- | ----- | ------ | --- | ---- | -------- |
+| t4 qkv_quant | 8 | 62 | 63 | 0 | 0 |
+| t4 qkv_quant | 0 | 54 | 55 | 55 | 55 |
+| t4 qkv_quant | 1 | 55 | 56 | 56 | 56 |
+| t1 zero_bf16_padding | 50 | 62 | 63 | 63 | 63 |
+
+t4 block 8 已通过入口许可，最后可见的是调用前标记。e56 在间接调用返回后执行 `dsb(DSB_DDR)`，越过它才写 `post`。本轮足以将缺票缩到调用前标记和返回后标记之间，单凭这三个值还定位不到业务核内的指令。t1 仅清零第 72–79 行，block 50 跳过向量填充及 TSTORE，经过核尾和调度器后正常完成。t4 的两个正常 block 则实际经过同一套量化逻辑。此次仍因超时没有整层 L2 泳道；这里保存的是板端回传摘录。[调度器调用](../../../../../src/a5/runtime/host_build_graph/aicore/resident_scheduler_impl.h) · [补零条件](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/aiv/zero_bf16_padding.cpp#L102) · [当前回放步骤](../../doc/a6-environment.zh-CN.md)
+
+源 t12（func 8）使用导出的 C++ 和 `__pypto_vf_qkv_quant_0`。72 个有效行、80 个补齐行共排 100 个 tile，54 个 block 跨步取 tile。按零起算，block 8 的两个 tile 为 8 和 62，输入起点分别是第 0 行第 2048 列、第 48 行第 512 列，每个都读取 16 行 × 256 列。block 0 和 1 的两次迭代同样都是满块。地址和数据内容随 tile 变化，源码循环次数和有效行数相同。现有读回无法确定问题随数据分片还是执行它的 worker 状态变化。[A6 计划标量](../../adapt_plan.cpp) · [量化核分块](../../../dsv41_scheduler/kernels/pypto_lib_latest/vendor/aiv/qkv_quant.cpp#L356)
 
 ## 复测与产物
 
