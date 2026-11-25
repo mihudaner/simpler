@@ -12,6 +12,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -70,7 +71,17 @@ alwaysinline {{
     return re.sub(name + r"\(", r"@swa.\1.\2(", source)
 
 
-def compile_kernel_set(platform, pto, output, jobs):
+def kernel_inputs(kernel, platform, kernel_set):
+    helpers = kernel.get("vf_llvm", [])
+    use_cpp = kernel_set == "cpp" and bool(helpers)
+    if platform == "a6" and kernel["name"] == "hc_collapse_norm":
+        use_cpp = True
+    if use_cpp:
+        return HERE / "kernels" / f"{kernel['name']}.cpp", []
+    return SOURCES / kernel["source"], helpers
+
+
+def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp"):
     sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
     from build_sources import VF_FLAGS, compile_vector_functions  # noqa: PLC0415
 
@@ -92,11 +103,11 @@ def compile_kernel_set(platform, pto, output, jobs):
         raise ValueError("Incomplete SWA source manifest")
 
     def compile_one(kernel):
-        source = SOURCES / kernel["source"]
+        source, vf_paths = kernel_inputs(kernel, platform, kernel_set)
         extra = compiler.get_orchestration_include_dirs("host_build_graph") + [
             str(SOURCES / item) for item in kernel["include_dirs"]
         ]
-        helpers = [SOURCES / path for path in kernel.get("vf_llvm", [])]
+        helpers = [SOURCES / path for path in vf_paths]
         with compile_slot(), tempfile.TemporaryDirectory() as tmp:
             if helpers:
                 includes = [
@@ -138,9 +149,9 @@ def compile_kernel_set(platform, pto, output, jobs):
             "file": target.name,
             "registration_file": registration.name,
             "bytes": len(binary),
-            "source": kernel["source"],
+            "source": os.path.relpath(source, SOURCES),
             "source_sha256": sha256(source),
-            "vf_llvm": {path: sha256(SOURCES / path) for path in kernel.get("vf_llvm", [])},
+            "vf_llvm": {path: sha256(SOURCES / path) for path in vf_paths},
             "binary_sha256": sha256(target),
         }
 
@@ -148,6 +159,7 @@ def compile_kernel_set(platform, pto, output, jobs):
         compiled = list(pool.map(compile_one, kernels))
     summary = {
         "platform": platform,
+        "kernel_set": kernel_set,
         "runtime_executed": False,
         "kernels": compiled,
         "compiler": subprocess.check_output([toolchain.cxx_path, "--version"], text=True).strip(),
@@ -164,6 +176,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=("a5", "a6"), default="a6")
     parser.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
+    parser.add_argument("--kernel-set", choices=("cpp", "005-export"), default="cpp")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()
@@ -171,7 +184,7 @@ def main():
         parser.error("Need positive --jobs and --pto-isa containing include/pto")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    compile_kernel_set(args.platform, args.pto_isa, output, args.jobs)
+    compile_kernel_set(args.platform, args.pto_isa, output, args.jobs, kernel_set=args.kernel_set)
 
 
 if __name__ == "__main__":

@@ -233,7 +233,10 @@ def build_bundle(args, build_dir, bundle, source):
     )
     binary_dir = build_dir / "kernels"
     binary_dir.mkdir(exist_ok=True)
-    compiled = compile_kernel_set(args.platform, args.pto_isa, binary_dir, args.jobs)
+    compiled = compile_kernel_set(
+        args.platform, args.pto_isa, binary_dir, args.jobs,
+        kernel_set=args.kernel_set,
+    )
     executions = sum(blocks * sum(k >= 0 for k in slots) for blocks, slots in tasks.values())
     if args.platform == "a6":
         converter = tools / "adapt-plan"
@@ -244,7 +247,7 @@ def build_bundle(args, build_dir, bundle, source):
         converted.replace(plan)
     runner = tools / "native-runner"
     original_callable = source / "callable.bin"
-    if args.platform == "a5":
+    if args.platform == "a5" and args.kernel_set == "005-export":
         # Original full-model registration fixes the starting cache set of every kernel.
         # Validate the rebuilt active images and keep every child at its source offset.
         image = original_callable.read_bytes()
@@ -260,7 +263,7 @@ def build_bundle(args, build_dir, bundle, source):
             check=True,
         )
     else:
-        assemble_a6(tools, bundle, build_dir, binary_dir, compiled, kernels, metadata)
+        assemble_replay(tools, bundle, build_dir, binary_dir, compiled, kernels, metadata)
     case_path = bundle / "case.json"
     case = json.loads(case_path.read_text())
     case["source"]["executions"] = executions
@@ -273,6 +276,7 @@ def build_bundle(args, build_dir, bundle, source):
             "model": manifest["origin"],
             "tasks": len(tasks),
             "t0_blocks": 5 if args.five_block_t0 else tasks[8][0],
+            "kernel_set": args.kernel_set,
             "executions": executions,
             "source_snapshot_files": metadata["files"],
             "reference_count": metadata["reference_count"],
@@ -287,7 +291,7 @@ def build_bundle(args, build_dir, bundle, source):
     )
 
 
-def assemble_a6(tools, bundle, build_dir, binary_dir, compiled, kernels, metadata):
+def assemble_replay(tools, bundle, build_dir, binary_dir, compiled, kernels, metadata):
     sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
     from build_sources import capability_words  # noqa: PLC0415
 
@@ -318,7 +322,15 @@ def assemble_a6(tools, bundle, build_dir, binary_dir, compiled, kernels, metadat
         "signature": metadata["signature"],
         "kernels": [{"id": k["func_id"], "signature": k["signature"]} for k in kernels],
     }
-    if json.loads(capture([tools / "native-runner", "--describe-callable", bundle / "callable.bin"])) != expected:
+    image = bundle / "callable.bin"
+    layout = json.loads(capture([tools / "native-runner", "--describe-layout", image]))
+    data = image.read_bytes()
+    for child, record in zip(layout["kernels"], compiled, strict=True):
+        start = child.pop("binary_offset")
+        size = child.pop("binary_size")
+        if data[start : start + size] != (binary_dir / record["file"]).read_bytes():
+            raise ValueError(f"Assembled machine code differs for {record['name']}")
+    if layout != expected:
         raise ValueError("Assembled replay callable differs from the SWA signatures")
 
 
@@ -338,6 +350,9 @@ def main():
     compile_case.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
     compile_case.add_argument(
         "--five-block-t0", action="store_true", help="Use five A6 vector blocks for source task 8"
+    )
+    compile_case.add_argument(
+        "--kernel-set", choices=("cpp", "005-export"), default="cpp", help="Use shared C++ kernels (default) or the earlier 005 build"
     )
     compile_case.add_argument("--build-dir", type=Path)
     compile_case.add_argument("--cxx", default=os.environ.get("CXX", "c++"))

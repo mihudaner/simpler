@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from compile_kernels import REPO, SOURCES, SUITE, swa_tasks
+from compile_kernels import HERE, REPO, SOURCES, SUITE, kernel_inputs, swa_tasks
 from prepare_plan import build_converter, check_conversion, convert_plan, read_records, validate_source
 
 SPEC = importlib.util.spec_from_file_location(
@@ -55,6 +55,21 @@ class FixtureTest(unittest.TestCase):
             ],
             check=True,
         )
+
+    def test_active_cpp_sources_match_across_platforms(self):
+        manifest = json.loads((SOURCES / "manifest.json").read_text())["kernels"]
+        ids = {slot for _, slots in swa_tasks().values() for slot in slots if slot >= 0}
+        local = set()
+        for kernel in (k for k in manifest if k["func_id"] in ids):
+            source, helpers = kernel_inputs(kernel, "a5", "cpp")
+            self.assertEqual((source, helpers), kernel_inputs(kernel, "a6", "cpp"))
+            self.assertTrue(source.is_file())
+            self.assertEqual(helpers, [])
+            if source.parent == HERE / "kernels":
+                local.add(kernel["name"])
+            else:
+                self.assertEqual(source, SOURCES / kernel["source"])
+        self.assertEqual(local, {"hc_collapse_norm", "qkv_quant", "norm_rope_publish", "mhc_sinkhorn"})
 
     def test_real_converter_preserves_payload_flags_and_dependencies(self):
         original = self.source / "plan-rank0.bin"
