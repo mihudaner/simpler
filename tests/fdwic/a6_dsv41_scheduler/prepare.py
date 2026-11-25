@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Build the latest model SWA replay from an upstream materialized A5 snapshot."""
+"""Build a DSV4.1 single-device replay from an upstream materialized A5 snapshot."""
 
 import argparse
 import json
@@ -22,8 +22,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from compile_kernels import HERE, REPO, SOURCES, SUITE, WORKLOAD, compile_kernel_set, sha256, swa_tasks
-from prepare_plan import build_converter, convert_plan, read_records, validate_source
+from compile_kernels import CASES_006, HERE, REPO, SOURCES, SUITE, case_source, case_tasks, compile_kernel_set, sha256
+from prepare_plan import build_converter, convert_plan, convert_single_vector, read_records, validate_source
 
 
 def save(path, data):
@@ -34,26 +34,27 @@ def capture(command):
     return subprocess.check_output([str(arg) for arg in command], text=True)
 
 
-def copy_snapshot(source, destination, tools):
+def copy_snapshot(source, destination, tools, name="swa"):
     case = json.loads((source / "case.json").read_text())
-    source_spec = json.loads((WORKLOAD / "source.json").read_text())["cases"]["swa"]
+    source_spec = case_source(name)
     if (case["flavor"], case["case"], case["device_count"], case["source"]) != (
         "pypto_lib_latest",
-        "swa",
+        name,
         1,
         source_spec,
     ):
-        raise ValueError("Expected a materialized SWA matching the current upstream model and task table")
+        raise ValueError("Expected a materialized slice matching the current upstream model and task table")
     lines = (source / "rank0.txt").read_text().splitlines()
+    bounds = [source_spec["first_source_task"], source_spec["last_source_task"]]
     if (
         lines[:2] != ["DSV41_NATIVE_V1", "1 0"]
-        or (source / "slice.txt").read_text().split() != ["8", "34"]
+        or (source / "slice.txt").read_text().split() != bounds
         or (source / "snapshot.txt").read_text().split() != ["rank0"]
         or (source / "rank1.txt").exists()
     ):
-        raise ValueError("Expected a completed single-device SWA snapshot")
+        raise ValueError("Expected a completed single-device snapshot")
     plan = source / "plan-rank0.bin"
-    validate_source(read_records(tools / "record-tool", plan))
+    validate_source(read_records(tools / "record-tool", plan), name)
     description = json.loads(capture([tools / "native-runner", "--describe-callable", source / "callable.bin"]))
     manifest = json.loads((SOURCES / "manifest.json").read_text())
     original = {k["id"]: k["signature"] for k in description["kernels"]}
@@ -114,10 +115,10 @@ def freeze(args):
         files = Path(temp) / "files"
         packed = Path(temp) / "packed"
         packed.mkdir()
-        metadata = copy_snapshot(source, files, args.tools.resolve())
+        metadata = copy_snapshot(source, files, args.tools.resolve(), args.case)
         shutil.copyfile(source / "callable.bin", files / "callable.bin")
         hashes = {**metadata["files"], "callable.bin": sha256(files / "callable.bin")}
-        archive = packed / ARCHIVE
+        archive = packed / f"{args.case}.tar.xz"
         with tarfile.open(archive, "w:xz", format=tarfile.USTAR_FORMAT) as tar:
             for name in sorted(hashes):
                 path = files / name
@@ -130,10 +131,10 @@ def freeze(args):
             {
                 "source_revision": args.source_revision,
                 "model": json.loads((SOURCES / "manifest.json").read_text())["origin"],
-                "case": "pypto_lib_latest/swa",
+                "case": f"pypto_lib_latest/{args.case}",
                 "reference_count": metadata["reference_count"],
                 "source": json.loads((source / "case.json").read_text())["source"],
-                "archive": ARCHIVE,
+                "archive": archive.name,
                 "archive_sha256": sha256(archive),
                 "files": hashes,
             },
@@ -141,28 +142,28 @@ def freeze(args):
         packed.rename(output)
 
 
-def unpack_fixture(destination, fixture=FIXTURE):
+def unpack_fixture(destination, fixture=FIXTURE, case="swa"):
     manifest = json.loads((fixture / "fixture.json").read_text())
-    archive = fixture / ARCHIVE
-    if manifest["archive"] != ARCHIVE or sha256(archive) != manifest["archive_sha256"]:
-        raise ValueError("Bundled SWA archive checksum differs from the fixture manifest")
+    archive = fixture / f"{case}.tar.xz"
+    if manifest["archive"] != archive.name or sha256(archive) != manifest["archive_sha256"]:
+        raise ValueError("Bundled replay archive checksum differs from the fixture manifest")
     hashes = manifest["files"]
     with tarfile.open(archive, "r:xz") as tar:
         members = tar.getmembers()
         if sorted(member.name for member in members) != sorted(hashes):
-            raise ValueError("Bundled SWA member list differs from the fixture manifest")
+            raise ValueError("Bundled replay member list differs from the fixture manifest")
         for member in members:
             if not member.isfile() or Path(member.name).is_absolute() or ".." in Path(member.name).parts:
-                raise ValueError(f"Invalid SWA fixture member: {member.name}")
+                raise ValueError(f"Invalid replay fixture member: {member.name}")
             target = destination / member.name
             target.parent.mkdir(parents=True, exist_ok=True)
             data = tar.extractfile(member)
             if data is None:
-                raise ValueError(f"Missing SWA fixture payload: {member.name}")
+                raise ValueError(f"Missing replay fixture payload: {member.name}")
             with data, target.open("wb") as output:
                 shutil.copyfileobj(data, output)
             if sha256(target) != hashes[member.name]:
-                raise ValueError(f"Bundled SWA file checksum differs: {member.name}")
+                raise ValueError(f"Bundled replay file checksum differs: {member.name}")
     return manifest
 
 
@@ -178,7 +179,8 @@ def build(args):
         bundle.mkdir()
         if args.bundle is None:
             source = Path(temporary) / "source"
-            unpack_fixture(source)
+            fixture = FIXTURE if args.case == "swa" else FIXTURE / "006" / args.case
+            unpack_fixture(source, fixture, args.case)
         else:
             source = args.bundle.resolve()
         build_bundle(args, build_dir, bundle, source)
@@ -218,8 +220,8 @@ def build_bundle(args, build_dir, bundle, source):
         ],
         check=True,
     )
-    metadata = copy_snapshot(source, bundle, tools)
-    tasks = swa_tasks()
+    metadata = copy_snapshot(source, bundle, tools, args.case)
+    tasks = case_tasks(args.case)
     ids = {k for _, slots in tasks.values() for k in slots if k >= 0}
     manifest = json.loads((SOURCES / "manifest.json").read_text())
     kernels = [k for k in manifest["kernels"] if k["func_id"] in ids]
@@ -227,7 +229,7 @@ def build_bundle(args, build_dir, bundle, source):
         bundle / "name_map.json",
         {
             "level": 2,
-            "orchestrator_name": "SWA",
+            "orchestrator_name": args.case.upper(),
             "callable_id_to_name": {str(k["func_id"]): k["name"] for k in kernels},
         },
     )
@@ -235,7 +237,7 @@ def build_bundle(args, build_dir, bundle, source):
     binary_dir.mkdir(exist_ok=True)
     compiled = compile_kernel_set(
         args.platform, args.pto_isa, binary_dir, args.jobs,
-        kernel_set=args.kernel_set,
+        kernel_set=args.kernel_set, case=args.case,
     )
     executions = sum(blocks * sum(k >= 0 for k in slots) for blocks, slots in tasks.values())
     if args.platform == "a6":
@@ -243,7 +245,10 @@ def build_bundle(args, build_dir, bundle, source):
         build_converter(args.cxx, converter)
         plan = bundle / "plan-rank0.bin"
         converted = build_dir / "plan-a6.bin"
-        executions = convert_plan(tools / "record-tool", converter, plan, converted, args.five_block_t0)
+        if args.stage == "006":
+            executions = convert_single_vector(tools / "record-tool", converter, plan, converted, args.case)
+        else:
+            executions = convert_plan(tools / "record-tool", converter, plan, converted, args.five_block_t0)
         converted.replace(plan)
     runner = tools / "native-runner"
     original_callable = source / "callable.bin"
@@ -275,7 +280,9 @@ def build_bundle(args, build_dir, bundle, source):
             "source_commit": capture(["git", "-C", REPO, "rev-parse", "HEAD"]).strip(),
             "model": manifest["origin"],
             "tasks": len(tasks),
-            "t0_blocks": 5 if args.five_block_t0 else tasks[8][0],
+            "case": args.case,
+            "stage": args.stage,
+            **({"t0_blocks": 5 if args.five_block_t0 else tasks[8][0]} if args.case == "swa" else {}),
             "kernel_set": args.kernel_set,
             "executions": executions,
             "source_snapshot_files": metadata["files"],
@@ -331,28 +338,31 @@ def assemble_replay(tools, bundle, build_dir, binary_dir, compiled, kernels, met
         if data[start : start + size] != (binary_dir / record["file"]).read_bytes():
             raise ValueError(f"Assembled machine code differs for {record['name']}")
     if layout != expected:
-        raise ValueError("Assembled replay callable differs from the SWA signatures")
+        raise ValueError("Assembled replay callable differs from the source signatures")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    freezer = commands.add_parser("freeze", help="Export a verified upstream materialized SWA into a portable archive")
+    freezer = commands.add_parser("freeze", help="Export a verified materialized slice into a portable archive")
+    freezer.add_argument("--case", choices=CASES_006, default="swa")
     freezer.add_argument("--bundle", type=Path, required=True)
     freezer.add_argument("--tools", type=Path, required=True, help="Matching native-runner and record-tool directory")
     freezer.add_argument("--source-revision", required=True, help="Commit used for the upstream A5 capture")
     freezer.add_argument("--output", type=Path, required=True)
-    compile_case = commands.add_parser("build", help="Compile SWA kernels and assemble a native replay")
+    compile_case = commands.add_parser("build", help="Compile case kernels and assemble a native replay")
+    compile_case.add_argument("--stage", choices=("005", "006"), default="005")
+    compile_case.add_argument("--case", choices=CASES_006, default="swa")
     compile_case.add_argument("--platform", choices=["a5", "a6"], default="a5")
     compile_case.add_argument(
-        "--bundle", type=Path, help="Override bundled SWA with materialized cases/pypto_lib_latest/swa"
+        "--bundle", type=Path, help="Use a materialized source slice instead of its checked-in fixture"
     )
     compile_case.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
     compile_case.add_argument(
         "--five-block-t0", action="store_true", help="Use five A6 vector blocks for source task 8"
     )
     compile_case.add_argument(
-        "--kernel-set", choices=("cpp", "005-export"), default="cpp", help="Use shared C++ kernels (default) or the earlier 005 build"
+        "--kernel-set", choices=("cpp", "005-export"), help="Use shared C++ kernels (default) or the earlier 005 build"
     )
     compile_case.add_argument("--build-dir", type=Path)
     compile_case.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
@@ -361,6 +371,14 @@ def main():
     if args.command == "freeze":
         freeze(args)
     else:
+        if args.stage == "006":
+            if args.platform != "a6" or args.five_block_t0 or args.kernel_set is not None:
+                parser.error("006 requires A6 with original VF kernels and original t0 block count")
+            args.kernel_set = "original-vf"
+        else:
+            if args.case != "swa":
+                parser.error("005 supports only the SWA fixture")
+            args.kernel_set = args.kernel_set or "cpp"
         if args.five_block_t0 and args.platform != "a6":
             parser.error("--five-block-t0 requires --platform a6")
         build(args)

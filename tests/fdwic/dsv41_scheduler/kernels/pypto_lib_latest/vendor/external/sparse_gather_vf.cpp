@@ -39,16 +39,20 @@ constexpr bool SINGLE_VECTOR = true;
 #else
 constexpr bool SINGLE_VECTOR = false;
 #endif
-// A6 uses two 1C1V blocks for the two head halves of one captured 1C2V
-// block. Both blocks gather all keys; token/partial ownership stays unchanged.
+constexpr int ARG_BALANCED = 12;
+// Unbalanced A6 uses two groups per worker. Balanced attention preserves each
+// captured worker's partial-buffer slots and processes both head halves on one group.
+__aicore__ inline int groups_per_worker(__gm__ int64_t* args) {
+    return SINGLE_VECTOR && !args[ARG_BALANCED] ? 2 : 1;
+}
 __aicore__ inline int work_blocks(__gm__ int64_t* args) {
-    return get_block_num(args) / (SINGLE_VECTOR ? 2 : 1);
+    return get_block_num(args) / groups_per_worker(args);
 }
 __aicore__ inline int work_block(__gm__ int64_t* args) {
-    return get_block_idx(args) / (SINGLE_VECTOR ? 2 : 1);
+    return get_block_idx(args) / groups_per_worker(args);
 }
-__aicore__ inline int head_half(__gm__ int64_t* args) {
-    return SINGLE_VECTOR ? get_block_idx(args) % 2 : get_sub_block_id(args);
+__aicore__ inline int first_head_half(__gm__ int64_t* args) {
+    return SINGLE_VECTOR ? get_block_idx(args) % groups_per_worker(args) : get_sub_block_id(args);
 }
 template <typename T, int R, int C>
 using Vec = Tile<TileType::Vec, T, R, C>;
@@ -73,7 +77,6 @@ constexpr int ARG_TOKENS = 8;
 constexpr int ARG_HEADS = 9;
 constexpr int ARG_WINDOW_KEYS = 10;
 constexpr int ARG_COMPRESSED_KEYS = 11;
-constexpr int ARG_BALANCED = 12;
 constexpr int PARTIAL_STRIDE = 64 * (512 + 2);
 
 #if !defined(__CPU_SIM)
@@ -336,8 +339,8 @@ __aicore__ inline void wait_both(int flag) {
 
 template <int Width>
 __aicore__ inline void load_q_component(__gm__ int64_t* args, int token, int column, int lower_base,
-                                        int upper_base, int event) {
-    const int head = SINGLE_VECTOR ? head_half(args) * VEC_HEADS : 0;
+                                        int upper_base, int event, int half) {
+    const int head = SINGLE_VECTOR ? half * VEC_HEADS : 0;
     const int valid = SINGLE_VECTOR ? (valid_heads_of(args) > head ? valid_heads_of(args) - head : 0) : valid_heads_of(args);
     const int lower = valid < VEC_HEADS ? valid : VEC_HEADS;
     const int upper = valid > VEC_HEADS ? valid - VEC_HEADS : 0;
@@ -359,11 +362,11 @@ __aicore__ inline void load_q_component(__gm__ int64_t* args, int token, int col
     }
     set_flag(PIPE_MTE2, PIPE_MTE1, static_cast<event_t>(event));
 }
-__aicore__ inline void load_q_wide(__gm__ int64_t* args, int query, int slot) {
-    load_q_component<384>(args, query, 0, (Q_WIDE_LOWER_BASE + slot * Q_WIDE_STRIDE), (Q_WIDE_UPPER_BASE + slot * Q_WIDE_STRIDE), slot);
+__aicore__ inline void load_q_wide(__gm__ int64_t* args, int query, int slot, int half) {
+    load_q_component<384>(args, query, 0, (Q_WIDE_LOWER_BASE + slot * Q_WIDE_STRIDE), (Q_WIDE_UPPER_BASE + slot * Q_WIDE_STRIDE), slot, half);
 }
-__aicore__ inline void load_q_tail(__gm__ int64_t* args, int query) {
-    load_q_component<128>(args, query, 384, Q_TAIL_LOWER, Q_TAIL_UPPER, EV_Q_TAIL);
+__aicore__ inline void load_q_tail(__gm__ int64_t* args, int query, int half) {
+    load_q_component<128>(args, query, 384, Q_TAIL_LOWER, Q_TAIL_UPPER, EV_Q_TAIL, half);
 }
 
 // Preserve the destination [64,64] pitch: TEXTRACT(Left<32,64>) would compact at dstStride=2.
@@ -520,7 +523,7 @@ __aicore__ inline void compute_pv(__gm__ int64_t* args, const TileTask& task) {
 }
 
 template <int Parts, bool Balanced>
-__aicore__ inline void attend_cube(__gm__ int64_t* args) {
+__aicore__ inline void attend_cube(__gm__ int64_t* args, int half) {
     const WorkPlan plan = work_plan<Parts, Balanced>(args);
     const int queries = plan.queries;
     const int tiles = plan.tiles;
@@ -538,16 +541,16 @@ __aicore__ inline void attend_cube(__gm__ int64_t* args) {
     signal_both<PIPE_MTE1>(FLAG_P_FREE);
 
     // Prologue QK(0), then QK(next) before PV(current), including query boundaries.
-    load_q_wide(args, plan.first_token, 0);
-    load_q_tail(args, plan.first_token);
+    load_q_wide(args, plan.first_token, 0, half);
+    load_q_tail(args, plan.first_token, half);
     compute_qk(args, make_task<Parts, Balanced>(args, plan, 0));
     for (int ordinal = 0; ordinal < tiles; ++ordinal) {
         const TileTask task = make_task<Parts, Balanced>(args, plan, ordinal);
-        if (task.first && task.query + 1 < queries) load_q_wide(args, task.token + (Balanced ? 1 : plan.workers), (task.query + 1) & 1);
+        if (task.first && task.query + 1 < queries) load_q_wide(args, task.token + (Balanced ? 1 : plan.workers), (task.query + 1) & 1, half);
         if (!task.last) {
             compute_qk(args, make_task<Parts, Balanced>(args, plan, ordinal + 1));
         } else if (task.query + 1 < queries) {
-            load_q_tail(args, task.token + (Balanced ? 1 : plan.workers));
+            load_q_tail(args, task.token + (Balanced ? 1 : plan.workers), half);
             compute_qk(args, make_task<Parts, Balanced>(args, plan, ordinal + 1));
         }
         compute_pv(args, task);
@@ -736,11 +739,11 @@ __aicore__ inline void softmax_publish(__gm__ int64_t* args, const TileTask& tas
     set_flag(PIPE_MTE3, PIPE_V, static_cast<event_t>(EV_P_STAGE));
 }
 
-__aicore__ inline void store_channel(__gm__ int64_t* args, const TileTask& task, int channel) {
+__aicore__ inline void store_channel(__gm__ int64_t* args, const TileTask& task, int channel, int half) {
     set_flag(PIPE_V, PIPE_MTE3, static_cast<event_t>(channel));
     wait_flag(PIPE_V, PIPE_MTE3, static_cast<event_t>(channel));
     const int valid = valid_heads_of(args);
-    const int head = head_half(args) * VEC_HEADS;
+    const int head = half * VEC_HEADS;
     const int valid_local = valid > head ? (valid - head < VEC_HEADS ? valid - head : VEC_HEADS) : 0;
     if (valid_local > 0) {
         Tile<TileType::Vec, bfloat16_t, VEC_HEADS, 256, BLayout::RowMajor, DYNAMIC, 256> active(valid_local);
@@ -760,8 +763,8 @@ __aicore__ inline void store_channel(__gm__ int64_t* args, const TileTask& task,
 
 __aicore__ inline void store_partial_channel(
     __gm__ int64_t* args, const TileTask& task, int channel, ChannelHalf& acc,
-    State& maximum, State& denominator) {
-    const int head = head_half(args) * VEC_HEADS;
+    State& maximum, State& denominator, int half) {
+    const int head = half * VEC_HEADS;
     auto base = data<float>(args, ARG_PARTIALS) + (int64_t)task.partial_slot * PARTIAL_STRIDE;
     set_flag(PIPE_V, PIPE_MTE3, static_cast<event_t>(channel));
     wait_flag(PIPE_V, PIPE_MTE3, static_cast<event_t>(channel));
@@ -781,12 +784,11 @@ __aicore__ inline void store_partial_channel(
     if (channel == 1 && task.partial_slot % 2 == 0) {
         // Publish the leading fragment after both numerator channels and statistics.
         pipe_barrier(PIPE_ALL);
-        const int half = head_half(args);
         st_dev(uint32_t(1), ready_flags(args) + task.partial_slot + half, 0);
     }
 }
 
-__aicore__ inline void update_pv(__gm__ int64_t* args, const TileTask& task, int tick) {
+__aicore__ inline void update_pv(__gm__ int64_t* args, const TileTask& task, int tick, int half) {
     const int alpha_slot = (tick - 1) & 1;
     State maximum, denominator, sink, alpha, factor;
     TASSIGN(maximum, MAX_STATE_UB + task.query_slot * STATE_SLOT_STRIDE);
@@ -808,7 +810,7 @@ __aicore__ inline void update_pv(__gm__ int64_t* args, const TileTask& task, int
             if (!task.first) {
                 sparse_softmax::accumulate<ChannelHalf, State>(acc.data(), acc.data(), partial.data(), alpha.data());
             }
-            store_partial_channel(args, task, channel, acc, maximum, denominator);
+            store_partial_channel(args, task, channel, acc, maximum, denominator, half);
         } else if (task.last) {
             if (task.first) {
                 sparse_softmax::finish<true, ResultBf16, ChannelHalf, State>(
@@ -817,7 +819,7 @@ __aicore__ inline void update_pv(__gm__ int64_t* args, const TileTask& task, int
                 sparse_softmax::finish<false, ResultBf16, ChannelHalf, State>(
                     result.data(), acc.data(), partial.data(), alpha.data(), factor.data());
             }
-            store_channel(args, task, channel);
+            store_channel(args, task, channel, half);
         } else {
             if (!task.first) {
                 sparse_softmax::accumulate<ChannelHalf, State>(acc.data(), acc.data(), partial.data(), alpha.data());
@@ -827,8 +829,8 @@ __aicore__ inline void update_pv(__gm__ int64_t* args, const TileTask& task, int
     }
 }
 
-__aicore__ inline void load_sink(__gm__ int64_t* args) {
-    const int head = head_half(args) * VEC_HEADS;
+__aicore__ inline void load_sink(__gm__ int64_t* args, int half) {
+    const int head = half * VEC_HEADS;
     const int valid = valid_heads_of(args);
     const int valid_local = valid > head ? (valid - head < VEC_HEADS ? valid - head : VEC_HEADS) : 0;
     State sink;
@@ -859,7 +861,7 @@ __aicore__ inline void load_sink(__gm__ int64_t* args) {
 }
 
 template <int Parts, bool Balanced>
-__aicore__ inline void attend_vector(__gm__ int64_t* args) {
+__aicore__ inline void attend_vector(__gm__ int64_t* args, int half) {
     const WorkPlan plan = work_plan<Parts, Balanced>(args);
     const int queries = plan.queries;
     const int tiles = plan.tiles;
@@ -878,7 +880,7 @@ __aicore__ inline void attend_vector(__gm__ int64_t* args) {
     set_intra_block(PIPE_V, FLAG_SCORE_FREE);
     set_intra_block(PIPE_V, FLAG_PV_FREE);
     set_intra_block(PIPE_V, FLAG_PV_FREE + 1);
-    load_sink(args);
+    load_sink(args, half);
     for (int tick = 0; tick < tiles + 4; ++tick) {
         const bool has_current = tick < tiles;
         const bool has_previous = tick >= 1 && tick - 1 < tiles;
@@ -893,7 +895,7 @@ __aicore__ inline void attend_vector(__gm__ int64_t* args) {
         if (has_current) gather_half(args, make_task<Parts, Balanced>(args, plan, tick), 1);
         if (has_previous) dequant_half(args, make_task<Parts, Balanced>(args, plan, tick - 1), 1);
         if (has_previous) set_intra_block(PIPE_MTE3, FLAG_KV_READY + (tick - 1) % KV_SLOTS);
-        if (has_update) update_pv(args, make_task<Parts, Balanced>(args, plan, tick - 4), tick);
+        if (has_update) update_pv(args, make_task<Parts, Balanced>(args, plan, tick - 4), tick, half);
     }
     // Retirement: consume exactly one credit per still-outstanding flag, no more.
     //   MTE3->V P staging : 1 seed  - 1 per softmax consume + 1 per softmax publish = 1
@@ -1021,43 +1023,50 @@ extern "C" __aicore__ void kernel_entry(__gm__ int64_t* args) {
         simulate_attention(args);
     }
 #endif
-#if defined(__DAV_CUBE__) && !defined(__CPU_SIM)
-    const uint64_t saved_ctrl = get_ctrl();
+#if !defined(__CPU_SIM)
     const int parts = (args[ARG_WINDOW_KEYS] + args[ARG_COMPRESSED_KEYS]) / TILE_KEYS;
-    if (args[ARG_BALANCED]) {
-        if (parts == 5) attend_cube<5, true>(args);
-        else attend_cube<0, true>(args);
-    } else {
-        if (parts == 5) attend_cube<5, false>(args);
-        else if (parts == 1) attend_cube<1, false>(args);
-        else attend_cube<0, false>(args);
+    const bool balanced = args[ARG_BALANCED];
+    const int first = first_head_half(args);
+    const int passes = SINGLE_VECTOR && balanced ? 2 : 1;
+#if defined(__DAV_CUBE__)
+    const uint64_t saved_ctrl = get_ctrl();
+    for (int half = first; half < first + passes; ++half) {
+        if (balanced) {
+            if (parts == 5) attend_cube<5, true>(args, half);
+            else attend_cube<0, true>(args, half);
+        } else {
+            if (parts == 5) attend_cube<5, false>(args, half);
+            else if (parts == 1) attend_cube<1, false>(args, half);
+            else attend_cube<0, false>(args, half);
+        }
     }
     set_ctrl(saved_ctrl);
-#elif defined(__DAV_VEC__) && !defined(__CPU_SIM)
+#elif defined(__DAV_VEC__)
     set_mask_norm();
     set_vector_mask(-1, -1);
-    const int parts = (args[ARG_WINDOW_KEYS] + args[ARG_COMPRESSED_KEYS]) / TILE_KEYS;
-    if (args[ARG_BALANCED]) {
-        if (parts == 5) attend_vector<5, true>(args);
-        else attend_vector<0, true>(args);
-        const int boundary = work_block(args) + 1;
-        const int workers = work_blocks(args);
-        const int cut = (int64_t)args[ARG_TOKENS] * parts * boundary / workers;
-        const int head = head_half(args) * VEC_HEADS;
-        if (boundary < workers && cut % parts != 0 && head < args[ARG_HEADS]) {
-            auto ready = ready_flags(args) + 2 * boundary + head_half(args);
-            while (ld_dev(ready, 0) != 1) {
-                for (int pause = 0; pause < 50; ++pause) asm volatile("nop");
+    for (int half = first; half < first + passes; ++half) {
+        if (balanced) {
+            if (parts == 5) attend_vector<5, true>(args, half);
+            else attend_vector<0, true>(args, half);
+            const int boundary = work_block(args) + 1;
+            const int workers = work_blocks(args);
+            const int cut = (int64_t)args[ARG_TOKENS] * parts * boundary / workers;
+            const int head = half * VEC_HEADS;
+            if (boundary < workers && cut % parts != 0 && head < args[ARG_HEADS]) {
+                auto ready = ready_flags(args) + 2 * boundary + half;
+                while (ld_dev(ready, 0) != 1) {
+                    for (int pause = 0; pause < 50; ++pause) asm volatile("nop");
+                }
+                sparse_merge::reduce(
+                    data<float>(args, ARG_PARTIALS), data<bfloat16_t>(args, ARG_OUTPUT), data<float>(args, ARG_SINK),
+                    row_stride(args, ARG_OUTPUT), row_stride(args, ARG_SINK), args[ARG_HEADS], boundary, head, cut / parts);
             }
-            // Main-loop users are drained; the reducer reuses their UB storage.
-            sparse_merge::reduce(
-                data<float>(args, ARG_PARTIALS), data<bfloat16_t>(args, ARG_OUTPUT), data<float>(args, ARG_SINK),
-                row_stride(args, ARG_OUTPUT), row_stride(args, ARG_SINK), args[ARG_HEADS], boundary, head, cut / parts);
+        } else {
+            if (parts == 5) attend_vector<5, false>(args, half);
+            else if (parts == 1) attend_vector<1, false>(args, half);
+            else attend_vector<0, false>(args, half);
         }
-    } else {
-        if (parts == 5) attend_vector<5, false>(args);
-        else if (parts == 1) attend_vector<1, false>(args);
-        else attend_vector<0, false>(args);
     }
+#endif
 #endif
 }

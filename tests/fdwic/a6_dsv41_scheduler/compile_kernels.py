@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Compile/link the fixed SWA kernels without building or launching a runtime."""
+"""Compile/link the selected DSV4.1 kernels without building or launching a runtime."""
 
 import argparse
 import hashlib
@@ -31,10 +31,24 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+CASES_006 = ("engram", "swa", "c1a_reuse", "c1a_reindex")
+
+
+def case_source(case):
+    return json.loads((WORKLOAD / "source.json").read_text())["cases"][case]
+
+
 def swa_tasks():
+    return case_tasks("swa")
+
+
+def case_tasks(case):
     names = {k["name"]: k["func_id"] for k in json.loads((SOURCES / "manifest.json").read_text())["kernels"]}
     tasks = {}
-    for row in (WORKLOAD / "swa/tasks.tsv").read_text().splitlines():
+    table = WORKLOAD / case / "tasks.tsv"
+    if sha256(table) != case_source(case)["task_table_sha256"]:
+        raise ValueError(f"Task table checksum differs for {case}")
+    for row in table.read_text().splitlines():
         if row.startswith("#"):
             continue
         task, kernels, mask, blocks, _ = row.split()
@@ -72,16 +86,19 @@ alwaysinline {{
 
 
 def kernel_inputs(kernel, platform, kernel_set):
+    pool_entry = kernel["name"] in ("_idx_pool_score_topk_aic", "_idx_pool_score_topk_aiv")
+    if platform == "a6" and kernel_set == "original-vf" and pool_entry:
+        return SOURCES / "vendor/external/index_pool_score_topk.cpp", []
     helpers = kernel.get("vf_llvm", [])
     use_cpp = kernel_set == "cpp" and bool(helpers)
-    if platform == "a6" and kernel["name"] == "hc_collapse_norm":
+    if platform == "a6" and kernel_set == "005-export" and kernel["name"] == "hc_collapse_norm":
         use_cpp = True
     if use_cpp:
         return HERE / "kernels" / f"{kernel['name']}.cpp", []
     return SOURCES / kernel["source"], helpers
 
 
-def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp"):
+def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="swa"):
     sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
     from build_sources import VF_FLAGS, compile_vector_functions  # noqa: PLC0415
 
@@ -97,10 +114,10 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp"):
     arch = next(f for f in toolchain.get_compile_flags(core_type="aiv") if f.startswith("--cce-aicore-arch="))
     vf_flags = (arch, *VF_FLAGS[1:])
     pto = pto.resolve()
-    ids = {k for _, slots in swa_tasks().values() for k in slots if k >= 0}
+    ids = {k for _, slots in case_tasks(case).values() for k in slots if k >= 0}
     kernels = [k for k in json.loads((SOURCES / "manifest.json").read_text())["kernels"] if k["func_id"] in ids]
     if len(kernels) != len(ids):
-        raise ValueError("Incomplete SWA source manifest")
+        raise ValueError(f"Incomplete source manifest for {case}")
 
     def compile_one(kernel):
         source, vf_paths = kernel_inputs(kernel, platform, kernel_set)
@@ -141,8 +158,8 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp"):
             if annotated != binary:
                 registration = target.with_suffix(".hbg")
                 registration.write_bytes(annotated)
-        print(f"Compiled {platform} SWA {kernel['func_id']}: {kernel['name']}", flush=True)
-        return {
+        print(f"Compiled {platform} {case} {kernel['func_id']}: {kernel['name']}", flush=True)
+        record = {
             "id": kernel["func_id"],
             "name": kernel["name"],
             "core": kernel["core_type"],
@@ -154,11 +171,15 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp"):
             "vf_llvm": {path: sha256(SOURCES / path) for path in vf_paths},
             "binary_sha256": sha256(target),
         }
+        if source.name == "index_pool_score_topk.cpp":
+            record["included_source_sha256"] = {kernel["source"]: sha256(SOURCES / kernel["source"])}
+        return record
 
     with compile_worker_budget(jobs), ThreadPoolExecutor(max_workers=jobs) as pool:
         compiled = list(pool.map(compile_one, kernels))
     summary = {
         "platform": platform,
+        "case": case,
         "kernel_set": kernel_set,
         "runtime_executed": False,
         "kernels": compiled,
@@ -176,15 +197,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--platform", choices=("a5", "a6"), default="a6")
     parser.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
-    parser.add_argument("--kernel-set", choices=("cpp", "005-export"), default="cpp")
+    parser.add_argument("--kernel-set", choices=("cpp", "005-export", "original-vf"), default="cpp")
+    parser.add_argument("--case", choices=CASES_006, default="swa")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()
     if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
         parser.error("Need positive --jobs and --pto-isa containing include/pto")
+    if args.case != "swa" and args.kernel_set != "original-vf":
+        parser.error("For a 006 case, select --kernel-set original-vf")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    compile_kernel_set(args.platform, args.pto_isa, output, args.jobs, kernel_set=args.kernel_set)
+    compile_kernel_set(args.platform, args.pto_isa, output, args.jobs, kernel_set=args.kernel_set, case=args.case)
 
 
 if __name__ == "__main__":

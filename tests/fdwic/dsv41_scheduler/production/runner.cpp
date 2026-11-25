@@ -359,9 +359,10 @@ int run(int argc, char **argv) {
     if (rank < 0 || rank >= ranks) throw std::runtime_error("Rank outside original workload");
     ChipWorker worker;
     CallConfig config;
-    // The full EP2 forward's HBG capture needs 4,218,097,664 activation bytes per rank.
-    const bool full_ep2_hbg = runtime_name == "host_build_graph" && !sliced && !native_moe && ranks == 2;
-    const uint64_t heaps[] = {full_ep2_hbg ? 4ULL << 30 : 2ULL << 30, 2ULL << 30, 1ULL << 30, 512ULL << 20};
+    // Capturing the EP2 forward and materializing its long prefixes can both exceed 2 GiB.
+    const bool ep2_forward =
+        runtime_name == "host_build_graph" && (!sliced || materialize) && !native_moe && ranks == 2;
+    const uint64_t heaps[] = {ep2_forward ? 4ULL << 30 : 2ULL << 30, 2ULL << 30, 1ULL << 30, 512ULL << 20};
     for (int i = 0; i < RUNTIME_ENV_RING_COUNT; ++i) {
         config.runtime_env.ring_task_window[i] = 262144;
         config.runtime_env.ring_heap[i] = heaps[i];

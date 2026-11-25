@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from compile_kernels import HERE, REPO, SUITE, swa_tasks
+from compile_kernels import HERE, REPO, SUITE, case_tasks
 
 
 def a6_partitions(five_block_t0=False):
@@ -31,10 +31,12 @@ def read_records(tool, path):
     return json.loads(subprocess.check_output([str(tool), "--records-json", str(path)], text=True))
 
 
-def validate_source(records):
-    selected = [(r["id"], (r["blocks"], r["kernels"])) for r in records if r["op"] == 2 and 8 <= r["id"] <= 34]
-    if selected != list(swa_tasks().items()):
-        raise ValueError("Source plan differs from the pinned SWA task table")
+def validate_source(records, case="swa"):
+    tasks = case_tasks(case)
+    first, last = min(tasks), max(tasks)
+    selected = [(r["id"], (r["blocks"], r["kernels"])) for r in records if r["op"] == 2 and first <= r["id"] <= last]
+    if selected != list(tasks.items()):
+        raise ValueError(f"Source plan differs from the pinned {case.upper()} task table")
 
 
 def check_conversion(before, after, five_block_t0=False):
@@ -74,6 +76,40 @@ def convert_plan(record_tool, converter, original, converted, five_block_t0=Fals
     options = ["--five-block-t0"] if five_block_t0 else []
     subprocess.run([converter, original, converted, *options], check=True)
     return check_conversion(before, read_records(record_tool, converted), five_block_t0)
+
+
+def convert_single_vector(record_tool, converter, original, converted, case):
+    before = read_records(record_tool, original)
+    validate_source(before, case)
+    if case == "c1a_reindex":
+        pool = next(r for r in before if r["op"] == 2 and r["id"] == 1594)
+        # This slice registers only the pool branch of the original MIX callable.
+        if len(pool["tensors"]) != 15 or len(pool["scalars"]) <= 4 or pool["scalars"][4] < 1 << 63:
+            raise ValueError("C1A reindex expects args[19] to select the negative pool-mode branch")
+    tasks = case_tasks(case)
+    # Only SWA's original gather splits each 64-head block into two groups.
+    # Reuse gathers process both head halves on the same physical group.
+    shapes = {}
+    for task, (blocks, kernels) in tasks.items():
+        if kernels[2] >= 0:
+            if kernels[0] < 0 or kernels[1] != kernels[2]:
+                raise ValueError(f"Unexpected MIX shape in {case} task {task}")
+            shapes[task] = (blocks * 2 if case == "swa" and task == 22 else blocks, [*kernels[:2], -1])
+    changes = "".join(f"{task} {blocks}\n" for task, (blocks, _) in shapes.items())
+    subprocess.run(
+        [converter, original, converted, "--single-vector", str(min(tasks)), str(max(tasks))],
+        input=changes, text=True, check=True,
+    )
+    expected = [
+        {**r, "blocks": shapes[r["id"]][0], "kernels": shapes[r["id"]][1]}
+        if r["op"] == 2 and r["id"] in shapes else r for r in before
+    ]
+    if read_records(record_tool, converted) != expected:
+        raise ValueError(f"1C1V conversion changed fields outside the selected MIX tasks in {case}")
+    return sum(
+        r["blocks"] * sum(k >= 0 for k in r["kernels"])
+        for r in expected if r["op"] == 2 and r["id"] in tasks
+    )
 
 
 def main():

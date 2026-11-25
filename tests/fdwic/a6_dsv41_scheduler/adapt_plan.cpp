@@ -31,8 +31,9 @@ struct Partition {
 
 int main(int argc, char **argv) {
     try {
-        if (argc != 3 && !(argc == 4 && std::string(argv[3]) == "--five-block-t0"))
-            throw std::runtime_error("Usage: adapt-plan input output [--five-block-t0]");
+        const bool single_vector = argc == 6 && std::string(argv[3]) == "--single-vector";
+        if (!single_vector && argc != 3 && !(argc == 4 && std::string(argv[3]) == "--five-block-t0"))
+            throw std::runtime_error("Usage: adapt-plan input output [--five-block-t0 | --single-vector first last]");
         // Task IDs in the pinned 15-task SWA match the source capture, including its prefix.
         std::map<uint64_t, Partition> partitions{
             {12, {{-1, 8, -1}, 64, {72, 80}, 54}},     {22, {{16, 17, 17}, 24, {72, 64, 128, 0, 0}, 48}},
@@ -42,10 +43,31 @@ int main(int argc, char **argv) {
         if (argc == 4) partitions.emplace(8, Partition{{-1, 6, -1}, 20, {80}, 5});
         std::ifstream input(argv[1], std::ios::binary);
         auto records = dsv41::read_records(input);
-        const auto slice = dsv41::select_slice(records, 8, 34);
+        auto slice = single_vector ? dsv41::select_slice(records, std::stoull(argv[4]), std::stoull(argv[5])) :
+                                     dsv41::select_slice(records, 8, 34);
+        std::map<uint64_t, int32_t> targets;
+        if (single_vector) {
+            partitions.clear();
+            uint64_t task;
+            int32_t blocks;
+            while (std::cin >> task >> blocks) {
+                if (blocks <= 0 || !targets.emplace(task, blocks).second)
+                    throw std::runtime_error("Invalid MIX partition");
+            }
+        }
         for (size_t i = slice.begin; i < slice.end; ++i) {
             auto &h = records[i].header;
             if (h.operation != dsv41::Operation::SUBMIT) continue;
+            if (single_vector) {
+                if (h.kernels[2] < 0) continue;
+                const auto target = targets.find(h.task_id);
+                if (target == targets.end() || h.kernels[0] < 0 || h.kernels[1] != h.kernels[2])
+                    throw std::runtime_error("MIX partition does not match the original capture");
+                h.block_num = target->second;
+                h.kernels[2] = -1;
+                targets.erase(target);
+                continue;
+            }
             auto it = partitions.find(h.task_id);
             if (it == partitions.end()) continue;
             const auto &part = it->second;
@@ -58,7 +80,7 @@ int main(int argc, char **argv) {
             h.kernels[2] = -1;  // A6 MIX groups have one vector lane.
             partitions.erase(it);
         }
-        if (!partitions.empty()) throw std::runtime_error("Missing SWA partition records");
+        if (!partitions.empty() || !targets.empty()) throw std::runtime_error("Missing partition records");
         std::ofstream output(argv[2], std::ios::binary);
         dsv41::write(output, dsv41::record_magic);
         dsv41::write(output, uint64_t{sizeof(dsv41::Operand)});

@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Run the single-device SWA snapshot with its native runner."""
+"""Validate a single-device scheduler snapshot with its native runner."""
 
 import argparse
 import hashlib
@@ -95,19 +95,20 @@ def run_a6(parser, args, build, bundle, runner, libraries, output):
         "0",
         str(output / "rootinfo"),
         str(rank),
-        "0",
+        str(args.level),
         str(args.warmup),
         str(args.rounds),
         "--runtime=host_build_graph",
     ]
     with (rank / "console.log").open("w") as log:
         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False)
+    case = json.loads((bundle / "case.json").read_text())["case"]
     if result.returncode:
-        raise SystemExit(f"SWA failed (exit {result.returncode}); see {rank / 'console.log'}")
+        raise SystemExit(f"{case} failed (exit {result.returncode}); see {rank / 'console.log'}")
     validation = json.loads((rank / "result.json").read_text())
-    if not (validation["snapshot_inputs"] and validation["validated_against_fused_prefix"]):
-        raise RuntimeError("Native runner did not validate the SWA snapshot")
-    print(f"SWA output check passed. Results: {rank / 'result.json'}")
+    if not all(validation[key] for key in ("passed", "snapshot_inputs", "validated_against_fused_prefix")):
+        raise RuntimeError(f"Native runner did not validate the {case} snapshot")
+    print(f"{case} output check passed. Results: {rank / 'result.json'}")
 
 
 def main():
@@ -116,6 +117,7 @@ def main():
     parser.add_argument("--runtime-lib", type=Path)
     parser.add_argument("--runtime", choices=["host_build_graph", "percounter", "both"])
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--level", type=int, choices=(0, 2), default=0, help="A6 profiling level (default 0)")
     parser.add_argument("--warmup", type=int)
     parser.add_argument("--rounds", type=int)
     parser.add_argument("--device", type=int, help="Allocated logical device ID")
@@ -127,6 +129,8 @@ def main():
     platform = build["platform"]
     if platform not in ("a5", "a6"):
         parser.error(f"Unknown bundle platform: {platform}")
+    if platform == "a5" and args.level != 0:
+        parser.error("This A5 runner collects L0")
     libraries = (args.runtime_lib or REPO / "build/lib" / platform / "onboard").resolve()
     set_run_defaults(parser, args, platform)
     bundle, runner = build_dir / "bundle", build_dir / "host/native-runner"

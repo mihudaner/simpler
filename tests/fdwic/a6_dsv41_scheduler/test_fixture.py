@@ -20,8 +20,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from compile_kernels import HERE, REPO, SOURCES, SUITE, kernel_inputs, swa_tasks
-from prepare_plan import build_converter, check_conversion, convert_plan, read_records, validate_source
+from compile_kernels import CASES_006, HERE, REPO, SOURCES, SUITE, case_tasks, kernel_inputs, swa_tasks
+from prepare_plan import (
+    build_converter,
+    check_conversion,
+    convert_plan,
+    convert_single_vector,
+    read_records,
+    validate_source,
+)
 
 SPEC = importlib.util.spec_from_file_location(
     "standalone_swa_prepare", Path(__file__).resolve().with_name("prepare.py")
@@ -95,6 +102,28 @@ class FixtureTest(unittest.TestCase):
         next(r for r in before if r["op"] == 2 and r["id"] == 34)["id"] = 35
         with self.assertRaisesRegex(ValueError, "pinned SWA task table"):
             validate_source(before)
+
+    def test_006_only_changes_mixed_groups_and_keeps_original_vector_functions(self):
+        original = self.source / "plan-rank0.bin"
+        before = read_records(self.tool, original)
+        manifest = json.loads((SOURCES / "manifest.json").read_text())["kernels"]
+        for name in CASES_006:
+            with self.subTest(case=name):
+                tasks = case_tasks(name)
+                converted = self.directory / f"006-{name}.bin"
+                convert_single_vector(self.tool, self.converter, original, converted, name)
+                after = read_records(self.tool, converted)
+                for old, new in zip(before, after, strict=True):
+                    expected = old
+                    if old["op"] == 2 and old["id"] in tasks and old["kernels"][2] >= 0:
+                        blocks = 48 if name == "swa" and old["id"] == 22 else old["blocks"]
+                        expected = {**old, "blocks": blocks, "kernels": [*old["kernels"][:2], -1]}
+                    self.assertEqual(new, expected)
+                active = {kid for _, slots in tasks.values() for kid in slots if kid >= 0}
+                for kernel in manifest:
+                    if kernel["func_id"] in active and kernel.get("vf_llvm"):
+                        path, helpers = kernel_inputs(kernel, "a6", "original-vf")
+                        self.assertEqual((path, helpers), (SOURCES / kernel["source"], kernel["vf_llvm"]))
 
     def test_snapshot_covers_all_writable_device_tensors(self):
         case = json.loads((self.source / "case.json").read_text())
