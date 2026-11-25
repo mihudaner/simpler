@@ -1,6 +1,6 @@
 # SWA 005 的构建与运行
 
-005 对应主线 `48fd8fef3` 的 PyPTO-lib 原生 SWA。A5 的测量对照使用同一份单卡快照，纯主线与迁移版分别加载自己的 HBG 运行库。[005 结果和复测入口](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md)
+005 对应主线 `48fd8fef3` 的 PyPTO-lib 原生 SWA。A5 迁移版用固定快照、共享 C++ 核与本版本的 HBG 运行库采集 L0、L1、L2。[005 结果和复测入口](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md)
 
 ## 单卡运行
 
@@ -28,7 +28,7 @@ python -I "$case_dir/run.py" --build-dir build/005-swa-a5 --runtime host_build_g
   --runtime-lib build/lib/a5/onboard --output outputs/005-swa-a5
 ```
 
-输出目录包含原生 runner 日志及逐轮数值校验。采集 A5 的 L0/L1/L2 对照、同步下界和代表轮泳道，使用 [005 的同卡脚本](../results/005-swa-a5-baseline-a6-timeouts/collect-pair.sh)。每次复测使用新的输出目录。
+输出目录包含原生 runner 日志及逐轮数值校验。A5 迁移版的采集等级、调度下界、分块及代表轮选取见[005 性能报告](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md)。每次复测使用新的输出目录。
 
 ## 从原始 forward 刷新单卡快照
 
