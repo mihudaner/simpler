@@ -1739,91 +1739,17 @@
     "topology": "54C+54V",
     "executions": 660,
     "hardware_results": null,
-    "status": "t0_cpp_workaround_prepared_offline_awaiting_board",
-    "failed_capture": {
-      "directory_on_device_host": "build/005-a6-QeZpqDMb",
-      "levels": [0, 1, 2],
-      "failed_run_index": 0,
-      "runtime_error": 507018,
-      "l0_aicore_error": 271,
-      "aiv_error_reported_by_board_operator": {
-        "core": 0, "error": 331, "name": "VEC_INSTR_ILLEGAL_CFG_T0",
-        "current_pc": "0x12000003c2bc", "func_id": 6, "replay_task": 0, "source_task": 8
-      },
-      "l0_die": 0,
-      "l0_aic_core": 1,
-      "l0_fault_elf_vma": "0xef2c4",
-      "resident_image_sha256": "8f71914174e16eb06cefdebac59307b0c53a9210cf34f3bf0307a0fb93281934"
-    },
-    "post_fix_retest": {
-      "source": "board_operator_report",
-      "failed_run_index": 0,
-      "workers": 108,
-      "dispatch_arrived": 0,
-      "bootstrap_complete": 0,
-      "result_json_generated": false,
-      "l2_trace_generated": false,
-      "resident_image_sha256": null
-    },
-    "single_t0_block_retest": {
-      "source": "board_operator_report",
-      "implementation": "retargeted_vf_ir",
-      "total": 1, "next_block": 1, "remaining": 1,
-      "sampled_pc": "0x12000003c114", "elf_pc": "0x17f4"
-    },
-    "t0_cpp_workaround": {
-      "date": "2026-11-24",
-      "upstream_cpp_revision": "ad299c7fc0c57091ae24ff17d52b0ae0506d5273",
-      "kernel_sha256": "d3e2e90544f70d433bff88848637ec5aaa44e9c03e7077e46e6b360e4b754dd0",
-      "callable_sha256": "16074e5d840e074eaab340988af1322a1562dd3d616c3aaf992453d2282e6b72",
-      "changed_kernel_ids_from_local_pre_fix_bundle": [6],
-      "runtime_executed": false
-    },
-    "reprepared_retest": {
-      "source": "board_operator_report",
-      "timeout_site": 95,
-      "mapped_chains": 0,
+    "completion_notification": {
+      "error": 271,
       "mapped_tasks": 0,
-      "aicore_exception_reported": false,
-      "directory_on_device_host": "/tmp/opencode/005fix2-1qhy/rank0",
-      "device_log": "ascend/debug/device-0/device-224035_20261123203901140.log",
-      "source_to_replay": {"18": 10, "26": 18},
-      "unfinished_tasks": [
-        {"task": 0, "total": 20, "remaining": 20, "debt": 20, "next_block": 20, "active_mask": 2, "flags": 9},
-        {"task": 1, "total": 80, "remaining": 80, "debt": 80, "next_block": 0, "active_mask": 2, "flags": 9},
-        {"task": 4, "total": 54, "remaining": 54, "debt": 54, "next_block": 0, "active_mask": 2, "flags": 137},
-        {"task": 8, "total": 20, "remaining": 20, "debt": 20, "next_block": 20, "active_mask": 1, "flags": 9},
-        {"task": 9, "total": 10, "remaining": 10, "debt": 10, "next_block": 0, "active_mask": 2, "flags": 9},
-        {"task": 10, "total": 64, "remaining": 64, "debt": 64, "next_block": 0, "active_mask": 3, "flags": 13},
-        {"task": 11, "total": 8, "remaining": 8, "debt": 8, "next_block": 8, "active_mask": 1, "flags": 9},
-        {"task": 12, "total": 12, "remaining": 12, "debt": 12, "next_block": 0, "active_mask": 2, "flags": 9},
-        {"task": 14, "total": 96, "remaining": 96, "debt": 96, "next_block": 0, "active_mask": 3, "flags": 13},
-        {"task": 16, "total": 10, "remaining": 10, "debt": 10, "next_block": 0, "active_mask": 2, "flags": 9},
-        {"task": 18, "total": 4, "remaining": 1, "debt": 1, "next_block": 4, "active_mask": 1, "flags": 9},
-        {"task": 19, "total": 12, "remaining": 12, "debt": 12, "next_block": 0, "active_mask": 2, "flags": 9},
-        {"task": 22, "total": 54, "remaining": 54, "debt": 54, "next_block": 0, "active_mask": 2, "flags": 137},
-        {"task": 25, "total": 108, "remaining": 108, "debt": 108, "next_block": 0, "active_mask": 3, "flags": 141},
-        {"task": 26, "total": 108, "remaining": 108, "debt": 108, "next_block": 0, "active_mask": 3, "flags": 141}
-      ],
-      "sampled_unfinished_tasks": 15,
-      "sampled_tasks_moved": 0,
-      "t0_prepared_cells": {
-        "first_index": 0, "last_index": 7, "call_lane": 1, "state": "CLAIMED",
-        "owner_by_block": [100, 89, 54, 55, 88, 101, 70, 63]
-      },
-      "atrace_func6": {
-        "file": "trace_224031_224035_20261123203856999620/.../schedule_tracer_ts_0.txt",
-        "reported_start": "0x12000003b920", "reported_end": "0x12000003ce18",
-        "aiv_pc_offsets_examples": ["0x99c", "0x11dc", "0x5f4", "0x11d4", "0x578", "0x120c", "0x11bc", "0x1264", "0x598", "0x990"],
-        "board_disassembly": {
-          "sampled_epilogue_pc": "0x12000003c2bc", "sampled_epilogue_elf_pc": "0x199c",
-          "tail_wait_elf_pc": "0x1988", "tail_wait_instruction": "WAIT_FLAGI_V.MTE3 #2",
-          "bar_all_elf_pc": "0x198c", "epilogue_start_elf_pc": "0x1990", "ret_elf_pc": "0x19cc",
-          "vf_helper_sample": {"aiv_core": 0, "pc": "0x12000003cafc", "offset": "0x11dc"}
-        },
-        "local_kernel_size": 7272,
-        "local_kernel_sha256": "934738855943d98f9ab73deb455909f744149f6439a2d4e650a569afed277409"
-      }
+      "fix": "use GM completion when CntNotify is unmapped"
+    },
+    "exported_t0_vector_error": 331,
+    "five_block_t0_with_exported_t12": {
+      "executions_planned": 645,
+      "valid_runs": 3,
+      "t12_claimed_per_run": 12,
+      "t12_completed_per_run": 0
     }
   },
   "stages": {
@@ -1847,6 +1773,115 @@
       "source_callable_sha256": "b0e3cd9a0eff97a94d2d2d68223f596ef52746dcef79931f1c19d146cf8d72f1",
       "callable_sha256": "35b40908c5200f0dcc8077b1fcdead195c268abdbe5796baa8fb80e84116072e",
       "pto_isa_commit": "45435c0624c1d0d056bf38aa60d4f56dc0ef3b6b"
+    }
+  },
+  "a5_shared_cpp": {
+    "build_commit": "5ee50f41a652",
+    "kernel_sources_match_commit": "a07367697ac8",
+    "unit": "us",
+    "measured_runs": 10,
+    "levels": {
+      "0": {
+        "means": {
+          "before": 55.822,
+          "core": 156.7736,
+          "after": 30.9965,
+          "device": 243.5919
+        }
+      },
+      "2": {
+        "means": {
+          "before": 203.9127,
+          "core": 172.3565,
+          "after": 219.3136,
+          "device": 595.5825,
+          "idle_all_cores": 18.0936,
+          "handshake": 8.0186,
+          "context_publish": 7.952,
+          "topology": 5.2396,
+          "register_release": 1.236,
+          "bootstrap_wait": 25.2381,
+          "exit_wait": 21.4361,
+          "exit_signal": 1.7791
+        }
+      }
+    },
+    "l2_instance_means_us": {
+      "ordinary_aiv": {
+        "instances_per_run": 272,
+        "bind": 2.53224,
+        "predecessors": 3.26808,
+        "ready": 0.26035,
+        "pickup": 1.69391,
+        "entry": 0.53366,
+        "kernel": 3.68438,
+        "return_observation": 0.45886,
+        "release": 0.44392
+      },
+      "ordinary_aic": {
+        "instances_per_run": 32,
+        "bind": 3.32145,
+        "predecessors": 23.70296,
+        "ready": 0.31546,
+        "pickup": 1.81274,
+        "entry": 0.52793,
+        "kernel": 9.38842,
+        "return_observation": 0.50169,
+        "release": 0.39147
+      },
+      "MIX_aic": {
+        "instances_per_run": 120,
+        "bind": 0.82228,
+        "predecessors": 3.39441,
+        "ready": 0.43757,
+        "pickup": 0.54321,
+        "entry": 0.51777,
+        "kernel": 14.24165,
+        "return_observation": 0.08723,
+        "release": 0.70012
+      },
+      "MIX_aiv": {
+        "instances_per_run": 208,
+        "bind": 0.92121,
+        "predecessors": 3.50275,
+        "ready": 0.79146,
+        "pickup": 0.80793,
+        "entry": 0.66095,
+        "kernel": 15.17404,
+        "return_observation": 0.34412,
+        "release": 0.84566
+      }
+    },
+    "l2_mix_proxy_means_us": {
+      "blocks_per_run": 120,
+      "prepare_descriptor": 0.04096,
+      "arm_to_last_member": 1.69333
+    },
+    "l2_lifecycle_union_us": {
+      "before_covered": 43.3182,
+      "before_unattributed": 160.5945,
+      "after_covered": 23.2152,
+      "after_unattributed": 196.0984
+    },
+    "l2_same_partition_task_means_us": {
+      "11": {
+        "instances_per_run": 8,
+        "bind": 2.60343,
+        "predecessors": 22.75136,
+        "pickup": 0.67251,
+        "entry": 0.5088,
+        "kernel": 8.1857,
+        "return_to_release": 0.88642
+      },
+      "12": {
+        "instances_per_run": 12,
+        "bind": 2.64538,
+        "predecessors": 0.60143,
+        "pickup": 0.63962,
+        "entry": 0.49558,
+        "kernel": 5.52104,
+        "return_to_release": 0.83675
+      }
     }
   }
 }

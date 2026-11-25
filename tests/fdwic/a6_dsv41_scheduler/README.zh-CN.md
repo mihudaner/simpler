@@ -1,12 +1,12 @@
 # SWA 独立用例
 
-005 使用主线 `48fd8fef3` 的原生 SWA 回放。当前默认用例将四个含导出 VF 的活跃核切换到两端共用的 C++ 实现。A5 与 A6 共用这一版计算图和来自原始 forward 的输入与参考输出。[005 数据与泳道](results/005-main-swa/README.zh-CN.md)
+005 使用主线 `48fd8fef3` 的原生 SWA 回放。当前默认用例将四个含导出 VF 的活跃核切换到两端共用的 C++ 实现。A5 与 A6 共用这一版计算图和来自原始 forward 的输入与参考输出。[005 性能对照](results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md)
 
 | 项目 | 内容 |
 | ---- | ---- |
 | 计算图 | 源任务 t8 至 t34 中有 15 个计算任务，使用 19 个业务核。输出端 t34 把 O-B 和 mHC post 合为一个 MIX |
 | A5 | 32 个 1C2V 核组，每轮 632 次核执行 |
-| A6 | 54 个 1C1V 核组，调整 5 个任务的分片，每轮 660 次核执行。005 首轮在完成计数处报 271，修复并重新组包后通过 bootstrap，随后执行进度超时（site 95）。t0 的导出核报 331，C++ 版本的 marker 记录在尾部未见 stage99。两组无 marker 的 20-block t0 均在 worker62 超时。5-block 原版的最新三轮板端反馈中，t4、t10 完成，t12 norm_rope_publish 的 12 个 block 全部领取、完成 0 份。t12 直写对照仍超时，当前改用共享 C++ 核在黄区复测。[271 记录](results/005-main-swa/README.zh-CN.md#a6-完成计数故障-271) · [331 定位和规避](results/005-main-swa/README.zh-CN.md#a6-的-t0-向量指令故障-331) |
+| A6 | 54 个 1C1V 核组。t0 从 20 分块改为 5 分块后，每轮计划从 660 次核执行减为 645 次。五分块旧导出 t12 连续三轮均为领取 12 个、完成 0 个；共享 C++ 包尚无 A6 整图结果。[005 故障现象与定位结论](results/005-swa-a5-baseline-a6-timeouts/issues.zh-CN.md) |
 | 核与输入 | 两端各自编译核。固定输入与参考由原生 forward 提取，运行独立 SWA 只需单卡 |
 | 历史版本 | 00–004 使用上一版 SWA。004 的 A6 L0 为 290.068 µs，涉及 16 个任务和 616 个实例。[004 报告](results/004-a6-swa-output-tiles/README.zh-CN.md) |
 
@@ -16,7 +16,6 @@
 | -------- | ---- | ---- |
 | SWA 从 Host 建图到设备退出如何运转 | [HBG 调度全流程交互图解](doc/hbg-scheduler-guide.zh-CN.html) | 逐阶段交付物、普通与 MIX 调度、A5／A6 硬件路径、性能口径与泳道，可离线打开 |
 | 00–004 的 A6 迁移进展 | [迁移进展简报](doc/a6-swa-progress.zh-CN.md) | 逐项适配清单、输出校验和 A5／A6 单卡性能总表 |
-| A6 用什么环境、核对了什么 | [环境与适配核对表](doc/a6-evidence-2026-11-17) | 芯片与工具版本、1C1V 编译约束、控制窗口和 SWA 校验结果 |
 | 怎么构建、运行和复测 | [使用方法](doc/usage.zh-CN.md) | 命令、参数、输出位置、修改后需要重编什么 |
 | 为什么不依赖 PyPTO／PTOAS | [执行原理](doc/execution.zh-CN.md) | 已有材料、真实执行路径、依赖边界、全新算子的生成流程 |
 | A6 迁移完成了什么、怎样适配 | [迁移状态与适配说明](doc/a6-migration.zh-CN.md) | 开头勾选索引；逐项说明问题、改动、核实结论、验证范围和剩余缺口 |

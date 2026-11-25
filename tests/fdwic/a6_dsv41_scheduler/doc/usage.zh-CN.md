@@ -1,6 +1,6 @@
 # SWA 005 的构建与运行
 
-005 对应主线 `48fd8fef3` 的 PyPTO-lib 原生 SWA。A5 的测量对照使用同一份单卡快照，纯主线与迁移版分别加载自己的 HBG 运行库。[005 结果和复测入口](../results/005-main-swa/README.zh-CN.md)
+005 对应主线 `48fd8fef3` 的 PyPTO-lib 原生 SWA。A5 的测量对照使用同一份单卡快照，纯主线与迁移版分别加载自己的 HBG 运行库。[005 结果和复测入口](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md)
 
 ## 单卡运行
 
@@ -28,7 +28,7 @@ python -I "$case_dir/run.py" --build-dir build/005-swa-a5 --runtime host_build_g
   --runtime-lib build/lib/a5/onboard --output outputs/005-swa-a5
 ```
 
-输出目录包含原生 runner 日志及逐轮数值校验。采集 A5 的 L0/L1/L2 对照、同步下界和代表轮泳道，使用 [005 的同卡脚本](../results/005-main-swa/collect-pair.sh)。每次复测使用新的输出目录。
+输出目录包含原生 runner 日志及逐轮数值校验。采集 A5 的 L0/L1/L2 对照、同步下界和代表轮泳道，使用 [005 的同卡脚本](../results/005-swa-a5-baseline-a6-timeouts/collect-pair.sh)。每次复测使用新的输出目录。
 
 ## 从原始 forward 刷新单卡快照
 
@@ -45,7 +45,7 @@ python -I "$case_dir/prepare.py" build --platform a6 \
   --bundle build/005-prepared/cases/pypto_lib_latest/swa --build-dir build/005-swa-a6-fresh
 ```
 
-默认的 cpp 组在 A5、A6 上均重编并注册 19 个活跃核。仅历史 A5 对照组（--kernel-set 005-export）保留原 callable 的全部核位置。A6 按 1C1V 改写分片，黄区正式复测加 --five-block-t0，详见[黄区采集步骤](a6-environment.zh-CN.md)。输入和参考取自同一快照。只改调度时可沿用快照和算子包，重编运行库再测；图、算子或 ABI 有变化时应重新校对计划、输入和参考。
+默认的 cpp 组在 A5、A6 上均重编并注册 19 个活跃核。仅历史 A5 对照组（--kernel-set 005-export）保留原 callable 的全部核位置。A6 按 1C1V 改写分片，005 五分块配置使用 `--five-block-t0`，详见[A6 单卡采集方法](a6-environment.zh-CN.md)。输入和参考取自同一快照。只改调度时可沿用快照和算子包，重编运行库再测；图、算子或 ABI 有变化时应重新校对计划、输入和参考。
 
 ## 离线检查
 

@@ -1,6 +1,6 @@
 # SWA 执行原理与依赖
 
-本文记录 00–004 所用的 SWA 图、夹具与命令。005 的任务编号、分片和运行方法见[使用方法](usage.zh-CN.md)及[005 报告](../results/005-main-swa/README.zh-CN.md)。
+本文记录 00–004 所用的 SWA 图、夹具与命令。005 的任务编号、分片和运行方法见[使用方法](usage.zh-CN.md)及[005 报告](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md)。
 
 [返回索引](../README.zh-CN.md)
 

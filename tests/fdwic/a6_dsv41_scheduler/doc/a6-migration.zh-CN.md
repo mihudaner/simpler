@@ -1,6 +1,6 @@
 # A6 SWA 迁移状态与适配说明
 
-本文记录 00–004 所用的 SWA 图、夹具与命令。005 合并新版 SWA 后，A6 在首个向量算子 `hc_collapse_norm` 报 331。A6 C++ 核的尾部 marker 与 premix 输入重叠，20-block 的两个无 marker 版本均在 worker62 超时。5-block L2 在 t0 通过后转到 qkv_quant，worker62 的 block 8 缺 1 票。后续原版 qkv 已多次通过，最新三轮整图都在 t12 完成 0/12 时超时。临时标记与直写对照的结果已归档，当前五分块 C++ 回放待黄区验证。[上板步骤](a6-environment.zh-CN.md) · [005 合并记录与故障定位](../results/005-main-swa/README.zh-CN.md#a6-的-t0-向量指令故障-331) · [使用方法](usage.zh-CN.md)
+本文记录 00–004 使用的 SWA 图、夹具和适配结果。005 的图、核实现及超时定位见[问题与定位结论](../results/005-swa-a5-baseline-a6-timeouts/issues.zh-CN.md)。
 
 [返回用例索引](../README.zh-CN.md) · [性能优化阶段索引](a6-optimization.zh-CN.md) · [性能复测方法](a6-environment.zh-CN.md) · [构建与复现命令](usage.zh-CN.md)
 
@@ -14,9 +14,9 @@
 - [x] [4. Attention t22 的单 V 分工](#4-attention-t22-的单-v-分工)　24 个 block 拆为 48 个，每组负责 32 个 head。
 - [x] [5. plan 转换与回放包](#5-plan-转换与回放包)　核对 2735 条记录，仅转换两处 MIX 描述，得到 16 个计算任务、570 个执行实例。
 - [x] [6. MIX 启动与子核调用](#6-mix-启动与子核调用)　验证镜像内间接调用和返回，独立 SWA 又覆盖了生产装载路径。
-- [x] [7. SSBUF 共享与调度区布局](#7-ssbuf-共享与调度区布局)　确认 2 KiB 边界和 C/V 双向握手，调度区从偏移 1792 开始。
-- [x] [8. 核身份与 CP1 控制窗口](#8-核身份与-cp1-控制窗口)　按两块 die 的物理编号建 140 项窗口表，108 个活跃 worker 完成报到。
-- [x] [9. IPC 寄存器与退出协议](#9-ipc-寄存器与退出协议)　明确参考实现的 GM GOODBYE，以及本仓 HBG 通过 IPC0 发 EXIT、IPC4 回执的流程。
+- [x] [7. SSBUF 共享与调度区布局](#7-ssbuf-共享与调度区布局)　组内共享状态通过双向握手校验。
+- [x] [8. 核身份与 CP1 控制窗口](#8-核身份与-cp1-控制窗口)　按设备上报身份登记 worker，全组完成报到。
+- [x] [9. IPC 寄存器与退出协议](#9-ipc-寄存器与退出协议)　逐核确认退出。
 - [x] [10. 设备计时](#10-设备计时)　AICore 的 SYS_CNT 实测约 1 GHz。
 - [x] [11. A6 HBG 运行时构建](#11-a6-hbg-运行时构建)　Host、AICPU、AICore 和 dispatcher 四项构建产物已生成。
 - [x] [12. 启动与退出修复](#12-启动与退出修复)　修正 1C1V 启动掩码与退出回执的寄存器，保留启动与退出回归。
@@ -87,7 +87,7 @@ A6：2b   → C(前 32 heads) + V(完整 KV、前 32 heads)
 | ---- | -------- |
 | block／实例 | 24 → 48 个 block，72 → 96 个执行实例；输入、输出和工作区大小不变 |
 | 数据搬运 | 单 V gather 从 32 扩至 64 条，C 算 32 行并向单 V 搬运；保留 softmax、PV 累积和分片合并算法 |
-| UB | raw／NZ 缓冲增大后为 **333184 B（325.375 KiB）**，低于查询得到的 376 KiB |
+| UB | 扩大 raw／NZ 缓冲以容纳单 V 的数据分片，整图输出校验通过 |
 | 事件编号 | 修正初版超出 0–7 的编译错误：NZ 的 MTE3↔V 用 5／6／2／3，P staging 用 7；MTE2↔V 的 raw 事件属于另一管线对 |
 
 本切片已通过计算、同步和输出校验。两个 block 会重复读取 KV，因此后续跨代性能比较包含分片变化，不能都归为调度收益。其余独立 AIV 任务的 80／64／64 个逻辑 block 保留，需要运行时支持多波次推进。
@@ -123,7 +123,6 @@ ACL 顶层入口和 HBG 子核使用不同的编译目标。
 
 | 调用方式 | 构建与寻址 | 单 block 结果 |
 | -------- | ---------- | ------------- |
-| 静态链接 | `sub_c` 用 `dav-920r1-cube`，`sub_v` 用 `dav-920r1-vec`。通过 `sub_c.cube` 和 `sub_v.vector` 符号别名与外层链接 | C/V 写出 `CCUBE`／`VECTOR`。V 读到 coreid 35，C 读到 0 |
 | 镜像内函数指针 | `sub_c2`／`sub_v2` 分别以 `-Ttext=0 -e <入口>` 链接，用 `llvm-objcopy --only-section=.text` 提取各 24 B，以 256 B 对齐放入同一可执行镜像 | 输入 `x=5`，结果 `out_c=6, out_v=7, C_done=1, V_done=1`。两个子核均读到参数并返回外层 |
 
 镜像内入口由 `(PC - pc_offset) + blob_offset` 确定。具体偏移依赖链接布局，验证覆盖机器码提取、间接调用、参数传递与返回。
@@ -132,72 +131,19 @@ ACL 顶层入口和 HBG 子核使用不同的编译目标。
 
 ### 7. SSBUF 共享与调度区布局
 
-常量下标探针以 `__ssbuf__` 逻辑基址 0 访问，偏移 0、4、1020、1024、2040、2044 写入并读回 `0x2222`。偏移 2048、3072、4096 报 507015，设备错误 271（internal buffer out of bounds）。A6 此入口的边界为 **2048 B**。A5 运行时在 `[2048,3072)` 预留调度区，迁移时必须改址。[调度状态定义](../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_cluster_signal.h)
-
-| 项目 | 核实结果与适配依据 |
-| ---- | ------------------ |
-| KFC 结构 | `MIX_NUM=1` 时，`sizeof(KfcMsg)=128`、`sizeof(MsgMatmulL1Addr)=32`、`sizeof(TCubeTiling)=200`、`sizeof(TilingInfo)=208`、`sizeof(SsbufWorkspaceDesc)=1488`，单位 B |
-| KFC 清零范围 | `dav_9201/kfc/kfc_comm.h` 的 `ClearSSbufImpl()` 在消息区外还显式写偏移 1536 和 1744 的 32 位字。最高一次写覆盖 `[1744,1748)`。仅按这段代码计算，其后的尾部 `[1748,2048)` 有 300 B |
-| 调度区 | 迁移基线的 A6 状态占 120 B，使用 `[1792,1912)`。主线双槽布局在 A6 占 144 B，使用 `[1792,1936)`，距 KFC 已知写入上界 44 B，距 SSBUF 末尾 112 B。A5 调度区从 2048 开始 |
-| 实际握手 | 在偏移 1792 放入 **96 B 探针状态**。4 个 block 同时运行，每组 8 轮，`bad=0`。C/V 往返的数据和序号均通过校验，测试期间未见串组 |
-| 探针记录限制 | C 的整行 `dcci` 覆盖了同一 GM cache line 上 V 的完成标记。此项以 SSBUF 往返校验为依据。后续 C/V 写回记录分用独立 cache line |
-
-通过的同步序列如下，flag 和管线按实测写法保留。
-
-```text
-C 写 payload、seq → dsb(DSB_ALL) → set_intra_block(PIPE_S, 13)
-V wait_intra_block(PIPE_S, 13) → 校验 → 写 response、ack
-V dsb(DSB_ALL) → set_intra_block(PIPE_MTE3, 12)
-C wait_intra_block(PIPE_S, 12) → 校验 ack、response
-```
-
-96 B 状态通过了 C/V 握手校验，迁移基线的 120 B 布局通过了完整 SWA 校验。双槽版本按实际 C/V 数定义共享描述符，编译期检查整个调度区落在 SSBUF 边界内。[共享区域](../../../../src/common/host_build_graph/cluster_signal_layout.h) · [双槽布局](../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_cluster_signal.h)
+A6 按本组实际参与的 C/V 数量布置共享调度状态，避免与已有工作区重叠。双向握手及迁移基线的整图校验均通过。[共享状态定义](../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_cluster_signal.h)
 
 ### 8. 核身份与 CP1 控制窗口
 
-**采样完整性已验证。** Host 预填 `0xDEADBEEFDEADBEEF`，C/V 用编译期入口标记区分，各自原子领取独立 GM 槽、写回原始身份并执行 `dcci`。blockDim 取 1、2、4、27、54，计数均为 `2 × blockDim`，无缺失。两个入口的 `get_subblockdim()` 都为 1，角色应按入口标记区分。
-
-| 物理分组 | C 的编号范围 | V 的编号范围 | 启用的 local 值 |
-| -------- | ------------ | ------------ | --------------- |
-| die 0 | 0–34 | 35–69 | 0–8、10–21、23、24、26、27、33、34 |
-| die 1 | 70–104 | 105–139 | 0–6、9–14、16–27、33、34 |
-
-每行列出 27 个 local，共 54 对。同一 block 的 C/V 配对满足 `V=C+35`、跨 die 编号区间相差 70。HAL 数据为 54 AIC、54 AIV、`DIE_NUM=2`、`IN_USED=54`、`ERROR_MAP=0`，AICPU 8、`OCCUPY=0x7f8`、`ts_num=1`。这批 local 的跳号不提供屏蔽原因或 `res_id` 对应关系。
-
-**身份取法。** HELLO 的物理核号为 `(hello >> 32) & 0x0FFF`，0 是合法编号。单独一个 C 入口读到 0 无法推算其他 C 的身份；生产 HBG 按各核独立上报建立映射，完整 SWA 覆盖 108 个 worker。
-
-**窗口大小和入口。** 当前驱动用 `halResMap(RES_AICORE, PROCESS_CP1)` 成功映射资源 0–69，每窗 2 MiB，A3 式 Host 直映射请求返回 `0xfffe NOT_SUPPORT`。按 A6 参考实现，C 使用窗首，V 使用窗首 + 1 MiB。140 是两块 die 的物理编号槽位数，当前可执行的是 54 对 C/V，共 108 个 worker。
-
-**从核号到控制窗口的公式已取得。** A6 参考实现 `373856cd828a0154173585bc8bffa8410ffacd53` 的 `GetAicoreRegInfoForDAVID` 按每 die 35 个资源建表。对上报的物理编号，`die = id / 70`、`local = id % 35`、`res_id = die * 35 + local`（整数除法）。当 `id % 70 >= 35`，使用该资源基址 + 1 MiB 的 V 窗口，其余使用窗首的 C 窗口。例如 `core=68` 对应 die 0、V、资源 33。
+启动时按设备上报的核身份关联 worker 和控制通道；算子使用逻辑 block 编号分片。全部 108 个 worker 完成报到。
 
 ### 9. IPC 寄存器与退出协议
 
-| A6 参考实现的操作 | 谁通过什么位置读写 |
-| ----------------- | ------------------ |
-| 发现核 | AICore 在每核 GM `shakeBuffer[0]` 写 `(uint64_t(coreid) << 32) \| 0x80000000` 并执行 `dcci`。AICPU 检查低 32 位 HELLO，提取高位身份。 |
-| 下发任务 | CP1 向**该 C 或 V 自己的基址 + `0x5500`** 写 64 位值。AICore 用 `get_ipc_reg_0()` 读取。普通任务号取低 32 位减一，初始化／特殊值为 `0xFFFFFFFF`。 |
-| 任务确认与完成 | AICore 用 `set_ipc_reg_4()` 写，CP1 从**同一子核基址 + `0x5520`** 读 64 位。任务 ACK 写 `taskIdx`，FIN 写 `taskIdx \| 0x80000000`。 |
-| 结束本次运行 | AICPU 往每核 GM `waveBufferCpuToCore[0]` 写 GOODBYE（`0x88888888`）。AICore 轮询并处理退出，清理 IPC0/4，AICPU 随后复位槽位。接入时要保持先停止访问、后复用内存的顺序。 |
-
-**如何确定偏移和核侧寄存器。** 参考实现 `373856cd828a0154173585bc8bffa8410ffacd53` 的 `GetAicoreRegInfoForDAVID` 给出 CP1 的视角：在 2 MiB 资源窗中选 C 窗首或 V 的 +1 MiB 子窗，再相对该子窗使用命令偏移 `+0x5500` 和回执偏移 `+0x5520`。本仓将两者分别定义为 `REG_SPR_DATA_MAIN_BASE_OFFSET` 和 `REG_SPR_COND_OFFSET`。在另一端，A6 的 `read_reg(DATA_MAIN_BASE)` 调用 `get_ipc_reg_0()`，`write_reg(COND, value)` 调用 `set_ipc_reg_4(value)`。实际 `dav-920r1` 的 C/V 产物反汇编可见 `MOV X0, IPC_REG_0` 与 `MOV IPC_REG_4, X0`。[窗口常量](../../../../src/a5/platform/include/common/platform_config.h) · [核侧读写](../../../../src/a5/platform/onboard/aicore/inner_kernel.h)
-
-**如何验证这两端接通。** Host 内存窗口实验用 A6 CP1 产物核对了两个偏移的 64 位访问及高低半字。早期 A6 核若仍写旧 COND，CP1 在 `+0x5520` 收不到退出 ACK。改成写 IPC4 后，迁移基线 SWA 的 54C＋54V 共 108 个 worker 完成启动与退出，30 个可写缓冲区均通过校验。005 报 271 的写操作发生在业务 block 完成记账阶段，故障地址为 0；该次失败单独归档。[启动与退出记录](#12-启动与退出修复) · [迁移基线](../results/00-baseline/README.zh-CN.md) · [005 完成计数故障](../results/005-main-swa/README.zh-CN.md#a6-完成计数故障-271)
-
-**同一条控制通道的两端。** AICPU 在目标核的窗口中按偏移读写，AICore 通过本核指令访问对应的寄存器。本仓 HBG 将“开始执行”和“本轮退出确认”约定为控制字，普通计算任务继续由 AICore 调度。两端的实现如下。
-
-| HBG 操作 | A5 平台 | A6 平台 |
-| -------- | ------- | ------- |
-| 放行计算 | CP1 写窗内 `+0xD0`，核读 `DATA_MAIN_BASE` | CP1 以 64 位写 `+0x5500`，核读 IPC0，低 32 位匹配 `0x7FFFFFFD` 后开始执行 |
-| 退出与确认 | CP1 在 GM 给出本轮确认值，通过同一命令寄存器发 EXIT。核完成收尾后把确认值写 COND，CP1 从 `+0x5108` 读回 | HBG 保留同一流程。CP1 通过 IPC0 发 EXIT，核把本轮确认值写 IPC4，CP1 从 `+0x5520` 以 64 位读回 |
-| 允许核返回 | CP1 核对本次确认、关窗并读回，再通过每核 GM 放行返回 | 沿用相同的退出安全顺序 |
-
-前一张表中的 GM GOODBYE 属于 A6 平台参考实现。本分支选择保留 HBG 的逐核退出确认和返回顺序。A6 已通过该路径执行并返回。[CP1 放行与退出](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) · [AICore 回执](../../../../src/a5/platform/onboard/aicore/inner_kernel.h)
+AICPU 放行执行并在退出时逐核核对本轮回执。收齐后允许核返回。两端通过各自的平台接口读写同一通道。[AICPU 启停](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) · [核侧回执](../../../../src/a5/platform/onboard/aicore/inner_kernel.h)
 
 ### 10. 设备计时
 
-**已核实：** SYS_CNT 差值 `2000136085`，对应 Host 间隔 `2.000147 s`，测得 **999.994 MHz，约 1 GHz**。这支持当前 A6 探针使用与 A5 相同的 1000 MHz 换算；Cube／Vector 的 1800 MHz 不是该计时器频率。`DEV_OSC_FREQUE` 查询不支持，不再等待它给出静态值。
-
-这解决 AICore 时间换算依据；AICPU 自身计时与跨处理器时间原点对齐仍需后续核对，不作为本轮 SWA 功能验收前提。
+核体耗时按设备计数器差值换算为微秒。各轮比较使用相同频率和起止端点。
 
 ### 11. A6 HBG 运行时构建
 
@@ -214,10 +160,10 @@ Host、AICPU、AICore 及 dispatcher 分开构建；HBG 的 MIX ELF 目标标志
 | Host 准备失败 | `prepare_scheduler_calls` 需要识别 A6 并选择设备函数地址空间。 |
 | 全卡 bootstrap 无法完成 | 1C1V 组的到达掩码为 `INIT \| AIV0 = 3`，1C2V 为 7。`PLATFORM_CORES_PER_BLOCKDIM` 是 C++ 常量，用 `#if` 判断会把它当作 0，两种配置都选到 7。改用 C++ 常量表达式后各组选中对应掩码。[组内准备与全卡计数](../../../../src/a5/runtime/host_build_graph/aicore/resident_scheduler_impl.h) |
 | 核在启动时一直读到 0 | CP1 在全卡 bootstrap 完成后才写启动值。在这之前读到 0，不能据此判断 IPC 写入的可见性。[CP1 的放行顺序](../../../../src/a5/runtime/host_build_graph/aicpu/aicpu_executor.cpp) |
-| CP1 收不到退出确认 | AICore 统一经 `write_reg(RegId::COND, request)` 回写本轮确认值。A6 的发送端和接收端都使用 IPC4，A5 保持 COND。[AICore 退出回执](../../../../src/a5/platform/onboard/aicore/inner_kernel.h) · [CP1 等待回执](../../../../src/a5/platform/shared/aicpu/platform_regs.cpp) |
+| CP1 收不到退出确认 | AICore 经平台写接口回送本轮确认值，CP1 从对应平台接口读取。[退出回执](../../../../src/a5/platform/onboard/aicore/inner_kernel.h) |
 
 - **启动。** 迁移基线由 C 汇总本组到达数。合入主线后改由 AIV0 汇总，A6 掩码为 3，A5 为 7。CPU 回归调用生产 `bootstrap_ready_graph()`，覆盖 54 组、108 个 worker，验证最后一个 AIV0 发布 `bootstrap_complete=1`。该用例使用 Host 预置 INIT。[启动回归](../../../ut/cpp/a5/runtime/host_build_graph/test_hbg_paired_bootstrap.cpp)
-- **退出。** 正常退出和异常收尾共用的 nonce 回执改走平台写接口。A6 的 C/V 执行器反汇编均包含读 IPC0、写 IPC4。在 Host 内存模拟的窗口里，用实际 A6 CP1 产物验证了两个偏移的 64 位读写，高、低 32 位均能读回。真机上的跨核可见性由 SWA 验证。A5 的原启动与退出回归通过。
+- **退出。** 正常退出和异常收尾共用平台回执接口。A6 单卡 SWA 已验证整轮返回，A5 启停回归通过。
 - **离线验证结果。** 构建与工具链 Python 测试 133 项通过，SWA 固定夹具 2 项通过。A6 配对启动和 A5 调度、启动、退出共 4 个 CTest 目标通过。
 
 ### 13. A6 单卡 SWA 验收
@@ -240,21 +186,13 @@ Host、AICPU、AICore 及 dispatcher 分开构建；HBG 的 MIX ELF 目标标志
 
 主线 `ea50c264e` 为每个 worker 提供两个可领取 block 的槽位，每组 C/V 在 SSBUF 中交替使用两份 MIX 描述符。A6 按 1C1V 建组，由 AIV0 发布本组 MIX 工作。SWA 沿用原分片和 570 个执行实例，19 个核随回放包携带主线清单的同步完成声明。[MIX 调度](../../../../src/a5/runtime/host_build_graph/runtime/scheduler/scheduler_cluster_mix.h) · [用例组包](../prepare.py)
 
-A6 使用主线的 GM 完成路径。每个逻辑任务由唯一负责记账的核对同一个 64 位整轮计数加一，AICPU 读取它判断进度和退出。后继任务读各自前驱的 GM 完成状态，有异步条件时 CHECK 使用 GM 位图。每核的启动和退出握手继续用 IPC0／IPC4。A5 继续按可用资源映射 CntNotify。[Host 映射选择](../../../../src/a5/platform/onboard/host/device_runner.cpp) · [完成与退休](../../../../src/a5/runtime/host_build_graph/docs/RUNTIME_LOGIC.md#73-canonical-completion-and-retirement)
+A6 使用主线的 GM 完成路径。每个逻辑任务由唯一负责记账的核对同一个 64 位整轮计数加一，AICPU 读取它判断进度和退出。后继任务读各自前驱的 GM 完成状态，有异步条件时 CHECK 使用 GM 位图。每核的启停握手独立于任务完成计数。A5 继续按可用资源映射 CntNotify。[Host 映射选择](../../../../src/a5/platform/onboard/host/device_runner.cpp) · [完成与退休](../../../../src/a5/runtime/host_build_graph/docs/RUNTIME_LOGIC.md#73-canonical-completion-and-retirement)
 
 合入版本的 A5 同卡对照见[阶段 001](../results/001-hbg-main-merge-swa/README.zh-CN.md)。A6 后续版本 `0d76a7d` 使用 GM-FAA，L0 核窗口 328.139 µs、Device wall 414.771 µs，30／30 个缓冲区通过校验。[阶段 002](../results/002-hbg-same-address-access/README.zh-CN.md#a6-单卡-swa-l0)
 
 ## 平台与工具链
 
-完整的平台参数、工具版本和两处 MIX 适配结论见 [A6 环境与适配核对表](a6-evidence-2026-11-17)。
-
-| 项目 | 核对结果 |
-| ---- | -------- |
-| 平台 | Ascend960DT_966B7，双 die，54C＋54V；Host 为 x86_64 |
-| 存储 | L1 512 KiB、L0A/B 各 64 KiB、L0C 256 KiB、UB 376 KiB、L2 128 MiB；可见 HBM 175.88 GiB |
-| 工具链 | CANN 9.3.0；ccec／LLD 15.0.5。`dav-920r1-cube/vec` 对应 `__NPU_ARCH__=9201`、`__CCE_AICORE__=920` |
-| 计算核与计划 | A6 **19／19** 核编译通过；A5 的 19 个核与适配前机器码逐一一致；**2735 条** plan 记录完成语义核对 |
-| 回归 | A5 HBG 调度契约 36 项、固定夹具 2 项通过。两端单卡输出及性能见[迁移基线](../results/00-baseline/README.zh-CN.md) |
+由 CANN 和仓库锁定版本的 PTO-ISA 编译。Host、AICPU 和业务核分别构建，使用同一目标配置组包。[构建与运行](usage.zh-CN.md)
 
 ## 验收要求
 
@@ -264,11 +202,3 @@ A6 使用主线的 GM 完成路径。每个逻辑任务由唯一负责记账的�
 4. **结论范围明确：** 零权重夹具通过不代表真实权重精度；首轮不要求 percounter 或性能对比。后续计时分列 AICore 窗口、Device wall，并说明硬件、Host、SDK 与分片差异；L3 不混入 L0。
 
 本切片不验证 MoE。后续若扩展，需区分固定回放与 native Host 编排；原 `pypto_lib_latest/moe` 标记 `numerical_validation: false`，不能沿用 SWA 的数值校验结论，见 [原用例说明](../../dsv41_scheduler/README.md)。
-
-## A6 的待办
-
-【x】 atomic 性能 <- A6没问题
-【x】 dcache footprint (TCM prefetch)(Tightly Coupled Memory  TCM A6 l3单独的一块sram) 一些gm调度过程中的控制变量啥的放在gm Dcache miss就是几百ns, 可以尝试放在TCM.
-【】 SU速度 <- A6/A7都没特别改善
-
-所以当前的问题就是调度性能（task执行当前测试机器降频，执行速度比较慢）当前l2 不膨胀的泳道图的开销要结合方案理解清楚，然后对比a6的调度开销对比，性能可解释

@@ -34,7 +34,7 @@
         "l0_above_l1_bound_percent": 53.98,
         "commit": "f1ad55d",
         "date": "2026-11-20",
-        "device": "Ascend960DT_966B7",
+        "device": "A6",
         "logical_device": 0,
         "cann": "9.3.0",
         "warmup": 1,
