@@ -1,0 +1,438 @@
+{
+  "case": "engram",
+  "stage": "006",
+  "platform": "a5",
+  "runtime": "host_build_graph",
+  "simpler_commit": "98c141a26165b3fe4190c2f1f003f5d0c3c1fdc5",
+  "board": "Ascend950DT_9582",
+  "device": 5,
+  "date": "2026-11-26",
+  "queue_task": "task_20261126_193147_24163167166",
+  "unit": "us",
+  "clock_hz": 1000000000,
+  "reference_count": 17,
+  "fixture_sha256": "c9d41c1ceb23b803c9801cf3314f47612e6d539e94a8615941071625e2057d08",
+  "plan_sha256": "c880f2b0ae45e5351b1e72d833beeb099bca907707183c01d8af5373064c0b42",
+  "callable_sha256": "7b3f71fb2bcfe215ed0e583ada18d19df4bce1164877ef00fac1ef0b6b36a382",
+  "runner_sha256": "d6ea3bb55af97d5dcfcac0476d07327a16646040ca677a4f3a81683db1a7a328",
+  "kernel_origin": "Original A5 machine code from frozen 006 fixture, active kernels only",
+  "kernels": [
+    {
+      "id": 3,
+      "name": "_engram_quantize",
+      "core": "aiv",
+      "bytes": 4076,
+      "binary_sha256": "c378d7f847d5f1bae917483bc69fdad71c3277cb52bc0ff9b10a6c79a2592825",
+      "registration_sha256": "c378d7f847d5f1bae917483bc69fdad71c3277cb52bc0ff9b10a6c79a2592825"
+    },
+    {
+      "id": 4,
+      "name": "_engram_project",
+      "core": "aic",
+      "bytes": 4776,
+      "binary_sha256": "7ac68e50d1a871902c2d27ece375b9d4836c8e91d1e4fa7bf93214cd1ebb7b96",
+      "registration_sha256": "7ac68e50d1a871902c2d27ece375b9d4836c8e91d1e4fa7bf93214cd1ebb7b96"
+    },
+    {
+      "id": 5,
+      "name": "_engram_gate_native",
+      "core": "aiv",
+      "bytes": 4076,
+      "binary_sha256": "c378d7f847d5f1bae917483bc69fdad71c3277cb52bc0ff9b10a6c79a2592825",
+      "registration_sha256": "c378d7f847d5f1bae917483bc69fdad71c3277cb52bc0ff9b10a6c79a2592825"
+    }
+  ],
+  "runtime_build": {
+    "platform": "a5",
+    "runtime": "host_build_graph",
+    "branch": "a6-migrate-case",
+    "simpler_commit": "98c141a26165b3fe4190c2f1f003f5d0c3c1fdc5",
+    "pto_isa": "installed CANN 9.3.0, not the repository Git pin",
+    "pto_isa_package": [
+      "Version=9.3.0",
+      "version_dir=cann",
+      "required_package_runtime_version=\"9.3\"",
+      "required_package_opbase_version=\"9.3\"",
+      "required_package_asc-devkit_version=\"9.3\"",
+      "required_package_metadef_version=\"9.3\"",
+      "required_package_ge-executor_version=\"9.3\"",
+      "required_package_bisheng-compiler_version=\"9.3\"",
+      "required_package_asc-tools_version=\"9.3\"",
+      "required_package_ge-compiler_version=\"9.3\"",
+      "timestamp=20261104_000324968"
+    ],
+    "host_workspace_adapter": "Single-rank build. The packaged SDK handles SDMA; communication workspaces requiring the newer retained-failure API are unsupported. The Engram snapshot has no communication domain.",
+    "host_workspace_adapter_sha256": "b5197bdede5071dca7bb86e059687d98893fc2675945ba375e99c2d0dc180fc2",
+    "profiling": {
+      "SIMPLER_DFX": 1,
+      "SIMPLER_SCHED_PROFILING": 0,
+      "SIMPLER_ORCH_PROFILING": 0,
+      "SIMPLER_TENSORMAP_PROFILING": 0
+    },
+    "artifacts": {
+      "dispatcher/libsimpler_aicpu_dispatcher.so": "6197a302432f486c52805db22ef215c4e7845ba94ff432890691db327c8b02e7",
+      "onboard/host_build_graph/aicore_kernel.o": "4d51247dabbf585995fbf7d19e61c07f7027c8ae7de24c00c6bedd72d1fd01a7",
+      "onboard/host_build_graph/aicpu_cpu_topo_fallback.json": "3164966203c2313d14b4ffdd2510ccd6ecc845a9b66b713e5c052154c0ff2aaa",
+      "onboard/host_build_graph/ccu_event_trigger.o": "6407a03e6c6e65d765250933201f751b8a9de2ab1f9f56c9e6f4f1d6ded0e3a7",
+      "onboard/host_build_graph/libaicpu_kernel.so": "80d89d0f49827baf8a0d1386704c3a3a7677b739db38cd9d8ab7befaf6fbcbdc",
+      "onboard/host_build_graph/libhost_runtime.so": "fdf236e5cca4afbda7a1602fea1e4c0f85a833c3d84628d58d5f60a2d060134f"
+    }
+  },
+  "l2_stage_order": [
+    "claim_bind",
+    "observe_predecessors",
+    "ready_publish",
+    "ready_to_pickup",
+    "kernel_entry",
+    "kernel_body",
+    "return_to_observation",
+    "local_completion_release"
+  ],
+  "instances_per_round": {
+    "C": 32,
+    "V": 128
+  },
+  "representative_l2_run": 1,
+  "L0": {
+    "warmup": 0,
+    "rounds": 1,
+    "passed": true,
+    "numerical_validation": true,
+    "samples": [
+      {
+        "run": 0,
+        "before_us": 70.423,
+        "aicore_window_us": 121.335,
+        "after_us": 34.436,
+        "device_wall_us": 226.194
+      }
+    ]
+  },
+  "L2": {
+    "warmup": 1,
+    "rounds": 10,
+    "passed": true,
+    "numerical_validation": true,
+    "samples": [
+      {
+        "run": 1,
+        "before_us": 187.115,
+        "aicore_window_us": 98.909,
+        "after_us": 160.783,
+        "device_wall_us": 446.807,
+        "stage_mean_us": {
+          "V": [
+            2.072210937,
+            35.751015625,
+            0.43184375,
+            6.447726563,
+            0.524375,
+            7.99665625,
+            0.563921875,
+            0.493078125
+          ],
+          "C": [
+            2.13128125,
+            20.3899375,
+            0.36690625,
+            0.787875,
+            0.6511875,
+            53.4540625,
+            0.59765625,
+            0.44234375
+          ]
+        }
+      },
+      {
+        "run": 2,
+        "before_us": 192.175,
+        "aicore_window_us": 99.131,
+        "after_us": 162.351,
+        "device_wall_us": 453.657,
+        "stage_mean_us": {
+          "V": [
+            1.887765625,
+            36.212109375,
+            0.438304687,
+            6.287351563,
+            0.519484375,
+            7.83078125,
+            0.558257813,
+            0.500515625
+          ],
+          "C": [
+            2.23434375,
+            20.31434375,
+            0.57540625,
+            0.432,
+            0.58071875,
+            55.111,
+            0.668125,
+            0.5615625
+          ]
+        }
+      },
+      {
+        "run": 3,
+        "before_us": 180.68,
+        "aicore_window_us": 101.683,
+        "after_us": 158.573,
+        "device_wall_us": 440.936,
+        "stage_mean_us": {
+          "V": [
+            1.958710937,
+            36.44503125,
+            0.43559375,
+            6.254570312,
+            0.513460937,
+            8.503976563,
+            0.57290625,
+            0.544742187
+          ],
+          "C": [
+            2.0785625,
+            20.697,
+            0.6375,
+            0.48975,
+            0.56146875,
+            54.78715625,
+            0.73128125,
+            0.47365625
+          ]
+        }
+      },
+      {
+        "run": 4,
+        "before_us": 195.385,
+        "aicore_window_us": 101.261,
+        "after_us": 172.073,
+        "device_wall_us": 468.719,
+        "stage_mean_us": {
+          "V": [
+            1.936617187,
+            35.944742187,
+            0.432976562,
+            6.345210938,
+            0.528109375,
+            8.783164063,
+            0.542953125,
+            0.58359375
+          ],
+          "C": [
+            2.15021875,
+            20.54178125,
+            0.59140625,
+            0.5625625,
+            0.65453125,
+            54.47378125,
+            0.64465625,
+            0.4185625
+          ]
+        }
+      },
+      {
+        "run": 5,
+        "before_us": 200.351,
+        "aicore_window_us": 100.902,
+        "after_us": 164.511,
+        "device_wall_us": 465.764,
+        "stage_mean_us": {
+          "V": [
+            2.0203125,
+            36.18728125,
+            0.419320312,
+            6.43015625,
+            0.513070313,
+            8.32334375,
+            0.552671875,
+            0.503148438
+          ],
+          "C": [
+            2.14978125,
+            20.11403125,
+            0.617625,
+            0.42884375,
+            0.56571875,
+            54.75753125,
+            0.6579375,
+            0.48646875
+          ]
+        }
+      },
+      {
+        "run": 6,
+        "before_us": 201.012,
+        "aicore_window_us": 99.788,
+        "after_us": 156.745,
+        "device_wall_us": 457.545,
+        "stage_mean_us": {
+          "V": [
+            1.995421875,
+            35.988429688,
+            0.431078125,
+            6.522257812,
+            0.513585937,
+            8.137046875,
+            0.57440625,
+            0.49475
+          ],
+          "C": [
+            2.105875,
+            20.33453125,
+            0.66621875,
+            0.54990625,
+            0.584875,
+            54.42171875,
+            0.6311875,
+            0.51096875
+          ]
+        }
+      },
+      {
+        "run": 7,
+        "before_us": 205.06,
+        "aicore_window_us": 94.469,
+        "after_us": 146.445,
+        "device_wall_us": 445.974,
+        "stage_mean_us": {
+          "V": [
+            1.994984375,
+            35.122007813,
+            0.44803125,
+            6.285914063,
+            0.520554688,
+            6.538734375,
+            0.584664063,
+            0.5339375
+          ],
+          "C": [
+            2.11684375,
+            20.31465625,
+            0.53790625,
+            0.422875,
+            0.5810625,
+            53.08859375,
+            0.59553125,
+            0.45396875
+          ]
+        }
+      },
+      {
+        "run": 8,
+        "before_us": 200.868,
+        "aicore_window_us": 94.689,
+        "after_us": 143.552,
+        "device_wall_us": 439.109,
+        "stage_mean_us": {
+          "V": [
+            1.9195,
+            35.6765,
+            0.427164063,
+            6.555140625,
+            0.50709375,
+            6.3973125,
+            0.592515625,
+            0.491265625
+          ],
+          "C": [
+            2.1274375,
+            19.84928125,
+            0.5653125,
+            0.42709375,
+            0.5848125,
+            53.6629375,
+            0.64278125,
+            0.4878125
+          ]
+        }
+      },
+      {
+        "run": 9,
+        "before_us": 191.943,
+        "aicore_window_us": 98.435,
+        "after_us": 142.309,
+        "device_wall_us": 432.687,
+        "stage_mean_us": {
+          "V": [
+            2.063914062,
+            35.1278125,
+            0.471546875,
+            6.620710938,
+            0.504109375,
+            8.184929687,
+            0.571296875,
+            0.451875
+          ],
+          "C": [
+            2.194375,
+            20.383375,
+            0.59159375,
+            0.4338125,
+            0.57884375,
+            53.1640625,
+            0.61415625,
+            0.44921875
+          ]
+        }
+      },
+      {
+        "run": 10,
+        "before_us": 187.999,
+        "aicore_window_us": 101.245,
+        "after_us": 139.738,
+        "device_wall_us": 428.982,
+        "stage_mean_us": {
+          "V": [
+            1.924695313,
+            36.285632812,
+            0.426898438,
+            6.367742188,
+            0.515882813,
+            8.537195312,
+            0.55515625,
+            0.62809375
+          ],
+          "C": [
+            2.09984375,
+            20.08675,
+            0.51778125,
+            0.4425,
+            0.5571875,
+            54.99490625,
+            0.688375,
+            0.4356875
+          ]
+        }
+      }
+    ],
+    "ten_round_mean_us": {
+      "before_us": 194.2588,
+      "aicore_window_us": 99.0512,
+      "after_us": 154.708,
+      "device_wall_us": 448.018
+    },
+    "ten_round_stage_mean_us": {
+      "C": [
+        2.13885625,
+        20.30256875,
+        0.566765625,
+        0.497721875,
+        0.590040625,
+        54.191575,
+        0.64716875,
+        0.472025
+      ],
+      "V": [
+        1.977413281,
+        35.87405625,
+        0.436275781,
+        6.411678125,
+        0.515972656,
+        7.923314062,
+        0.566875,
+        0.5225
+      ]
+    }
+  },
+  "capture_sha256": "fab34eeb4957a1876b66b020befe8e7803eeb15c64e0cb65092b49c73deb8874"
+}

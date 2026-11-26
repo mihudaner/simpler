@@ -59,10 +59,15 @@ int main(int argc, char **argv) {
             auto &h = records[i].header;
             if (h.operation != dsv41::Operation::SUBMIT) continue;
             if (single_vector) {
-                if (h.kernels[2] < 0) continue;
                 const auto target = targets.find(h.task_id);
-                if (target == targets.end() || h.kernels[0] < 0 || h.kernels[1] != h.kernels[2])
+                if (h.kernels[2] < 0) {
+                    if (target == targets.end()) continue;
+                    if (h.task_id != std::stoull(argv[4]) || h.block_num != 20 || target->second != 5 ||
+                        h.kernels[0] != -1 || h.kernels[1] != 6 || records[i].scalars != std::vector<uint64_t>{80})
+                        throw std::runtime_error("Unexpected HC collapse partition");
+                } else if (target == targets.end() || h.kernels[0] < 0 || h.kernels[1] != h.kernels[2]) {
                     throw std::runtime_error("MIX partition does not match the original capture");
+                }
                 h.block_num = target->second;
                 h.kernels[2] = -1;
                 targets.erase(target);

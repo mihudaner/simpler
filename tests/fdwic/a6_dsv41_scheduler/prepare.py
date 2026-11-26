@@ -246,7 +246,9 @@ def build_bundle(args, build_dir, bundle, source):
         plan = bundle / "plan-rank0.bin"
         converted = build_dir / "plan-a6.bin"
         if args.stage == "006":
-            executions = convert_single_vector(tools / "record-tool", converter, plan, converted, args.case)
+            executions = convert_single_vector(
+                tools / "record-tool", converter, plan, converted, args.case, args.five_block_t0
+            )
         else:
             executions = convert_plan(tools / "record-tool", converter, plan, converted, args.five_block_t0)
         converted.replace(plan)
@@ -282,7 +284,7 @@ def build_bundle(args, build_dir, bundle, source):
             "tasks": len(tasks),
             "case": args.case,
             "stage": args.stage,
-            **({"t0_blocks": 5 if args.five_block_t0 else tasks[8][0]} if args.case == "swa" else {}),
+            **({"t0_blocks": 5 if args.five_block_t0 else tasks[min(tasks)][0]} if args.case != "engram" else {}),
             "kernel_set": args.kernel_set,
             "executions": executions,
             "source_snapshot_files": metadata["files"],
@@ -359,10 +361,11 @@ def main():
     )
     compile_case.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
     compile_case.add_argument(
-        "--five-block-t0", action="store_true", help="Use five A6 vector blocks for source task 8"
+        "--five-block-t0", action="store_true", help="Use five A6 vector blocks for the initial HC collapse"
     )
     compile_case.add_argument(
-        "--kernel-set", choices=("cpp", "005-export"), help="Use shared C++ kernels (default) or the earlier 005 build"
+        "--kernel-set", choices=("cpp", "005-export"),
+        help="Use shared C++ kernels or the earlier 005 build (defaults: 005 C++, 006 original VF)",
     )
     compile_case.add_argument("--build-dir", type=Path)
     compile_case.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
@@ -372,9 +375,11 @@ def main():
         freeze(args)
     else:
         if args.stage == "006":
-            if args.platform != "a6" or args.five_block_t0 or args.kernel_set is not None:
-                parser.error("006 requires A6 with original VF kernels and original t0 block count")
-            args.kernel_set = "original-vf"
+            if args.platform != "a6" or args.kernel_set == "005-export":
+                parser.error("006 requires A6 with original VF (default) or --kernel-set cpp")
+            if args.five_block_t0 and (args.case == "engram" or args.kernel_set != "cpp"):
+                parser.error("006 --five-block-t0 requires an Attention case with --kernel-set cpp")
+            args.kernel_set = args.kernel_set or "original-vf"
         else:
             if args.case != "swa":
                 parser.error("005 supports only the SWA fixture")

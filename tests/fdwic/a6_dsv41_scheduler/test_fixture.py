@@ -125,6 +125,32 @@ class FixtureTest(unittest.TestCase):
                         path, helpers = kernel_inputs(kernel, "a6", "original-vf")
                         self.assertEqual((path, helpers), (SOURCES / kernel["source"], kernel["vf_llvm"]))
 
+    def test_006_cpp_attention_preserves_case_plan_and_pool_entry(self):
+        original = self.source / "plan-rank0.bin"
+        manifest = json.loads((SOURCES / "manifest.json").read_text())["kernels"]
+        for case, count in (("swa", 577), ("c1a_reuse", 466), ("c1a_reindex", 571)):
+            with self.subTest(case=case):
+                tasks = case_tasks(case)
+                converted = self.directory / f"{case}-cpp.bin"
+                convert_single_vector(self.tool, self.converter, original, converted, case)
+                baseline = read_records(self.tool, converted)
+                executions = convert_single_vector(self.tool, self.converter, original, converted, case, five_block_t0=True)
+                self.assertEqual(executions, count)
+                expected = [dict(r, blocks=5) if r["op"] == 2 and r["id"] == min(tasks) else r for r in baseline]
+                self.assertEqual(read_records(self.tool, converted), expected)
+                active = {kid for _, slots in tasks.values() for kid in slots if kid >= 0}
+                for kernel in (k for k in manifest if k["func_id"] in active):
+                    source, helpers = kernel_inputs(kernel, "a6", "cpp")
+                    self.assertFalse(helpers)
+                    if kernel.get("vf_llvm"):
+                        self.assertEqual(source, HERE / "kernels" / f"{kernel['name']}.cpp")
+                    else:
+                        self.assertEqual((source, helpers), kernel_inputs(kernel, "a6", "original-vf"))
+                    self.assertTrue(source.is_file())
+                if case == "c1a_reindex":
+                    for kernel in (k for k in manifest if k["name"].startswith("_idx_pool_score_topk_")):
+                        self.assertEqual(kernel_inputs(kernel, "a6", "cpp")[0].name, "index_pool_score_topk.cpp")
+
     def test_snapshot_covers_all_writable_device_tensors(self):
         case = json.loads((self.source / "case.json").read_text())
         self.assertEqual(case["source"], self.metadata["source"])

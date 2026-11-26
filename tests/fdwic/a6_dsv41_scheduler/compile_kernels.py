@@ -87,7 +87,7 @@ alwaysinline {{
 
 def kernel_inputs(kernel, platform, kernel_set):
     pool_entry = kernel["name"] in ("_idx_pool_score_topk_aic", "_idx_pool_score_topk_aiv")
-    if platform == "a6" and kernel_set == "original-vf" and pool_entry:
+    if platform == "a6" and pool_entry:
         return SOURCES / "vendor/external/index_pool_score_topk.cpp", []
     helpers = kernel.get("vf_llvm", [])
     use_cpp = kernel_set == "cpp" and bool(helpers)
@@ -204,8 +204,8 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1 or not (args.pto_isa / "include/pto").is_dir():
         parser.error("Need positive --jobs and --pto-isa containing include/pto")
-    if args.case != "swa" and args.kernel_set != "original-vf":
-        parser.error("For a 006 case, select --kernel-set original-vf")
+    if args.case != "swa" and args.kernel_set == "005-export":
+        parser.error("--kernel-set 005-export requires the 005 SWA case")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     compile_kernel_set(args.platform, args.pto_isa, output, args.jobs, kernel_set=args.kernel_set, case=args.case)

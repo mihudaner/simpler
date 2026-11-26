@@ -78,7 +78,7 @@ def convert_plan(record_tool, converter, original, converted, five_block_t0=Fals
     return check_conversion(before, read_records(record_tool, converted), five_block_t0)
 
 
-def convert_single_vector(record_tool, converter, original, converted, case):
+def convert_single_vector(record_tool, converter, original, converted, case, five_block_t0=False):
     before = read_records(record_tool, original)
     validate_source(before, case)
     if case == "c1a_reindex":
@@ -90,6 +90,12 @@ def convert_single_vector(record_tool, converter, original, converted, case):
     # Only SWA's original gather splits each 64-head block into two groups.
     # Reuse gathers process both head halves on the same physical group.
     shapes = {}
+    if five_block_t0:
+        first = min(tasks)
+        blocks, kernels = tasks[first]
+        if (blocks, kernels) != (20, [-1, 6, -1]):
+            raise ValueError(f"Expected a 20-block hc_collapse_norm at the start of {case}")
+        shapes[first] = (5, kernels)
     for task, (blocks, kernels) in tasks.items():
         if kernels[2] >= 0:
             if kernels[0] < 0 or kernels[1] != kernels[2]:
@@ -105,7 +111,7 @@ def convert_single_vector(record_tool, converter, original, converted, case):
         if r["op"] == 2 and r["id"] in shapes else r for r in before
     ]
     if read_records(record_tool, converted) != expected:
-        raise ValueError(f"1C1V conversion changed fields outside the selected MIX tasks in {case}")
+        raise ValueError(f"A6 conversion changed fields outside the selected partitions in {case}")
     return sum(
         r["blocks"] * sum(k >= 0 for k in r["kernels"])
         for r in expected if r["op"] == 2 and r["id"] in tasks
