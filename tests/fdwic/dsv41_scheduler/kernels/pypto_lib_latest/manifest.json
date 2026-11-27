@@ -1,5 +1,12 @@
 {
   "schema": 1,
+  "a5_completion_sources": {
+    "vendor/external/idx_q.cpp": "86b6e4051d0abf05e337b03c71468204668602c4f560d0e2242bd6e47cadd10b",
+    "vendor/external/index_score_topk.cpp": "c4250a690ea763e5c0fea8231c918590a564d54243c57de03a2f612e675735cb",
+    "vendor/external/o_proj_a.cpp": "32a992d6acbab024b41ed837b26131ea9a6472acc9dfa27bfe21cfc469da0bc1",
+    "vendor/external/o_proj_b_hc_post.cpp": "ce3cab3e6b399615784b63e1ba80bc3fa87b8db8e2529506af7d1740f261b96e",
+    "vendor/external/sparse_gather_vf.cpp": "71e2635f6ab9363024791be1f8e5968cce96091f11b6e92743d52eda905264df"
+  },
   "origin": "hw-native-sys/pypto-lib dev/hbg@4cb74422616359b3f95c598b1f9cdd31cf4e4173 aicpu_orchestration_entry",
   "platform": "a5",
   "entry_signature": [

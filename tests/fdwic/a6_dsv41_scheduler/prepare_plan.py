@@ -34,7 +34,9 @@ def read_records(tool, path):
 def validate_source(records, case="swa"):
     tasks = case_tasks(case)
     first, last = min(tasks), max(tasks)
-    selected = [(r["id"], (r["blocks"], r["kernels"])) for r in records if r["op"] == 2 and first <= r["id"] <= last]
+    selected = [
+        (r["id"], (r["blocks"], r["kernels"])) for r in records if r["op"] in (2, 3) and first <= r["id"] <= last
+    ]
     if selected != list(tasks.items()):
         raise ValueError(f"Source plan differs from the pinned {case.upper()} task table")
 
@@ -78,7 +80,7 @@ def convert_plan(record_tool, converter, original, converted, five_block_t0=Fals
     return check_conversion(before, read_records(record_tool, converted), five_block_t0)
 
 
-def convert_single_vector(record_tool, converter, original, converted, case, five_block_t0=False):
+def convert_single_vector(record_tool, converter, original, converted, case, five_block_t0=False, full_chip_topk=False):
     before = read_records(record_tool, original)
     validate_source(before, case)
     if case == "c1a_reindex":
@@ -101,21 +103,28 @@ def convert_single_vector(record_tool, converter, original, converted, case, fiv
             if kernels[0] < 0 or kernels[1] != kernels[2]:
                 raise ValueError(f"Unexpected MIX shape in {case} task {task}")
             shapes[task] = (blocks * 2 if case == "swa" and task == 22 else blocks, [*kernels[:2], -1])
+    if full_chip_topk and case in ("c1a_reindex", "c2a_full"):
+        # Both kernels rendezvous all physical vector cores using PTO SYNCALL.
+        # Only the 32 captured logical shards access the model workspace.
+        topk_id = 1594 if case == "c1a_reindex" else 165
+        topk = next(r for r in before if r["op"] == 2 and r["id"] == topk_id)
+        if not topk["sync"] or topk["blocks"] != 32 or topk["scalars"][6] != 32:
+            raise ValueError(f"Unexpected top-k sync cohort or scratch shard count for {case}")
+        shapes[topk_id] = (54, shapes[topk_id][1])
     changes = "".join(f"{task} {blocks}\n" for task, (blocks, _) in shapes.items())
     subprocess.run(
         [converter, original, converted, "--single-vector", str(min(tasks)), str(max(tasks))],
-        input=changes, text=True, check=True,
+        input=changes,
+        text=True,
+        check=True,
     )
     expected = [
-        {**r, "blocks": shapes[r["id"]][0], "kernels": shapes[r["id"]][1]}
-        if r["op"] == 2 and r["id"] in shapes else r for r in before
+        {**r, "blocks": shapes[r["id"]][0], "kernels": shapes[r["id"]][1]} if r["op"] == 2 and r["id"] in shapes else r
+        for r in before
     ]
     if read_records(record_tool, converted) != expected:
         raise ValueError(f"A6 conversion changed fields outside the selected partitions in {case}")
-    return sum(
-        r["blocks"] * sum(k >= 0 for k in r["kernels"])
-        for r in expected if r["op"] == 2 and r["id"] in tasks
-    )
+    return sum(r["blocks"] * sum(k >= 0 for k in r["kernels"]) for r in expected if r["op"] == 2 and r["id"] in tasks)
 
 
 def main():

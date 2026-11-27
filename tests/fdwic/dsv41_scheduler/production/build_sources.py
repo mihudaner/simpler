@@ -140,6 +140,14 @@ def compile_vector_functions(compiler, source, includes, helpers, vf_flags=VF_FL
         return extract_text_section(binary)
 
 
+def completion_source_sha256(manifest, kernel, platform):
+    # source_sha256 identifies the exported model. An audited joint A5/A6
+    # source retains its A5 return contract only at the listed revision.
+    if platform == "a5":
+        return manifest.get("a5_completion_sources", {}).get(kernel["source"], kernel["source_sha256"])
+    return kernel["source_sha256"]
+
+
 def build(flavor, output, tools, pto, jobs, runtime):
     sources = ROOT / "kernels" / flavor
     workload = ROOT / "workloads" / flavor
@@ -169,7 +177,9 @@ def build(flavor, output, tools, pto, jobs, runtime):
         completes_on_return = kernel.get("completes_on_return", False)
         if not isinstance(completes_on_return, bool):
             raise ValueError(f"Invalid completion declaration for {kernel['name']}")
-        if completes_on_return and hashlib.sha256(source.read_bytes()).hexdigest() != kernel["source_sha256"]:
+        if completes_on_return and hashlib.sha256(source.read_bytes()).hexdigest() != completion_source_sha256(
+            manifest, kernel, "a5"
+        ):
             raise ValueError(f"Update the completion declaration for changed source {kernel['name']}")
         extra = common_includes + [str(sources / item) for item in kernel["include_dirs"]]
         includes = [

@@ -134,7 +134,9 @@ class FixtureTest(unittest.TestCase):
                 converted = self.directory / f"{case}-cpp.bin"
                 convert_single_vector(self.tool, self.converter, original, converted, case)
                 baseline = read_records(self.tool, converted)
-                executions = convert_single_vector(self.tool, self.converter, original, converted, case, five_block_t0=True)
+                executions = convert_single_vector(
+                    self.tool, self.converter, original, converted, case, five_block_t0=True
+                )
                 self.assertEqual(executions, count)
                 expected = [dict(r, blocks=5) if r["op"] == 2 and r["id"] == min(tasks) else r for r in baseline]
                 self.assertEqual(read_records(self.tool, converted), expected)
@@ -150,6 +152,33 @@ class FixtureTest(unittest.TestCase):
                 if case == "c1a_reindex":
                     for kernel in (k for k in manifest if k["name"].startswith("_idx_pool_score_topk_")):
                         self.assertEqual(kernel_inputs(kernel, "a6", "cpp")[0].name, "index_pool_score_topk.cpp")
+
+    def test_007_full_chip_topk_keeps_32_logical_shards_and_the_control_join(self):
+        source = self.directory / "source-c2a"
+        fixture = PREPARE.unpack_fixture(source, HERE / "fixtures/007/c2a_full", "c2a_full")
+        self.assertEqual(fixture["reference_count"], 39)
+        original = source / "plan-rank0.bin"
+        before = read_records(self.tool, original)
+        for case, topk, executions in (("c1a_reindex", 1594, 615), ("c2a_full", 165, 654)):
+            with self.subTest(case=case):
+                converted = self.directory / f"007-{case}.bin"
+                count = convert_single_vector(
+                    self.tool, self.converter, original, converted, case, five_block_t0=True, full_chip_topk=True
+                )
+                after = read_records(self.tool, converted)
+                self.assertEqual(count, executions)
+                stage = next(r for r in after if r["op"] == 2 and r["id"] == topk)
+                self.assertEqual((stage["blocks"], stage["sync"], stage["scalars"][6]), (54, 1, 32))
+                self.assertEqual(stage["kernels"][2], -1)
+                self.assertEqual([r for r in before if r["op"] == 3], [r for r in after if r["op"] == 3])
+        kernels = json.loads((SOURCES / "manifest.json").read_text())["kernels"]
+        active = {kid for _, lanes in case_tasks("c2a_full").values() for kid in lanes if kid >= 0}
+        vf_kernels = [k for k in kernels if k["func_id"] in active and k.get("vf_llvm")]
+        self.assertEqual({k["func_id"] for k in vf_kernels}, {6, 8, 14, 20, 28, 30})
+        for kernel in vf_kernels:
+            path, helpers = kernel_inputs(kernel, "a6", "cpp")
+            self.assertTrue(path.is_file())
+            self.assertEqual(helpers, [])
 
     def test_snapshot_covers_all_writable_device_tensors(self):
         case = json.loads((self.source / "case.json").read_text())

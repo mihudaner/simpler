@@ -22,7 +22,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from compile_kernels import CASES_006, HERE, REPO, SOURCES, SUITE, case_source, case_tasks, compile_kernel_set, sha256
+from compile_kernels import (
+    CASES_006,
+    HERE,
+    MODEL_CASES,
+    REPO,
+    SOURCES,
+    SUITE,
+    case_source,
+    case_tasks,
+    compile_kernel_set,
+    sha256,
+)
 from prepare_plan import build_converter, convert_plan, convert_single_vector, read_records, validate_source
 
 
@@ -179,7 +190,9 @@ def build(args):
         bundle.mkdir()
         if args.bundle is None:
             source = Path(temporary) / "source"
-            fixture = FIXTURE if args.case == "swa" else FIXTURE / "006" / args.case
+            fixture = FIXTURE
+            if args.case != "swa":
+                fixture = FIXTURE / ("007" if args.case == "c2a_full" else "006") / args.case
             unpack_fixture(source, fixture, args.case)
         else:
             source = args.bundle.resolve()
@@ -250,9 +263,15 @@ def build_bundle(args, build_dir, bundle, source):
         build_converter(args.cxx, converter)
         plan = bundle / "plan-rank0.bin"
         converted = build_dir / "plan-a6.bin"
-        if args.stage == "006":
+        if args.stage == "006" or args.case != "swa":
             executions = convert_single_vector(
-                tools / "record-tool", converter, plan, converted, args.case, args.five_block_t0
+                tools / "record-tool",
+                converter,
+                plan,
+                converted,
+                args.case,
+                args.five_block_t0,
+                full_chip_topk=args.stage == "007",
             )
         else:
             executions = convert_plan(tools / "record-tool", converter, plan, converted, args.five_block_t0)
@@ -352,15 +371,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     freezer = commands.add_parser("freeze", help="Export a verified materialized slice into a portable archive")
-    freezer.add_argument("--case", choices=CASES_006, default="swa")
+    freezer.add_argument("--case", choices=MODEL_CASES, default="swa")
     freezer.add_argument("--bundle", type=Path, required=True)
     freezer.add_argument("--tools", type=Path, required=True, help="Matching native-runner and record-tool directory")
     freezer.add_argument("--source-revision", required=True, help="Commit used for the upstream A5 capture")
     freezer.add_argument("--output", type=Path, required=True)
     compile_case = commands.add_parser("build", help="Compile case kernels and assemble a native replay")
     compile_case.add_argument("--runtime", choices=("host_build_graph", "percounter", "both"))
-    compile_case.add_argument("--stage", choices=("005", "006"), default="005")
-    compile_case.add_argument("--case", choices=CASES_006, default="swa")
+    compile_case.add_argument("--stage", choices=("005", "006", "007"), default="005")
+    compile_case.add_argument("--case", choices=MODEL_CASES, default="swa")
     compile_case.add_argument("--platform", choices=["a5", "a6"], default="a5")
     compile_case.add_argument(
         "--bundle", type=Path, help="Use a materialized source slice instead of its checked-in fixture"
@@ -372,7 +391,7 @@ def main():
     compile_case.add_argument(
         "--kernel-set",
         choices=("cpp", "005-export"),
-        help="Use shared C++ kernels or the earlier 005 build (defaults: 005 C++, 006 original VF)",
+        help="Use shared C++ kernels or the earlier 005 build (defaults: 005/007 C++, 006 original VF)",
     )
     compile_case.add_argument("--build-dir", type=Path)
     compile_case.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
@@ -381,7 +400,13 @@ def main():
     if args.command == "freeze":
         freeze(args)
     else:
-        if args.stage == "006":
+        if args.stage == "007":
+            if args.kernel_set == "005-export" or (args.case == "engram" and args.five_block_t0):
+                parser.error("007 uses C++ kernels and supports five-block HC collapse only on Attention")
+            args.kernel_set = "cpp"
+        elif args.stage == "006":
+            if args.case not in CASES_006:
+                parser.error(f"{args.case} is available in stage 007")
             if args.platform != "a6" or args.kernel_set == "005-export":
                 parser.error("006 requires A6 with original VF (default) or --kernel-set cpp")
             if args.five_block_t0 and (args.case == "engram" or args.kernel_set != "cpp"):

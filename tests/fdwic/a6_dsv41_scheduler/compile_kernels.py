@@ -32,6 +32,7 @@ def sha256(path):
 
 
 CASES_006 = ("engram", "swa", "c1a_reuse", "c1a_reindex")
+MODEL_CASES = (*CASES_006, "c2a_full")
 
 
 def case_source(case):
@@ -52,7 +53,7 @@ def case_tasks(case):
         if row.startswith("#"):
             continue
         task, kernels, mask, blocks, _ = row.split()
-        active = iter(kernels.split("+"))
+        active = iter(()) if kernels == "control" and int(mask) == 0 else iter(kernels.split("+"))
         slots = [names[next(active)] if int(mask) & (1 << slot) else -1 for slot in range(3)]
         if next(active, None) is not None:
             raise ValueError(f"Task {task} has excess kernel names")
@@ -100,7 +101,7 @@ def kernel_inputs(kernel, platform, kernel_set):
 
 def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="swa", runtime="host_build_graph"):
     sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
-    from build_sources import VF_FLAGS, compile_vector_functions  # noqa: PLC0415
+    from build_sources import VF_FLAGS, compile_vector_functions, completion_source_sha256  # noqa: PLC0415
 
     from simpler_setup.a5_input_cache import annotate_a5_hbg_text  # noqa: PLC0415
     from simpler_setup.compile_pool import compile_slot, compile_worker_budget  # noqa: PLC0415
@@ -115,7 +116,8 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
     vf_flags = (arch, *VF_FLAGS[1:])
     pto = pto.resolve()
     ids = {k for _, slots in case_tasks(case).values() for k in slots if k >= 0}
-    kernels = [k for k in json.loads((SOURCES / "manifest.json").read_text())["kernels"] if k["func_id"] in ids]
+    manifest = json.loads((SOURCES / "manifest.json").read_text())
+    kernels = [k for k in manifest["kernels"] if k["func_id"] in ids]
     if len(kernels) != len(ids):
         raise ValueError(f"Incomplete source manifest for {case}")
 
@@ -169,13 +171,21 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
             "source": os.path.relpath(source, SOURCES),
             "source_sha256": sha256(source),
             "completes_on_return": bool(
-                kernel.get("completes_on_return") and sha256(source) == kernel["source_sha256"]
+                kernel.get("completes_on_return")
+                and sha256(source) == completion_source_sha256(manifest, kernel, platform)
             ),
             "vf_llvm": {path: sha256(SOURCES / path) for path in vf_paths},
             "binary_sha256": sha256(target),
         }
-        if source.name == "index_pool_score_topk.cpp":
-            record["included_source_sha256"] = {kernel["source"]: sha256(SOURCES / kernel["source"])}
+        included = []
+        if source.name == "index_pool_score_topk.cpp" or (
+            source.parent == HERE / "kernels" and kernel["func_id"] in (28, 30)
+        ):
+            included.append(kernel["source"])
+        if source.parent == HERE / "kernels" and kernel["func_id"] == 28:
+            included.append("vendor/external/rmsnorm.hpp")
+        if included:
+            record["included_source_sha256"] = {path: sha256(SOURCES / path) for path in included}
         return record
 
     with compile_worker_budget(jobs), ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -203,7 +213,7 @@ def main():
     parser.add_argument("--platform", choices=("a5", "a6"), default="a6")
     parser.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
     parser.add_argument("--kernel-set", choices=("cpp", "005-export", "original-vf"), default="cpp")
-    parser.add_argument("--case", choices=CASES_006, default="swa")
+    parser.add_argument("--case", choices=MODEL_CASES, default="swa")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--jobs", type=int, default=4)
     args = parser.parse_args()

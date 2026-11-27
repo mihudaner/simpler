@@ -107,8 +107,9 @@ The exporter recognizes the fused attention output and the following MoE boundar
 checks all 40 pairs before refreshing only the selected replay regions. Native MoE remains a native descriptor.
 
 The `pypto_lib_latest` kernel manifest records which generated kernels complete
-their outputs when they return. These are the same vendored sources and
-declarations as revision `279c88201`. The communication kernel
+their outputs when they return. `source_sha256` identifies the exported model source.
+For the five files shared with the A6 port, `a5_completion_sources` pins the
+reviewed source that retains the A5 completion declaration. The communication kernel
 `combine_wait` can defer completion. In `kernels.txt` an optional trailing
 `on_return` marks a trusted synchronous child. The packer binds this
 declaration to the child's instructions and preserves it when replacing the
