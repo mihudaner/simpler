@@ -14,7 +14,7 @@ SWA、C1A reuse 和 C1A reindex 都用设备 C++ 实现替代 `hc_collapse_norm`
 
 ## 拷入 A6 主机
 
-从构建机的 `build/007-handoff/` 将五模型包 `007-a6-calendar-5models-*.tar.xz` 和同名 `.sha256` 拷入 A6 主机的新目录，再执行以下命令。最后一步只读文件并打印运行时和 PTO-ISA 版本，可在申卡前完成。
+从构建机的 `build/007-handoff-5models/` 将五模型包 `007-a6-calendar-5models-*.tar.xz` 和同名 `.sha256` 拷入 A6 主机的新目录，再执行以下命令。最后一步只读文件并打印运行时和 PTO-ISA 版本，可在申卡前完成。
 
 ```bash
 sha256sum -c 007-a6-calendar-5models-*.tar.xz.sha256
@@ -25,7 +25,7 @@ cd 007-a6-calendar
 
 ## 执行
 
-板端需要 AArch64 Linux、Ascend960、匹配驱动、CANN 9.3.0 和 Python 3。加载 CANN 后，在已独占一张 A6 的任务里运行。程序先在指定逻辑设备上通过 ACL 查询型号。结果目录必须是新路径。
+板端需要 AArch64 Linux、Ascend960、匹配驱动、CANN 9.3.0 和 Python 3。加载 CANN 后，在已独占一张 A6 的任务里运行。程序先在指定逻辑设备上通过 ACL 查询型号。结果目录必须是新路径。若通过人工分配独占卡，将命令中的 `"${TASK_DEVICE:?}"` 换成该卡的逻辑编号。
 
 ```bash
 source /usr/local/Ascend/cann-9.3.0/set_env.sh

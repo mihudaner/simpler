@@ -6,11 +6,11 @@
 | ---- | ---- |
 | 计算图 | 源任务 t8 至 t34 中有 15 个计算任务，使用 19 个业务核。输出端 t34 把 O-B 和 mHC post 合为一个 MIX |
 | A5 | 32 个 1C2V 核组，每轮 632 次核执行 |
-| A6 | 54 个 1C1V 核组。t0 从 20 分块改为 5 分块后，每轮计划从 660 次核执行减为 645 次。五分块旧导出 t12 连续三轮均为领取 12 个、完成 0 个；共享 C++ 包尚无 A6 整图结果。[005 故障现象与定位结论](results/005-swa-a5-baseline-a6-timeouts/issues.zh-CN.md) |
+| A6 | 54 个 1C1V 核组。t0 从 20 分块改为 5 分块后，每轮计划从 660 次核执行减为 645 次。005 的五分块共享 C++ 核已在 A6 HBG 通过 25/25 份参考，L0 核窗口 282.231 µs。[005 实测](results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md) |
 | 核与输入 | 两端各自编译核。固定输入与参考由原生 forward 提取，运行独立 SWA 只需单卡 |
 | 历史版本 | 00–004 使用上一版 SWA。004 的 A6 L0 为 290.068 µs，涉及 16 个任务和 616 个实例。[004 报告](results/004-a6-swa-output-tiles/README.zh-CN.md) |
 
-007 在 A6 上为 HBG 和日历分别编译业务核，两种运行时共用固定输入及参考输出。A5 六场景的主线对照与 A6 板端验证包见 [007 日历调度](results/007-calendar-scheduler/README.zh-CN.md)。
+007 为 SWA、两种 C1A、C2A full 和 Engram 分别生成 A6 HBG 和日历回放。四个 Attention 的导出 VF 均改用设备 C++，同一用例的两种运行时共用固定输入及参考输出。A5 六项同卡性能对照及 A6 五模型板端包见 [007 日历调度](results/007-calendar-scheduler/README.zh-CN.md)。
 
 ## 文档索引
 

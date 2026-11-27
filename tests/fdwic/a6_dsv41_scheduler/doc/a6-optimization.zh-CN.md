@@ -13,6 +13,8 @@
 
 006 保留原始 VF 和 Attention 的 20 个 HC collapse 分块，归档 Engram、SWA、C1A reuse、C1A reindex 四个 A6 板端包。正确性及超时现象待板端验证。[006 板端运行与用例范围](../results/006-main-case-coverage/README.zh-CN.md)
 
+007 将官方主线的日历调度适配到 A6，并在 A5 上对照主线与合并版的六个场景。A6 的五个模型均已准备 HBG 和日历两套板端回放，涵盖四个 Attention 的设备 C++ 替换与 1C1V 分工。[007 调度对照与板端包](../results/007-calendar-scheduler/README.zh-CN.md)
+
 ## 追加一个阶段
 
 在 `results/` 下按顺序新建目录，例如 `006-<改动名>/`。该目录的 `README.zh-CN.md` 记录改了什么、对照哪一阶段、实测差值和输出校验。`metrics.json` 保存同口径的汇总值。完成实测后在上表追加一行，链接本阶段报告和指标 JSON。各阶段保留各自的提交号、采集等级与轮次，方便复核收益。
