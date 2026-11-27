@@ -1032,6 +1032,13 @@ class _FakeChipRun:
         self._lane._launch_front()
         self._lane._prepare_successor()
 
+    def bind_peer_cancel(self, address: int) -> None:
+        self.peer_cancel_address = address
+
+    @property
+    def _owner_recovery_required(self) -> bool:
+        return not self.terminal
+
     def abandon(self) -> None:
         if self._launched:
             raise RuntimeError("cannot abandon a launched fake ChipRun")
@@ -1070,6 +1077,9 @@ class _FakeNativeRunImpl:
         self._polled_slots: set[int] = set()
         self._runs: list[_FakeChipRun] = []
         self._lane_poisoned = False
+
+    def _fence_chip_run_lane(self) -> None:
+        self.admission_stopped = True
 
     def _stop_chip_run_lane_admission(self) -> None:
         """The control loop reaches this through the native chip entry when ownership is unknown.
@@ -1558,7 +1568,7 @@ class _TwoFrameLoopHarness:
         staged = SharedMemory(create=True, size=len(payload))
         self._control_payloads.append(staged)
         assert staged.buf is not None
-        staged.buf[:] = payload
+        staged.buf[: len(payload)] = payload
         struct.pack_into("Q", self.buf, worker_mod._OFF_CALLABLE, worker_mod._CTRL_CCU_DOMAIN)
         struct.pack_into("Q", self.buf, worker_mod._CTRL_OFF_ARG0, len(payload))
         name = staged.name.encode().ljust(worker_mod._CTRL_SHM_NAME_BYTES, b"\0")
@@ -2076,6 +2086,152 @@ def test_two_frame_ccu_hardware_control_waits_for_run_retirement(ccu_control_loo
         assert harness.cw.ccu_controls == [(1, 8, operation, 0)]
 
 
+@pytest.fixture
+def ccu_run_frames(monkeypatch):
+    from unittest.mock import Mock
+
+    from simpler import ccu
+
+    harness = _TwoFrameLoopHarness()
+    cw: Any = harness.cw
+    args = TaskArgs().with_ccu_bindings([(8, 17, 0)])
+    monkeypatch.setattr(worker_mod, "read_args_from_blob", lambda *_: args)
+    monkeypatch.setattr(worker_mod, "_require_base_communicator", lambda _: 1)
+    monkeypatch.setattr(ccu, "runtime_build_identity", lambda: (bytes(32), bytes(32)))
+    cw.register_ccu_callable = Mock(return_value=17)
+    cw.prepare_ccu_run_set = Mock(return_value=42)
+    cw.control_ccu_run_set = Mock(return_value=0)
+    registration = worker_mod._CCU_DOMAIN_REQUEST.pack(8, 0, 9, harness.digest, 0)
+    harness.publish_ccu_control(registration + struct.pack("<QIII2I", 7, 2, 0, 0, 0, 1))
+    try:
+        yield harness
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize("fail_prepare", [False, True], ids=["access-validation", "binding-preparation"])
+def test_ccu_validation_failure_rejects_remaining_frames_before_native_submit(
+    ccu_run_frames, monkeypatch, fail_prepare
+):
+    from unittest.mock import Mock
+
+    harness = ccu_run_frames
+    if fail_prepare:
+        harness.cw.prepare_ccu_run_set.side_effect = RuntimeError("binding preparation failed")
+    validate = Mock(side_effect=[ValueError("invalid host access"), None])
+    monkeypatch.setattr(worker_mod, "_validate_host_control_access", validate)
+    submit = Mock(wraps=harness.cw._submit_chip_run_materialized)
+    monkeypatch.setattr(harness.cw, "_submit_chip_run_materialized", submit)
+    harness.publish(0, 1)
+    harness.publish(1, 2)
+    harness.start()
+    for index in (0, 1):
+        harness.wait_state(index, worker_mod._TASK_FAILED)
+        assert _mailbox_load_i32(harness.accepted_addr(index)) == 0
+    assert harness.cw.admission_stopped
+    harness.cw.prepare_ccu_run_set.assert_called_once()
+    assert validate.call_count == int(not fail_prepare)
+    submit.assert_not_called()
+
+
+def test_ccu_execution_failure_defers_abort_until_peer_confirms_producers_stopped(ccu_run_frames):
+    from concurrent.futures import ThreadPoolExecutor
+    from unittest.mock import Mock
+
+    harness = ccu_run_frames
+    cw = harness.cw
+    cw.finalize_errors[(0, 11)] = RuntimeError("native execution failed")
+    harness.publish(0, 1)
+    harness.start()
+    assert cw.launched[0].wait(5)
+    cw.completed[0].set()
+    harness.wait_state(0, worker_mod._TASK_FAILED)
+
+    local_producers_stopped = threading.Event()
+    release_peer = threading.Event()
+
+    def terminal(phase):
+        if phase == worker_mod._CCU_STOP_MISSIONS:
+            cw.control_ccu_run_set(0, 42, 4)
+
+    cw.control_ccu_terminal = terminal
+
+    def control(_kind, rank, _command, payload, _timeout):
+        phase = worker_mod._CCU_DOMAIN_REQUEST.unpack(payload)[2]
+        if rank == 0:
+            harness.publish_ccu_control(payload)
+            harness.wait_control_state(worker_mod._CONTROL_DONE)
+            assert struct.unpack_from("i", harness.buf, worker_mod._OFF_ERROR)[0] == 0
+            _mailbox_store_i32(harness.mailbox_addr + _OFF_STATE, worker_mod._IDLE)
+            if phase == worker_mod._CCU_CONFIRM_PRODUCERS_STOPPED:
+                local_producers_stopped.set()
+        elif phase == worker_mod._CCU_CONFIRM_PRODUCERS_STOPPED:
+            assert release_peer.wait(5)
+        return payload
+
+    parent = Worker.__new__(Worker)
+    parent._worker = SimpleNamespace(control_payload=control)
+    parent._config = {"device_ids": [0, 1]}
+    parent._chip_shms = [harness.shm, SimpleNamespace(buf=bytearray(worker_mod.MAILBOX_FRAME_SIZE))]
+    cw.reclaim_stopped_ccu_owners = Mock()
+    parent._py_control_timeout_s = 5
+    parent._cleanup_journal = worker_mod.CleanupJournal()
+    parent._ccu_terminal_lock = threading.Lock()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        parent._ccu_terminal_error = None
+        cleanup = pool.submit(parent._stop_run_ccu_domains, SimpleNamespace(ccu_domains={8: object()}), RuntimeError())
+        try:
+            assert local_producers_stopped.wait(5)
+            assert [call.args[-1] for call in cw.control_ccu_run_set.call_args_list] == [1]
+        finally:
+            release_peer.set()
+        cleanup.result(timeout=5)
+    assert [call.args[-1] for call in cw.control_ccu_run_set.call_args_list] == [1, 4]
+
+
+def test_ccu_terminal_preflight_reaches_unactivated_successor_and_preserves_its_carrier():
+    harness = _TwoFrameLoopHarness()
+    phases = []
+
+    def reclaim():
+        phases.append("reclaim")
+        if phases.count("reclaim") == 1:
+            raise RuntimeError("owner cleanup failed")
+
+    harness.cw.reclaim_stopped_ccu_owners = reclaim
+    harness.cw.control_ccu_terminal = phases.append
+    try:
+        harness.publish(0, 1, state=worker_mod._PREPARE_READY)
+        harness.start()
+        harness.wait_state(0, worker_mod._FRAME_STAGED)
+        assert not harness.cw.launched[0].is_set()
+        for phase in (11, 12):
+            payload = worker_mod._CCU_DOMAIN_REQUEST.pack(0, 0, phase, bytes(32), 0)
+            harness.publish_ccu_control(payload)
+            harness.wait_control_state(worker_mod._CONTROL_DONE)
+            assert struct.unpack_from("i", harness.buf, worker_mod._OFF_ERROR)[0] == 0
+            assert not harness.cw.finalized[0].is_set()
+            _mailbox_store_i32(harness.mailbox_addr + _OFF_STATE, worker_mod._IDLE)
+        assert phases == [11, 12]
+        harness.wait_state(0, worker_mod._TASK_FAILED)
+        assert harness.thread.is_alive()
+        _mailbox_store_i32(harness.mailbox_addr + worker_mod._OFF_CCU_PEERS_STOPPED, 1)
+        harness.publish_unregister()
+        harness.wait_control_state(worker_mod._CONTROL_DONE)
+        assert struct.unpack_from("i", harness.buf, worker_mod._OFF_ERROR)[0] != 0
+        assert harness.cw.unregister_calls == []
+        assert harness.buf[worker_mod._OFF_CCU_PEERS_STOPPED] == 1
+        _mailbox_store_i32(harness.mailbox_addr + _OFF_STATE, worker_mod._IDLE)
+        harness.publish_unregister()
+        harness.wait_control_state(worker_mod._CONTROL_DONE)
+        assert struct.unpack_from("i", harness.buf, worker_mod._OFF_ERROR)[0] == 0
+        assert phases == [11, 12, "reclaim", "reclaim"]
+        assert harness.buf[worker_mod._OFF_CCU_PEERS_STOPPED] == 0
+    finally:
+        harness.close()
+
+
 @pytest.mark.parametrize("invalid", ["header", "missing_context", "extra_context", "unknown_callable"])
 def test_two_frame_ccu_invalid_association_returns_control_error(ccu_control_loop, invalid):
     harness = ccu_control_loop
@@ -2407,7 +2563,7 @@ def control_payload_padding(request):
     return request.param
 
 
-@pytest.mark.parametrize("operation", [1, 3, 4, 5, 6, 7])
+@pytest.mark.parametrize("operation", [1, 3, 4, 5, 6, 7, 11, 12, 13])
 def test_poisoned_chip_accepts_only_ccu_cleanup_controls(monkeypatch, operation, control_payload_padding):
     from unittest.mock import Mock
 
@@ -2416,6 +2572,7 @@ def test_poisoned_chip_accepts_only_ccu_cleanup_controls(monkeypatch, operation,
     harness = _TwoFrameLoopHarness(chip_platform="a5", chip_runtime="tensormap_and_ringbuffer")
     harness.cw._validate_execution_context = Mock()
     harness.cw.control_ccu_run = Mock(return_value=0)
+    harness.cw.control_ccu_terminal = Mock()
     harness.cw.finalize_errors[(0, 11)] = RuntimeError("native execution failed")
     payload = worker_mod._CCU_DOMAIN_REQUEST.pack(8, 2, operation, bytes(32), 0)
     staged = SharedMemory(create=True, size=len(payload) + control_payload_padding)
@@ -2442,6 +2599,9 @@ def test_poisoned_chip_accepts_only_ccu_cleanup_controls(monkeypatch, operation,
         if operation in (3, 4, 7):
             assert code == 0
             harness.cw.control_ccu_run.assert_called_once_with(17, 8, operation, 2)
+        elif operation in (11, 12):
+            assert code == 0
+            harness.cw.control_ccu_terminal.assert_called_once_with(operation)
         else:
             assert code != 0
             harness.cw.control_ccu_run.assert_not_called()
@@ -6882,7 +7042,10 @@ class TestUnreclaimedDeviceStateIsNeverSilent:
 
     @pytest.mark.parametrize("failed_rank_owns", [False, True])
     @pytest.mark.parametrize("members", [(0, 1, 2), (1, 2), (2, 1)])
-    def test_a_partial_domain_allocation_keeps_its_original_release_ranks(self, monkeypatch, failed_rank_owns, members):
+    @pytest.mark.parametrize("unknown_reply", [False, True])
+    def test_a_partial_domain_allocation_keeps_its_original_release_ranks(
+        self, monkeypatch, failed_rank_owns, members, unknown_reply
+    ):
         """Abort every reported owner after all allocation requests finish.
 
         A failed rank may retain an unpublished allocation for late import.
@@ -6911,6 +7074,9 @@ class TestUnreclaimedDeviceStateIsNeverSilent:
                 reply_buf = reply_shms[chip_idx].buf
                 assert reply_buf is not None
                 struct.pack_into("<Q", reply_buf, worker_mod._OFF_DOMAIN_REPLY_COMMITTED, 1)
+            if not failed_rank_owns and not unknown_reply:
+                struct.pack_into("<Q", reply_shms[members[1]].buf, 0, worker_mod._DOMAIN_REPLY_REJECTED)
+            worker._comm_domain_alloc_errors[_kwargs["allocation_id"]] = RuntimeError("rank 1 failed")
             raise RuntimeError("rank 1 failed")
 
         monkeypatch.setattr(worker, "_dispatch_control_domain", partial_failure)
@@ -6939,6 +7105,8 @@ class TestUnreclaimedDeviceStateIsNeverSilent:
 
         monkeypatch.setattr(worker, "_dispatch_control_domain", capture_release)
         worker._release_domain_claimed(handle)
+        assert not worker._comm_domain_alloc_errors
+        assert (worker._comm_domain_error is not None) is (unknown_reply and not failed_rank_owns)
 
         assert release_headers == {
             chip: (handle.allocation_id, len(members), members.index(chip), 1) for chip in owners
@@ -7042,17 +7210,25 @@ class TestUnreclaimedDeviceStateIsNeverSilent:
                 shm.close()
                 shm.unlink()
 
-    def test_a_fully_failed_domain_allocation_owes_nothing(self, monkeypatch):
+    @pytest.mark.parametrize("acknowledged", [False, True])
+    def test_a_fully_failed_domain_allocation_owes_nothing(self, monkeypatch, acknowledged):
         worker = self._worker()
         worker._config = {"device_ids": [0, 1, 2]}
         resources = worker_mod._RunResources()
         worker._building_run_resources = resources
         monkeypatch.setattr(worker, "_ensure_comm_base", lambda: None)
-        monkeypatch.setattr(
-            worker,
-            "_dispatch_control_domain",
-            lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("no rank committed")),
-        )
+        attempted = []
+
+        def reject_without_ownership(*, allocation_id, reply_shms, **_kwargs):
+            attempted.append(allocation_id)
+            if acknowledged:
+                for reply in reply_shms.values():
+                    struct.pack_into("<Q", reply.buf, 0, worker_mod._DOMAIN_REPLY_REJECTED)
+            error = RuntimeError("no rank committed")
+            worker._comm_domain_alloc_errors[allocation_id] = error
+            raise error
+
+        monkeypatch.setattr(worker, "_dispatch_control_domain", reject_without_ownership)
 
         with pytest.raises(RuntimeError, match="no rank committed"):
             worker._allocate_domain(name="d", workers=(0, 1, 2), window_size=64, buffers=[])
@@ -7060,6 +7236,10 @@ class TestUnreclaimedDeviceStateIsNeverSilent:
         assert "d" not in resources.live_domains
         assert "d" not in worker._live_domains
         assert not resources.requires_ordered_cleanup
+        assert bool(worker._comm_domain_alloc_errors) is not acknowledged
+        with pytest.raises(RuntimeError, match="no rank committed" if acknowledged else "admission stopped"):
+            worker._allocate_domain(name="retry", workers=(0, 1, 2), window_size=64, buffers=[])
+        assert len(attempted) == (2 if acknowledged else 1)
 
     def test_domain_fanout_launches_later_ranks_after_a_start_boundary_interrupt(self, monkeypatch):
         worker = self._worker()
@@ -9395,8 +9575,16 @@ def test_the_cpp_pre_bind_level_word_is_the_ladder_word_for_l3():
     )
 
 
-@pytest.mark.parametrize("recovery_required", [False, True])
-def test_child_host_use_retirement_consumes_native_failure_proof(monkeypatch, recovery_required):
+@pytest.mark.parametrize(
+    ("recovery_required", "ccu_started", "activation_raises"),
+    [(False, False, False), (True, False, False), (False, True, False), (False, True, True)],
+    ids=["native-stopped", "native-unconfirmed", "ccu-started", "ccu-started-activation-raises"],
+)
+def test_child_host_use_retirement_consumes_native_failure_proof(
+    monkeypatch, request, recovery_required, ccu_started, activation_raises
+):
+    from unittest.mock import Mock
+
     imports = worker_mod.ImportRegistry
     uses = set()
     mappings = SimpleNamespace(
@@ -9414,12 +9602,187 @@ def test_child_host_use_retirement_consumes_native_failure_proof(monkeypatch, re
     monkeypatch.setattr(
         _FakeChipRun, "_owner_recovery_required", property(lambda _self: recovery_required), raising=False
     )
-    harness = _TwoFrameLoopHarness()
+    if ccu_started:
+        harness = request.getfixturevalue("ccu_run_frames")
+    else:
+        harness = _TwoFrameLoopHarness()
+        request.addfinalizer(harness.close)
+    launch_error = RuntimeError("injected launch failure")
+    if activation_raises:
+        monkeypatch.setattr(_FakeChipRun, "activate", Mock(side_effect=launch_error))
+    else:
+        harness.cw.launch_errors[(0, 11)] = launch_error
+    harness.publish(0, 1)
+    harness.start()
+    harness.wait_state(0, worker_mod._TASK_FAILED)
+    assert bool(uses) == (recovery_required or ccu_started)
+    if ccu_started:
+        assert [call.args[-1] for call in harness.cw.control_ccu_run_set.call_args_list] == [1]
+
+
+@pytest.mark.parametrize("prepared", [False, True], ids=["queued", "prepared"])
+@pytest.mark.parametrize("cleanup", ["released", "retained", "raises"])
+def test_peer_cancel_before_activation_preserves_owner_proof(monkeypatch, prepared, cleanup):
+    imports = worker_mod.ImportRegistry
+    uses = set()
+    releases = []
+
+    def release(identity):
+        releases.append(identity)
+        uses.discard(identity)
+
+    def with_host_mappings(context):
+        registry = imports(context)
+        registry.host_mappings = SimpleNamespace(
+            acquire=lambda identity, _args: uses.add(identity), release=release, require_closed=lambda: None
+        )
+        return registry
+
+    monkeypatch.setattr(worker_mod, "ImportRegistry", with_host_mappings)
+    monkeypatch.setattr(_FakeChipRun, "_owner_recovery_required", property(lambda _run: cleanup != "released"))
+    abandon = _FakeChipRun.abandon
+
+    def abandon_with_cleanup(run):
+        abandon(run)
+        if cleanup == "raises":
+            raise RuntimeError("unlaunched owner cleanup failed")
+
+    monkeypatch.setattr(_FakeChipRun, "abandon", abandon_with_cleanup)
+    harness = _TwoFrameLoopHarness(supports_concurrent_native_prepare=prepared)
+    terminals = []
+    store = worker_mod._mailbox_store_i32
+
+    def observe_terminal(address, value):
+        if address == harness.state_addr(1) and value in (worker_mod._TASK_DONE, worker_mod._TASK_FAILED):
+            terminals.append(value)
+        store(address, value)
+
+    monkeypatch.setattr(worker_mod, "_mailbox_store_i32", observe_terminal)
     try:
-        harness.cw.launch_errors[(0, 11)] = RuntimeError("injected launch failure")
         harness.publish(0, 1)
+        struct.pack_into("=Q", harness.buf, harness._entry_offset(0) + worker_mod._OFF_ENTRY_RUN_ID, 6)
         harness.start()
-        harness.wait_state(0, worker_mod._TASK_FAILED)
-        assert bool(uses) is recovery_required
+        assert harness.cw.launched[0].wait(5.0)
+        harness.publish(1, 2, state=worker_mod._PREPARE_READY)
+        harness.wait_state(1, worker_mod._FRAME_STAGED)
+        target = next(run for run in harness.cw._runs if run.submission.slot_id == 1)
+        assert (target.token is not None) is prepared
+        target_identity = next(identity for identity in uses if identity[2] == 1)
+        _mailbox_store_i32(target.peer_cancel_address, 1)
+        _mailbox_store_i32(harness.state_addr(1), worker_mod._ACTIVATE)
+        harness.wait_state(1, worker_mod._TASK_FAILED)
+        assert not harness.cw.launched[1].is_set()
+        assert _mailbox_load_i32(harness.accepted_addr(1)) == 0
+        assert (target_identity in uses) is (cleanup != "released")
+        assert releases.count(target_identity) == int(cleanup == "released")
+        assert sum(event == ("finalize", 1) for event in harness.cw.events) == int(prepared)
+        # A healthy predecessor remains in flight; cancellation is not its completion.
+        if cleanup != "raises":
+            assert not harness.cw.finalized[0].is_set()
+            harness.cw.completed[0].set()
+            harness.wait_state(0, worker_mod._TASK_DONE)
+        harness.stop()
+        assert terminals == [worker_mod._TASK_FAILED]
     finally:
         harness.close()
+
+
+@pytest.fixture
+def peer_cancel_ccu_loop(monkeypatch):
+    import simpler.ccu as ccu_mod
+
+    harness = _TwoFrameLoopHarness()
+    harness.cw.register_ccu_callable = lambda *_args: 17
+    monkeypatch.setattr(worker_mod, "_require_base_communicator", lambda _handle: 1)
+    monkeypatch.setattr(ccu_mod, "runtime_build_identity", lambda: (bytes(32), bytes(32)))
+    try:
+        harness.start()
+        yield harness
+    finally:
+        harness.close()
+
+
+def test_peer_cancel_on_initial_submission_does_not_reinsert_terminal_run(monkeypatch):
+    harness = _TwoFrameLoopHarness()
+    terminals = []
+    store = worker_mod._mailbox_store_i32
+
+    def observe_terminal(address, value):
+        if address == harness.state_addr(0) and value in (worker_mod._TASK_DONE, worker_mod._TASK_FAILED):
+            terminals.append(value)
+        store(address, value)
+
+    monkeypatch.setattr(worker_mod, "_mailbox_store_i32", observe_terminal)
+    try:
+        harness.publish(0, 1)
+        request = harness.mailbox_addr + harness._entry_offset(0) + worker_mod._OFF_ENTRY_PEER_CANCEL_REQUESTED
+        _mailbox_store_i32(request, 1)
+        harness.start()
+        harness.wait_state(0, worker_mod._TASK_FAILED)
+        assert not harness.cw.launched[0].is_set()
+        assert _mailbox_load_i32(harness.accepted_addr(0)) == 0
+        assert harness.cw._runs == []
+        harness.stop()
+        assert terminals == [worker_mod._TASK_FAILED]
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize("discard_fails", [False, True])
+def test_peer_cancel_before_activation_discards_unstarted_ccu(monkeypatch, peer_cancel_ccu_loop, discard_fails):
+    from unittest.mock import Mock
+
+    harness = peer_cancel_ccu_loop
+    reclaim = Mock()
+    harness.cw.reclaim_stopped_ccu_owners = reclaim
+    payload = worker_mod._CCU_DOMAIN_REQUEST.pack(8, 0, 9, harness.digest, 0)
+    payload += struct.pack("<QIII2I", 7, 2, 0, 0, 0, 1)
+    harness.publish_ccu_control(payload)
+    harness.wait_control_state(worker_mod._CONTROL_DONE)
+    assert struct.unpack_from("i", harness.buf, worker_mod._OFF_ERROR)[0] == 0
+    _mailbox_store_i32(harness.mailbox_addr + _OFF_STATE, worker_mod._IDLE)
+    harness.publish(0, 1)
+    assert harness.cw.launched[0].wait(5.0)
+    args = TaskArgs().with_ccu_bindings([(8, 17, 0)])
+    monkeypatch.setattr(worker_mod, "read_args_from_blob", lambda *_args: args)
+    controls = []
+    harness.cw.prepare_ccu_run_set = lambda *_args: 71
+
+    def control(_communicator, run_set, operation):
+        controls.append((run_set, operation))
+        if discard_fails:
+            raise RuntimeError("CCU discard is unconfirmed")
+        return 0
+
+    harness.cw.control_ccu_run_set = control
+    terminals = []
+    store = worker_mod._mailbox_store_i32
+
+    def observe_terminal(address, value):
+        if address == harness.state_addr(1) and value in (worker_mod._TASK_DONE, worker_mod._TASK_FAILED):
+            terminals.append(value)
+        store(address, value)
+
+    monkeypatch.setattr(worker_mod, "_mailbox_store_i32", observe_terminal)
+    harness.publish(1, 2, state=worker_mod._PREPARE_READY)
+    harness.wait_state(1, worker_mod._FRAME_STAGED)
+    target = next(run for run in harness.cw._runs if run.submission.slot_id == 1)
+    _mailbox_store_i32(target.peer_cancel_address, 1)
+    _mailbox_store_i32(harness.state_addr(1), worker_mod._ACTIVATE)
+    harness.wait_state(1, worker_mod._TASK_FAILED)
+    assert not harness.cw.launched[1].is_set()
+    if discard_fails:
+        assert harness.cw.admission_stopped
+        reclaim.assert_not_called()
+        # The parent grants reclamation only after all peers have stopped.
+        _mailbox_store_i32(harness.mailbox_addr + worker_mod._OFF_CCU_PEERS_STOPPED, 1)
+    else:
+        harness.cw.completed[0].set()
+        harness.wait_state(0, worker_mod._TASK_DONE)
+    harness.stop()
+    assert terminals == [worker_mod._TASK_FAILED]
+    assert controls == [(71, 7)]
+    if discard_fails:
+        reclaim.assert_called_once_with()
+    else:
+        reclaim.assert_not_called()

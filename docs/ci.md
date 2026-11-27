@@ -10,22 +10,35 @@ Design principles:
 2. **Runner matches hardware tier** — no-hardware PR jobs run on `[self-hosted, cpu]`, with Ubuntu/macOS coverage in Daily; platform-specific tests run on self-hosted runners with the matching label (`a2a3`, `a5`).
 3. **`--platform` is the only filter** — pytest uses `--platform` + the `requires_hardware` marker; ctest uses label `-LE` exclusion. No `-m st`, no `-m "not requires_hardware"`.
 4. **sim = no hardware** — `a2a3sim`/`a5sim`/`wsesim` PR jobs run on the self-hosted CPU pool alongside unit tests.
-5. **Skip irrelevant platforms, and irrelevant suites** — `detect-changes` gates `st-sim-*` and `st-onboard-*` by platform, so a PR confined to one of A2/A3, A5 or WSE skips the other platforms' scene-test runs. **UT jobs are still not gated by platform** — unit tests cover shared contracts and the cost of a falsely-skipped regression outweighs the savings. They *are* gated by test category: a diff confined to `tests/st/` or `examples/` cannot break a unit test, and one confined to `tests/ut/` cannot break a scene test, because the two suites execute disjoint trees (`pytest examples tests/st` vs `pytest tests/ut` plus the C++ ctest) and no unit test reads `examples/` or `tests/st/`. Shared test infrastructure — the root `conftest.py`, `pyproject.toml`, `simpler_setup/`, `tests/lint/` — belongs to neither category and runs both.
+5. **Skip irrelevant platforms, and irrelevant suites** — `detect-changes` gates `st-sim-*` and `st-onboard-*` by platform, so a PR confined to one of A2/A3, A5 or WSE skips the other platforms' scene-test runs. **`ut` and `ut-a2a3` are not gated by platform** — unit tests cover shared contracts and the cost of a falsely-skipped regression outweighs the savings. They *are* gated by test category: a diff confined to `tests/st/` or `examples/` cannot break a unit test, and one confined to `tests/ut/` cannot break a scene test, because the two suites execute disjoint trees (`pytest examples tests/st` vs `pytest tests/ut` plus the C++ ctest) and no unit test reads `examples/` or `tests/st/`. Shared test infrastructure — the root `conftest.py`, `pyproject.toml`, `simpler_setup/`, `tests/lint/` — belongs to neither category and runs both.
 6. **Non-code PRs automatically run pre-commit and docs, and nothing else** — `detect-changes` sets `non_code_only` when *no* changed file falls outside the `NON_CODE` set. Skipping the UT jobs is riskless there because nothing in that set can change what the code does, and each member already has its own gate: markdownlint inside `pre-commit` reads the markdown, `docs.yml` (unconditional on every PR) builds the site with `--strict`, and `pre-commit` itself is ungated so a `.pre-commit-config.yaml` change is fully exercised by it.
 
-A5 hardware validation for ordinary PRs is requested by a maintainer or admin with `/run-a5`.
+A5 UT runs automatically when `a5_changed && ut_affected` is true. A5 framework
+validation runs automatically under `a5_changed && st_affected`. Shared code
+changes select A5; changes confined to other platforms or non-code files skip
+these jobs. The full A5 onboard sweep is requested by a maintainer or admin
+with `/run-a5`.
 A5 simulation, CPU tests and profiling remain automatic under their existing
 change gates. Daily retains its A5 jobs. A2/A3 multi-machine Network1 validation
 runs only in Daily, including manually dispatched Daily runs.
 
+A5 UT allows 60 minutes overall, including setup and device-queue waits. Each
+task client waits up to 60 minutes for queueing and execution together; actual
+device execution remains capped at 30 minutes per task.
+
+The Python `test_two_rank_comm_lifecycle` UT is manual-only on A5 while its
+barrier stream-sync timeout is investigated in [#3232](https://github.com/hw-native-sys/simpler/issues/3232).
+Default A5 UT runs exclude this case; `--manual include` or `--manual only`
+selects it for diagnostics. A2/A3 retains automatic coverage.
+
 ## Full Job Matrix
 
-The complete test-type × hardware-tier matrix across automatic CI, the A5 comment workflow and Daily. A5 hardware jobs in this table use `/run-a5` for ordinary PR validation.
+The complete test-type × hardware-tier matrix across automatic CI, the A5 comment workflow and Daily. A5 UT and framework tests run automatically on affected PRs; the full A5 onboard sweep uses `/run-a5`.
 
 | Category | CPU (no hardware) | a2a3 runner | a5 runner |
 | -------- | ----------------- | ----------- | --------- |
 | **ut** | `ut` (py + cpp) | `ut-a2a3` (py + cpp) | `ut-a5` (py) |
-| **st** | `st-sim-a2a3`, `st-sim-a5`, `st-sim-wse` | `st-onboard-a2a3`, `st-network1-onboard-a2a3` (Daily only), `st-deepseek-onboard-a2a3`, `st-framework-a2a3` | `st-onboard-a5`, `st-framework-a5` |
+| **st** | `st-sim-a2a3`, `st-sim-a5`, `st-sim-wse` | `st-onboard-a2a3`, `st-network1-onboard-a2a3` (Daily only), `st-model-onboard-a2a3`, `st-framework-a2a3` | `st-onboard-a5`, `st-framework-a5` |
 
 ## GitHub Actions Jobs
 
@@ -36,7 +49,7 @@ shape. The executable job bodies live in reusable workflows:
 `_packaging.yml`, `_profiling-flags-smoke.yml`, `_st-sim-a2a3.yml`,
 `_st-sim-a5.yml`, `_st-sim-wse.yml`, `_ut-npu-a2a3.yml`, `_ut-npu-a5.yml`,
 `_st-npu-a2a3.yml`, `_st-npu-a5.yml`, `_st-network1.yml`,
-`_st-deepseek-a2a3.yml`, and `_st-framework.yml`. The simulation,
+`_st-model-a2a3.yml`, and `_st-framework.yml`. The simulation,
 ordinary onboard, and NPU unit-test bodies are split by architecture so each
 job renders only its own steps. The framework environment shares `_st-framework.yml`;
 callers supply matching `platform` and `runs_on` inputs. Shared step scaffolding
@@ -99,15 +112,16 @@ PullRequest
   ├── st-sim-a5              (self-hosted CPU)          — a5_changed && st_affected
   ├── st-sim-wse             (self-hosted CPU)          — wse_changed && st_affected
   ├── ut-a2a3                (a2a3 self-hosted)      — Python + C++ UT, a2a3 hardware [needs ut_affected]
+  ├── ut-a5                  (a5 self-hosted)        — a5_changed && ut_affected; includes CANN examples
   ├── st-onboard-a2a3        (a2a3 self-hosted)      — a2a3_changed && st_affected
   ├── st-framework-a2a3 (a2a3 self-hosted)     — a2a3_changed && st_affected
-  └── st-deepseek-onboard-a2a3    (a2a3 self-hosted)      — a2a3_changed && st_affected
+  ├── st-framework-a5   (a5 self-hosted)       — a5_changed && st_affected
+  └── st-model-onboard-a2a3       (a2a3 self-hosted)      — a2a3_changed && st_affected
 
 Admin PR comment /run-a5
   └── gate-and-resolve       (ubuntu-24.04)          — open PR to this repo main; pinned merge
       ├── ut-a5             (a5 self-hosted)        — Python UT and CANN examples
-      ├── st-onboard-a5     (a5 self-hosted)        — onboard ST and DFX smokes
-      └── st-framework-a5 (a5 self-hosted)     — framework eager ST
+      └── st-onboard-a5     (a5 self-hosted)        — onboard ST and DFX smokes
 ```
 
 | Job | Runner | What it runs |
@@ -118,12 +132,12 @@ Admin PR comment /run-a5
 | [`st-sim-wse`](../src/wse/docs/README.md#build-and-test) | self-hosted CPU | `pytest examples tests/st --platform wsesim` |
 | `ut-a2a3` | a2a3 self-hosted | Hardware Python UT: `device_count` cases use resource scheduling, RuntimeBuilder integration runs before the xdist fanout, and remaining cases use one worker per allocated device. Then `ctest -L "^requires_hardware(_a2a3)?$" --resource-spec-file ...` and CANN example smokes. |
 | `st-onboard-a2a3` | a2a3 self-hosted | `pytest examples tests/st -m "not sdma and not sdma_fault" --platform a2a3 --exclude-level 4 --device ...`, then separate SDMA-demo and `sdma_fault` device tasks, then adaptive-parallel DFX feature smokes |
-| `st-framework-a2a3` | a2a3 self-hosted | `pytest examples tests/st --platform a2a3 --test-environment torch_npu --manual exclude --require-pto-isa --device ... --max-parallel 1 -p no:xdist` in one exclusive task, then verify plan/JUnit |
+| `st-framework-a2a3` | a2a3 self-hosted | `pytest examples tests/st --platform a2a3 --test-environment torch_npu --manual exclude --require-pto-isa --device ... --max-parallel 4 -p no:xdist` in one exclusive four-device task, then verify plan/JUnit |
 | `ut-a5` | a5 self-hosted | Hardware Python UT: `device_count` cases use resource scheduling, RuntimeBuilder integration runs before the xdist fanout, and remaining cases use one worker per allocated device. Then CANN example smokes. |
 | `st-onboard-a5` | a5 self-hosted | Default SDMA+URMA / RDMA=OFF build and `pytest examples tests/st --platform a5 --exclude-level 4 --device ...`, including SDMA and the active URMA regressions, then adaptive-parallel DFX feature smokes |
-| `st-framework-a5` | a5 self-hosted | `pytest examples tests/st --platform a5 --test-environment torch_npu --manual exclude --require-pto-isa --device ... --max-parallel 1 -p no:xdist` in one exclusive task, then verify plan/JUnit |
+| `st-framework-a5` | a5 self-hosted | `pytest examples tests/st --platform a5 --test-environment torch_npu --manual exclude --require-pto-isa --device ... --max-parallel 4 -p no:xdist` in one exclusive four-device task, then verify plan/JUnit |
 | `st-network1-onboard-a2a3` (Daily only) | a pair of `a2a3pod` machines | `pytest examples tests/st --level 4 --platform a2a3 --device ... --max-parallel 1`, one L3 daemon on the peer |
-| `st-deepseek-onboard-a2a3` | a2a3 self-hosted | `pytest <the two deepseek_v4_flash_decode dirs> --platform a2a3 --manual only --device ...`, both 2-device cases concurrently, in parallel with `st-onboard-a2a3` |
+| `st-model-onboard-a2a3` | a2a3 self-hosted | Qwen3-14B golden checks and DeepSeek V4 Flash smokes for both runtimes, selected with `--manual only` and scheduled across four devices, in parallel with `st-onboard-a2a3` in Per-PR |
 
 ### Job phase contract
 
@@ -178,11 +192,12 @@ CPU jobs:
 
 NPU jobs:
 
-| Step `name:` | st-onboard-a2a3 | st-onboard-a5 | ut-a2a3 | ut-a5 | `st-framework-<platform>` | `st-network1-onboard-<platform>` | st-deepseek-onboard-a2a3 |
-| ------------ | --------------- | ------------- | ------- | ----- | ------------------------- | -------------------------------- | ------------------------ |
+| Step `name:` | st-onboard-a2a3 | st-onboard-a5 | ut-a2a3 | ut-a5 | `st-framework-<platform>` | `st-network1-onboard-<platform>` | st-model-onboard-a2a3 |
+| ------------ | --------------- | ------------- | ------- | ----- | ------------------------- | -------------------------------- | --------------------- |
 | `Checkout target` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `Validate manual mode` | ✓ | ✓ | — | — | ✓ | — | — |
 | `Set up environment` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `Build framework artifacts` | — | — | — | — | ✓ | — | — |
 | `Checkout diagnostic upload action` | ✓ | ✓ | — | — | ✓ | ✓ | — |
 | `Upload logs` | ✓ | ✓ | — | — | ✓ | ✓ | — |
 
@@ -210,8 +225,8 @@ jobs of the same platform therefore read alike — `Compile scene-test kernels
 
 Exactly one step per job runs its suite. The scene suites are `Run pytest scene
 tests (<platform>)`; a job whose suite name is the point says so instead (`Run
-framework scene tests`, `Run network1 pytest scene tests`, `Run DeepSeek pytest
-smokes (a2a3)`), and a job whose suite is the unit-test runner is `Run unit
+framework scene tests`, `Run network1 pytest scene tests`, `Run Qwen and DeepSeek pytest
+tests (a2a3)`), and a job whose suite is the unit-test runner is `Run unit
 tests (<platform>)` or `Run Python unit tests (sim)`.
 
 Two orderings are load-bearing rather than cosmetic: `Validate manual mode`
@@ -226,7 +241,7 @@ result.
 | `_profiling-flags-smoke.yml` | CPU-pool only: no hosted variant, so no Python setup and no compiler install; `Verify provisioned toolchain` checks the image unconditionally before `Set up environment`. |
 | `_packaging.yml` | The apt compiler install sits between `Set up C++ compiler` and `Set up environment`: the matrix installs the project, which needs the compiler, so the venv must come after it. It has no `Verify provisioned toolchain` because its venv installs cmake and ninja itself, so the pool image carries no toolchain contract to check. |
 | `_st-framework.yml`, `_st-network1.yml` | Same preparation skeleton; the run phase is a job-specific protocol — one exclusive `task-submit` for framework, stage → run → teardown across two machines for network1. |
-| `_st-deepseek-a2a3.yml` | Takes no `manual_mode` input (its run is `--manual only` by construction), so it has no `Validate manual mode` step; and its suite is a standalone model test, which the feature-coverage policy does not cover, so it has neither `--environment-receipts` nor a `Verify ... environment coverage` step. No post-run phase: it retains no artifact. |
+| `_st-model-a2a3.yml` | Takes no `manual_mode` input (its run is `--manual only` by construction), so it has no `Validate manual mode` step; and its suite consists of standalone model tests, which the feature-coverage policy does not cover, so it has neither `--environment-receipts` nor a `Verify ... environment coverage` step. Qwen computes its torch golden and compares `out`, `k_cache`, and `v_cache`; only the DeepSeek wrappers pass `skip_golden=True`. The task explicitly receives `OMP_NUM_THREADS=16` and `MKL_NUM_THREADS=16` for torch input generation, golden computation and comparison. Kernel compilation stays outside the task with 32 workers for Qwen and 64 for DeepSeek. No post-run phase: it retains no artifact. |
 | `_ut-npu-a2a3.yml`, `_ut-npu-a5.yml` | No post-run phase: they emit no retained artifacts. |
 
 ### Multi-machine network1 jobs
@@ -304,6 +319,19 @@ same DFX smoke steps used by Per-PR run once in each Daily platform job, and
 the A2/A3 `network1` corpus runs exclusively in Daily through the existing two-machine workflow. The
 main Per-PR scene-test steps keep the default `--manual exclude`, so moving an
 ordinary case to Daily does not require a second workflow exclusion list.
+
+The A2/A3 Qwen and DeepSeek cases retain their `manual` markers. Per-PR runs
+them in `st-model-onboard-a2a3`, with Qwen golden verification enabled and
+DeepSeek retaining its completion-only smoke checks. The main Per-PR sweep
+excludes them through `--manual exclude`. Daily keeps them in its full
+`--manual include` onboard sweep and does not call a separate model job.
+Kernel precompilation runs before `task-submit`; the model drivers still
+validate and load their compile cache inside the task and may compile again
+on a cache miss. Qwen input generation, torch golden computation, output
+readback and comparison also remain inside that allocation. Moving those CPU
+stages out requires a separate data handoff between preparation, device run
+and verification.
+
 WSE runs its dependency-capture smoke; its legacy PMU, chip-swimlane,
 args-dump and scope-stats collectors are unsupported.
 The dedicated A2/A3 and A5 dep-gen, chip-swimlane, PMU, args-dump, and scope-stats steps
@@ -338,8 +366,40 @@ The A5 resident-failure PR-sized sweep retains the slot-1 shape for each timeout
 mode; Daily also exercises the all-lane shape.
 The A5 onboard `/run-a5` sweep uses the bounded PR-sized selection;
 Daily covers the remaining mask and failed-lane combinations.
-The two-rank onboard non-Sum Allreduce variants remain in Per-PR: each class
-takes only a few seconds, and its algorithm path is distinct.
+The A2/A3 onboard Per-PR main sweep keeps small paged-attention and batch-attention
+cases, basic compute and SPMD, depth-two early enqueue, result dependencies,
+outstanding-close and lifetime checks, prepared-callable and stream-reuse contracts.
+Daily adds the benchmark BGEMM, large attention and unroll shapes, ringbuffer and
+sync-start stress, concurrent-prepare stress, wider early-enqueue capacities and
+its diagnostic variants. Softmax preparation keeps four boundary shapes in Per-PR;
+Daily runs the full matrix.
+The existing TMR TPUSH/TPOP attention and 4D unroll cases retain their
+Per-PR selection, as does the dependency-chain test. The dependency-chain main
+sweep checks compute results; exported-edge validation requires `--enable-dep-gen`.
+Timing and strace markers, joined-launch attribution, diagnostic export and
+collector checks also run in Daily on A2/A3 onboard. L3 callable isolation keeps
+same-callable reuse and alternating callables in Per-PR; Daily adds the single,
+two-callable, short redispatch and fresh-worker sequences. The dual-domain
+overlap, domain rank-map, FFN tensor-parallel and expert-dispatch/combine examples
+also run in Daily on A2/A3 onboard.
+
+For A2/A3 native Kernel tests, Per-PR keeps every existing functional capture,
+replay and recovery scenario, including retained-heap refusal. Capture PMU,
+swimlane and args-dump combinations run in Daily.
+Validation keeps successful execution and error 105 on AIC and AIV,
+caller-stream success and error 106 in eager and capture modes, and error 106 for each complex
+dispatch mode. Other error-code combinations run in Daily. Runtime-fatal coverage
+keeps explicit-fatal and tensor-wait-timeout cases in Per-PR.
+The failed-run diagnostic-export check runs in Daily on A2/A3 onboard.
+
+Collective algorithms, non-Sum operations and rejection variants retain their
+existing Per-PR coverage. A5 and simulation selections retain their existing scope.
+All of these deferrals use platform-scoped `manual` declarations; the Daily
+`include` selection retains the complete corpus. Qwen and the dedicated DeepSeek
+job keep their existing selection and compilation. Dedicated onboard DFX
+smokes retain their existing Per-PR and Daily coverage, with dependency capture,
+chip swimlane, PMU and args-dump enabled. SDMA and SDMA fault-recovery steps
+also retain their existing coverage.
 
 A sweep's budget follows what it selects, so `manual_mode` is not the only
 input a Daily caller sets. `_st-npu-a5.yml` takes `session_timeout_seconds`
@@ -471,10 +531,10 @@ not need `--max-parallel` manually.
 
 - PR simulation and no-hardware unit tests run on the self-hosted CPU pool; Daily retains GitHub-hosted coverage.
 - Change detection and pre-commit start with 100 commits of checkout history. They use the admitted PR base SHA when available, fetching only a missing base commit. If the merge-base is outside the shallow history, they deepen the head and base histories in two bounded rounds of 100 and 400 commits, without fetching every branch or tag. Unresolved history makes the detector run the full matrix; pre-commit fails with an explicit error rather than emitting an empty base SHA.
-- `detect-changes` is implemented once in [`.github/workflows/_detect-changes.yml`](../.github/workflows/_detect-changes.yml) and computes four axes from the PR diff — non-code (`non_code_only`), architecture (`a2a3_changed` / `a5_changed` / `wse_changed`), test category (`st_affected` / `ut_affected`), and corpus (`examples_only` / `tests_only`) — **all of them derived from one `NON_CODE` set**: `docs/`, `.docs/`, `.claude/`, `mkdocs.yml`, `.github/workflows/docs.yml`, `.gitignore`, `.pre-commit-config.yaml`, and any `*.md` file anywhere. Membership follows a file's *effect*, not its path — `mkdocs.yml` and `docs.yml` are docs tooling that happens to live outside `docs/`. An arch flag is `false` only when every changed file is in the other platforms' trees (`src/{arch}/`, `examples/{arch}/`, `tests/{st,ut/cpp}/{arch}/`) or in `NON_CODE`. Anything else — shared C++ (`src/common/`), Python (`python/`, `simpler_setup/`), build files (`CMakeLists.txt`, `pyproject.toml`), shared test infra (`tests/ut/py/`, `tests/lint/`), tooling (`tools/`), or any CI implementation workflow (`.github/workflows/ci.yml`, `.github/workflows/_*.yml`) — flips all three architecture flags to `true`. CI implementation workflows are deliberately excluded from `NON_CODE`: a change to the gates or reusable job bodies must run the complete automatic matrix. Explicit `/run-a5` hardware suites remain manual.
-- **Test-category axis:** `ST_ONLY='^(tests/st/|examples/)'` and `UT_ONLY='^tests/ut/'`, applied in the same shape as the arch patterns — a category is unaffected only when *every* changed file is exclusively the other's. `st_affected` gates automatic scene-test jobs; `ut_affected` gates automatic `ut` and `ut-a2a3`. Explicit `/run-a5` requests run all three A5 hardware suites without change detection. Anything belonging to neither (root `conftest.py`, `pyproject.toml`, `simpler_setup/`, `tests/lint/`) flips both, so shared infrastructure always runs both suites.
+- `detect-changes` is implemented once in [`.github/workflows/_detect-changes.yml`](../.github/workflows/_detect-changes.yml) and computes four axes from the PR diff — non-code (`non_code_only`), architecture (`a2a3_changed` / `a5_changed` / `wse_changed`), test category (`st_affected` / `ut_affected`), and corpus (`examples_only` / `tests_only`) — **all of them derived from one `NON_CODE` set**: `docs/`, `.docs/`, `.claude/`, `mkdocs.yml`, `.github/workflows/docs.yml`, `.gitignore`, `.pre-commit-config.yaml`, and any `*.md` file anywhere. Membership follows a file's *effect*, not its path — `mkdocs.yml` and `docs.yml` are docs tooling that happens to live outside `docs/`. An arch flag is `false` only when every changed file is in the other platforms' trees (`src/{arch}/`, `examples/{arch}/`, `tests/{st,ut/cpp}/{arch}/`) or in `NON_CODE`. Anything else — shared C++ (`src/common/`), Python (`python/`, `simpler_setup/`), build files (`CMakeLists.txt`, `pyproject.toml`), shared test infra (`tests/ut/py/`, `tests/lint/`), tooling (`tools/`), or any CI implementation workflow (`.github/workflows/ci.yml`, `.github/workflows/_*.yml`) — flips all three architecture flags to `true`. CI implementation workflows are deliberately excluded from `NON_CODE`: a change to the gates or reusable job bodies must run the complete automatic matrix. The full A5 onboard sweep still requires `/run-a5`.
+- **Test-category axis:** `ST_ONLY='^(tests/st/|examples/)'` and `UT_ONLY='^tests/ut/'`, applied in the same shape as the arch patterns — a category is unaffected only when *every* changed file is exclusively the other's. `st_affected` gates automatic scene-test jobs; `ut_affected` gates automatic `ut`, `ut-a2a3` and `ut-a5`. `ut-a5` also requires `a5_changed`. Explicit `/run-a5` requests run A5 UT and onboard scene tests without change detection. Anything belonging to neither (root `conftest.py`, `pyproject.toml`, `simpler_setup/`, `tests/lint/`) flips both, so shared infrastructure always runs both suites.
 - **Corpus axis:** `EXAMPLES_ONLY='^examples/'` and `TESTS_ONLY='^(tests/)'`, same shape again, one per side of the product jobs' payload. `packaging-matrix` and `profiling-flags-smoke` build and install the product and then exercise it with a fixed, tiny payload — one entry-point script (a `tests/st/` file) and one `vector_example` — so neither reads either suite as a corpus, and a diff confined to `examples/` or to `tests/` cannot reach them: `wheel.packages` is `["simpler_setup", "python/simpler"]`, so both partitions are provably absent from the product. A payload file changed under either is still exercised by the scene-test job that reads the same corpus.
-- **Gated jobs (scene tests):** automatic `st-sim-{a2a3,a5,wse}` and `st-onboard-a2a3` run iff their platform's flag **and** `st_affected` are `true`. Explicit `/run-a5` requests are not filtered by these gates.
+- **Gated jobs (scene tests):** automatic `st-sim-{a2a3,a5,wse}`, `st-onboard-a2a3` and `st-framework-{a2a3,a5}` run iff their platform's flag **and** `st_affected` are `true`. Explicit `/run-a5` requests are not filtered by these gates.
 - **Platform-independent jobs (UT + packaging):** automatic `ut`, `ut-a2a3` and `packaging-matrix` ignore the *platform* flags — unit tests exercise shared contracts (nanobind bindings, RuntimeBuilder, ring buffers, etc.) and the risk of silently skipping a regression outweighs the CI minutes saved. The `tests/ut/cpp/{arch}/` entry in the gating regex only *attributes* an arch-specific C++ UT change to that platform (so it does not spuriously flip the other platforms' scene-test flags); it does not gate the UT jobs themselves. The gated UT jobs do respect `ut_affected`, which is a statement about test category rather than silicon. `packaging-matrix` respects the corpus axis, which is a statement about which corpus a job reads: neither `examples/` nor `tests/` is in `wheel.packages`, so a diff confined to either partition cannot change what the packaging job builds.
 - **`non_code_only` is the same `NON_CODE` set, not a narrower one.** It is `true` when no changed file falls outside it. Nothing in the set can change what the code does, and no workflow consumes any of it beyond its own gate: `pre-commit` is ungated so it always exercises `.pre-commit-config.yaml`, `docs.yml` is unconditional on every PR so it always exercises `mkdocs.yml` / `docs/`, and **no workflow invokes anything under `.claude/`** (`grep -rn '\.claude' .github/workflows/` finds only comments). An **empty diff short-circuits the whole step**: attribution is impossible, so a single guard sets `non_code_only=false`, every arch and category flag `true`, and both corpus flags (`examples_only`, `tests_only`) `false`, then returns — running the full matrix, packaging and the profiling smoke included. That guard is deliberately one place; testing emptiness per flag is what previously left `non_code_only` false while the arch flags also came out false, running UT and packaging but skipping every scene test.
 
@@ -517,8 +577,9 @@ An explicit `ASCEND_PROCESS_LOG_PATH` takes precedence.
 
 Program is the default product: a test declares
 `runtime_product("kernel"|"auxiliary")` only when it is not Program. Kernel tests
-also declare `execution_mode("eager"|"capture_replay")`; Program and auxiliary
-groups are mode-free because Program only supports eager. Runtime identity comes
+also declare `execution_mode("eager"|"capture_replay")` to identify the tested
+framework usage scenario. This marker does not select a Simpler execution path.
+Program and auxiliary groups are mode-free. Runtime identity comes
 from the existing runtime marker, scene class or parameter instance; conflicting
 sources are errors. `SceneTestCase` defaults to Program through
 `_st_runtime_product`; its `_st_execution_mode` default applies only when the
@@ -614,6 +675,14 @@ and `setup-framework/`. Execution modes belong to test declarations and coverage
 reports, so future qualified capture cases share this environment and device lease.
 The suite includes Kernel eager and native graph capture/replay declarations;
 actual qualification requires their source-bound passing execution receipts.
+Both architectures prepare the bridge, native probe, destroy shim and consumer
+kernel cache before acquiring four physical devices. Preparation uses the installed
+wheel's `PYTHONPATH`, and the device task reuses those artifacts with one pytest
+process per device. The framework job timeout is 60 minutes on A5 and 45 minutes
+on A2/A3, including preparation and queue wait.
+The shared consumers and tests live in `examples/workers/l2/framework_kernel/`
+and `tests/st/worker/framework_kernel/`. The two scenario labels remain separate
+coverage groups so passing ordinary submission cannot qualify graph replay.
 
 Comment-trigger workflows are loaded from the default branch, whereas their local
 actions and identity scripts come from the checked-out PR. The canonical
@@ -631,10 +700,10 @@ settings are external to Git and cannot be migrated by a YAML rename. Do not add
 an extra suite merely to emit the retired name. Recheck merge requirements before
 merging the migration; a public ruleset query does not inspect legacy protection.
 
-`st-framework-a2a3` runs automatically on affected PRs. A5 framework
-eager validation for ordinary PRs is part of `/run-a5`. Both run in Daily.
-Automatic callers use the corresponding `a2a3_changed && st_affected` gate;
-the explicit A5 command runs without a change gate. Each uses its architecture runner pool.
+`st-framework-a2a3` and `st-framework-a5` run automatically on affected PRs.
+Both also run in Daily; `/run-a5` does not repeat framework validation.
+Automatic callers use the corresponding `<arch>_changed && st_affected` gate;
+the explicit A5 command runs UT and onboard scene tests without a change gate. Each uses its architecture runner pool.
 All callers reuse `_st-framework.yml` with an explicit platform. Setup validates `a2a3|a5`, builds `build_package_<platform>`,
 and records the matching onboard runtime roots. The exclusive task checks actual
 silicon before backend import and passes the same platform to identity recording
@@ -771,12 +840,14 @@ head predates their introduction. This qualifies integration with that base,
 not the standalone head. Non-PR comments and unverified or
 requests without maintain or admin access cannot schedule hardware work.
 
-Every admitted request runs `ut-a5` with CANN examples, `st-onboard-a5` with DFX
-smokes, and `st-framework-a5` through the existing reusable workflows.
+Every admitted request runs `ut-a5` with CANN examples and `st-onboard-a5` with
+DFX smokes through the existing reusable workflows. Framework validation runs
+automatically in per-PR CI and is not repeated by the comment command.
 No change detector filters an explicit request, including a documentation-only
 PR. A new admitted request cancels the previous same-PR job for each suite;
 unmatched and denied comments cannot cancel admitted jobs. Pushes do not
-retrigger these suites; comment again to test a new head. The gate refuses any
+retrigger this comment workflow; comment again to test a new head. The automatic
+`ut-a5` job independently follows the PR change gates. The gate refuses any
 run attempt after the first, so "Re-run all jobs" cannot admit a head the
 comment never saw; "Re-run failed jobs" keeps the original gate outputs and
 retests the admitted SHA. The gate and report jobs only call the GitHub API and

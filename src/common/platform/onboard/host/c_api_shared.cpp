@@ -176,6 +176,8 @@ int copy_in_run_inputs_impl(const Runtime *runtime, const HostApi *api);
  * that a failing prepare does not have to mutate what it was about to publish.
  */
 int copy_back_run_outputs_impl(const Runtime *runtime, const HostApi *api, int execution_rc, int launched);
+bool runtime_has_completion_feedback_impl(const Runtime *runtime) __attribute__((weak));
+void runtime_collect_completion_feedback_impl(const Runtime *runtime, const HostApi *api) __attribute__((weak));
 /**
  * End the tensor bindings the bind recorded, releasing each the way its
  * provenance requires.
@@ -445,6 +447,11 @@ static void set_prepare_plan(void *runner_ctx, uint32_t slot, uint64_t epoch, st
     static_cast<DeviceRunnerBase *>(runner_ctx)->set_prepare_plan(slot, epoch, std::move(plan));
 }
 
+static std::shared_ptr<void>
+acquire_callable_calendar_cache(void *runner_ctx, int32_t callable_id, HostCalendarCacheFactory factory) {
+    return static_cast<DeviceRunnerBase *>(runner_ctx)->acquire_callable_calendar_cache(callable_id, factory);
+}
+
 static int
 acquire_sm_mirror(void *runner_ctx, uint32_t pipeline_slot, size_t bytes, size_t alignment, void **addr_out) {
     if (addr_out != nullptr) *addr_out = nullptr;
@@ -467,16 +474,6 @@ acquire_run_image_staging(void *runner_ctx, uint32_t pipeline_slot, size_t bytes
     } catch (...) {
         return -1;
     }
-}
-
-static std::optional<HostCallableAsyncCapabilities>
-get_callable_async_capabilities(void *runner_ctx, int32_t callable_id) {
-    if (runner_ctx == nullptr) return std::nullopt;
-    HostCallableAsyncCapabilities view{};
-    if (!static_cast<DeviceRunnerBase *>(runner_ctx)
-             ->get_callable_async_capabilities(callable_id, &view.data, &view.count))
-        return std::nullopt;
-    return view;
 }
 
 static uint64_t upload_chip_callable_buffer_wrapper(void *runner_ctx, const void *callable) {
@@ -722,9 +719,9 @@ static const HostApiOps g_host_api_ops = {
     .set_prepare_plan = set_prepare_plan,
     .stage_launch_metadata = stage_launch_metadata,
     .acquire_scheduler_notifications = acquire_scheduler_notifications,
-    .get_callable_async_capabilities = get_callable_async_capabilities,
     .launch_owns_execution_image = true,
     .stage_owned_references = stage_owned_references,
+    .acquire_callable_calendar_cache = acquire_callable_calendar_cache,
 };
 
 /* ===========================================================================
@@ -2532,12 +2529,27 @@ static int launch_prepared_run(OnboardNativeRunContext *state, const NativeRunJo
     return 0;
 }
 
+static void collect_completion_feedback(OnboardNativeRunContext *state) {
+    if (state->completion_feedback_attempted || state->runtime == nullptr ||
+        runtime_has_completion_feedback_impl == nullptr || runtime_collect_completion_feedback_impl == nullptr ||
+        !runtime_has_completion_feedback_impl(state->runtime.get()))
+        return;
+    state->completion_feedback_attempted = true;
+    const auto slot = state->descriptor.pipeline_slot;
+    const auto epoch = state->descriptor.run_epoch;
+    if (state->runner->read_device_run_result(slot, epoch) != 0 ||
+        state->runner->device_run_terminal(slot, epoch).state != DeviceRunTerminalState::Succeeded)
+        return;
+    runtime_collect_completion_feedback_impl(state->runtime.get(), &state->host_api);
+}
+
 static int retire_completed_native_run(OnboardNativeRunContext *state) {
     if (state->execution_retired) return SIMPLER_NATIVE_RUN_POLL_COMPLETE;
     if (state->active_execution == nullptr) return SIMPLER_NATIVE_RUN_POLL_ERROR;
     const int rc = state->runner->retire_completed_execution(*state->active_execution);
     if (rc != SIMPLER_NATIVE_RUN_POLL_COMPLETE) return rc;
     note_workspace_fact(state, WorkspaceManager::RunFact::DrainProvedComplete);
+    if (state->completion_rc == 0) collect_completion_feedback(state);
     const bool pending_outputs =
         state->runtime != nullptr && std::any_of(
                                          state->runtime->tensor_leases().begin(), state->runtime->tensor_leases().end(),
@@ -2586,6 +2598,40 @@ static int retire_completed_native_run(OnboardNativeRunContext *state) {
     return SIMPLER_NATIVE_RUN_POLL_COMPLETE;
 }
 
+int simpler_query_run_completion(DeviceContextHandle ctx, RuntimeHandle runtime) {
+    try {
+        OnboardNativeRunContext *state = native_run_context(ctx, runtime, "simpler_query_run_completion");
+        if (state == nullptr || state->caller_owns_submission) return SIMPLER_NATIVE_RUN_POLL_ERROR;
+        const NativeRunPhase phase = state->phase.load(std::memory_order_acquire);
+        if (state->physical_complete || (state->active_execution == nullptr && state->launch_not_started_proven))
+            return SIMPLER_NATIVE_RUN_POLL_COMPLETE;
+        if (phase == NativeRunPhase::Prepared || state->active_execution == nullptr)
+            return SIMPLER_NATIVE_RUN_POLL_ERROR;
+        const auto &prepared = state->active_execution->prepared;
+        // A failed drain also retires the progress slot. Once its boundaries
+        // are gone, only the carrier's recorded physical evidence is usable.
+        if (!prepared || !prepared->resources_owned)
+            return prepared && prepared->physical_complete ? SIMPLER_NATIVE_RUN_POLL_COMPLETE :
+                                                             SIMPLER_NATIVE_RUN_POLL_ERROR;
+        if (state->runner->enter_run_thread() != 0) return SIMPLER_NATIVE_RUN_POLL_ERROR;
+        return state->runner->poll_execution(*state->active_execution);
+    } catch (...) {
+        return SIMPLER_NATIVE_RUN_POLL_ERROR;
+    }
+}
+
+extern "C" __attribute__((weak)) int peer_cancel_supported_impl(void) { return 0; }
+
+int simpler_bind_peer_cancel(DeviceContextHandle ctx, RuntimeHandle runtime, const int32_t *request) {
+    try {
+        if (!peer_cancel_supported_impl()) return PTO_RUNTIME_ERR_UNSUPPORTED;
+        OnboardNativeRunContext *state = native_run_context(ctx, runtime, "simpler_bind_peer_cancel");
+        return state != nullptr && state->bind_peer_cancel(request) ? 0 : PTO_RUNTIME_ERR_INVALID_STATE;
+    } catch (...) {
+        return PTO_RUNTIME_ERR_INTERNAL;
+    }
+}
+
 int simpler_poll_run(DeviceContextHandle ctx, RuntimeHandle runtime) {
     try {
         OnboardNativeRunContext *state = native_run_context(ctx, runtime, "simpler_poll_run");
@@ -2597,6 +2643,7 @@ int simpler_poll_run(DeviceContextHandle ctx, RuntimeHandle runtime) {
         }
         const int attach_rc = state->runner->enter_run_thread();
         if (attach_rc != 0) return SIMPLER_NATIVE_RUN_POLL_ERROR;
+        if (state->poll_peer_cancel() != 0) return SIMPLER_NATIVE_RUN_POLL_ERROR;
         return retire_completed_native_run(state);
     } catch (...) {
         return SIMPLER_NATIVE_RUN_POLL_ERROR;
@@ -2612,6 +2659,8 @@ int simpler_wait_run_completion(DeviceContextHandle ctx, RuntimeHandle runtime) 
         const int context_rc = state->runner->enter_run_thread();
         if (context_rc != 0) return context_rc;
         if (state->active_execution == nullptr) return PTO_RUNTIME_ERR_INVALID_STATE;
+        const int progress_rc = state->await_peer_cancel_progress();
+        if (progress_rc != 0) return progress_rc;
         const int rc = state->runner->wait_execution_completion(*state->active_execution);
         if (rc != 0) return rc;
         return retire_completed_native_run(state) == SIMPLER_NATIVE_RUN_POLL_COMPLETE ? 0 : PTO_RUNTIME_ERR_INTERNAL;
@@ -2633,7 +2682,7 @@ int simpler_wait_run(DeviceContextHandle ctx, RuntimeHandle runtime) {
     note_workspace_fact(state, WorkspaceManager::RunFact::DrainAttempted);
     try {
         if (state->active_execution != nullptr) {
-            drain = state->runner->drain_execution(*state->active_execution);
+            drain = state->drain_with_peer_cancel();
         } else if (state->launch_not_started_proven) {
             drain = DrainOutcome::device_complete(0);
         } else {
@@ -2644,6 +2693,11 @@ int simpler_wait_run(DeviceContextHandle ctx, RuntimeHandle runtime) {
         LOG_ERROR("simpler_wait_run: drain threw (%s)", state->trace_attrs);
         return drain.device_rc;
     }
+    // A bounded progress wait has not observed a stream verdict. Keep the
+    // carrier retryable so a later wait/finalize can still deliver cancellation.
+    if (drain.device_rc == SIMPLER_NATIVE_RUN_WAIT_INCOMPLETE && !drain.physical_complete)
+        return SIMPLER_NATIVE_RUN_WAIT_INCOMPLETE;
+    if (!drain.physical_complete) quarantine_undrained_run(*state->runner, drain.device_rc);
     if (state->completion_rc == 0) state->completion_rc = drain.combined();
     state->result_observed = true;
     state->physical_complete = state->physical_complete || drain.physical_complete;
@@ -2748,6 +2802,7 @@ int simpler_probe_run_retention(
             // a zero: a context starts at -1 so a run that never completed cannot
             // read as success, and the fixture performed this run's launch and
             // drain, so it is what decides.
+            successor->physical_complete = successor_drain.physical_complete;
             successor->completion_rc = report->successor_drain_rc;
             successor->phase.store(NativeRunPhase::Complete, std::memory_order_release);
             emit_native_run_runner_wall(successor);
@@ -2841,6 +2896,7 @@ static int finalize_native_run(
     );
     if (!transfer && !state->result_observed && launched && attach_rc == 0) {
         execution_rc = simpler_wait_run(ctx, runtime);
+        if (execution_rc == SIMPLER_NATIVE_RUN_WAIT_INCOMPLETE && !state->physical_complete) return execution_rc;
     }
     state->completion_rc = execution_rc;
     if (launched && !state->physical_complete) {
@@ -2860,8 +2916,8 @@ static int finalize_native_run(
             // Physical retirement already ended DEVICE/NONE IO and bindings.
             // No result observation or successful verdict is manufactured here.
         } else if (attach_rc == 0) {
-            // Error detail comes from the original call-owned record. A
-            // successful qualified observer performs no private-result copy.
+            if (launched && execution_rc == 0) collect_completion_feedback(state);
+            // Error detail comes from the original call-owned record.
             if (launched && execution_rc != 0) {
                 (void)state->runner->read_device_run_result(
                     state->descriptor.pipeline_slot, state->descriptor.run_epoch

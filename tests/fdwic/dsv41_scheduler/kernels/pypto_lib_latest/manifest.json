@@ -83,6 +83,7 @@
   "kernels": [
     {
       "func_id": 0,
+      "completes_on_return": true,
       "name": "v41_rope_rows",
       "source": "vendor/aiv/v41_rope_rows.cpp",
       "core_type": "aiv",
@@ -96,17 +97,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "90ece69ad1a59003fa21c3b9f2f6f08ac0cd94efbd316687a170e397c9aa8511",
       "code_name": "v41_rope_rows"
     },
     {
       "func_id": 1,
+      "completes_on_return": true,
       "name": "v41_rope_rows_1",
       "source": "vendor/aiv/v41_rope_rows_1.cpp",
       "core_type": "aiv",
@@ -120,17 +116,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "d98d4ed906029daba6c241b41047488d5a8d6700976dd3e92f5a86bf91653fc8",
       "code_name": "v41_rope_rows_1"
     },
     {
       "func_id": 2,
+      "completes_on_return": true,
       "name": "prepare_compressed_lens",
       "source": "vendor/aiv/prepare_compressed_lens.cpp",
       "core_type": "aiv",
@@ -141,17 +132,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "753f0eb35081069ec590bc776f2b6c3e5521576f842cf93d093f7d40b1138b26",
       "code_name": "prepare_compressed_lens"
     },
     {
       "func_id": 3,
+      "completes_on_return": true,
       "name": "_engram_quantize",
       "source": "vendor/external/engram.cpp",
       "core_type": "aiv",
@@ -163,16 +149,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "743104d1df673596668aa3d6f6e9df74e172d549e53712efb1b5cd099a760f55"
     },
     {
       "func_id": 4,
+      "completes_on_return": true,
       "name": "_engram_project",
       "source": "vendor/external/engram.cpp",
       "core_type": "aic",
@@ -186,16 +167,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "743104d1df673596668aa3d6f6e9df74e172d549e53712efb1b5cd099a760f55"
     },
     {
       "func_id": 5,
+      "completes_on_return": true,
       "name": "_engram_gate_native",
       "source": "vendor/external/engram.cpp",
       "core_type": "aiv",
@@ -208,16 +184,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "743104d1df673596668aa3d6f6e9df74e172d549e53712efb1b5cd099a760f55"
     },
     {
       "func_id": 6,
+      "completes_on_return": true,
       "name": "hc_collapse_norm",
       "source": "vendor/aiv/hc_collapse_norm.cpp",
       "core_type": "aiv",
@@ -230,12 +201,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "363a497f195d984816c1d527319d8d47064826448ef3b7365515d2f00312c4b4",
       "code_name": "hc_collapse_norm",
       "vf_llvm": [
@@ -249,6 +214,7 @@
     },
     {
       "func_id": 7,
+      "completes_on_return": true,
       "name": "zero_bf16_padding",
       "source": "vendor/aiv/zero_bf16_padding.cpp",
       "core_type": "aiv",
@@ -258,17 +224,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "011f543d810e1a0f6efc820dab832fe542c903be7ad902b83d95f5407367f709",
       "code_name": "zero_bf16_padding"
     },
     {
       "func_id": 8,
+      "completes_on_return": true,
       "name": "qkv_quant",
       "source": "vendor/aiv/qkv_quant.cpp",
       "core_type": "aiv",
@@ -280,12 +241,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "295434246a19096c328268382e004851ff8ef28efa34bd0ab4b4d3f478b6323f",
       "code_name": "qkv_quant",
       "vf_llvm": [
@@ -294,6 +249,7 @@
     },
     {
       "func_id": 9,
+      "completes_on_return": true,
       "name": "_proj_q_a",
       "source": "vendor/external/proj_q_a.cpp",
       "core_type": "aic",
@@ -307,16 +263,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "deacaec85a27b0a5a2fc2ba07f42d85d8dc922ef8a866114d8e84ca604b411b1"
     },
     {
       "func_id": 10,
+      "completes_on_return": true,
       "name": "q_norm_quant",
       "source": "vendor/external/q_norm_quant.cpp",
       "core_type": "aiv",
@@ -330,16 +281,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "5d361bec6257dfec9b4b4391c29c1e55b6335635fee63da2105c62d856edc2a2"
     },
     {
       "func_id": 11,
+      "completes_on_return": true,
       "name": "_proj_q_b_aic",
       "source": "vendor/external/proj_q_b.cpp",
       "core_type": "aic",
@@ -355,16 +301,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "9a2edc433f89182af1cdc4bd59e0ba5be6ccd92a6398ea41d0b68afe0c40a9ad"
     },
     {
       "func_id": 12,
+      "completes_on_return": true,
       "name": "_proj_q_b_aiv",
       "source": "vendor/external/proj_q_b.cpp",
       "core_type": "aiv",
@@ -380,16 +321,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "9a2edc433f89182af1cdc4bd59e0ba5be6ccd92a6398ea41d0b68afe0c40a9ad"
     },
     {
       "func_id": 13,
+      "completes_on_return": true,
       "name": "_proj_kv",
       "source": "vendor/external/proj_kv.cpp",
       "core_type": "aic",
@@ -403,16 +339,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "46f80d86af1cd8a1de4b67df8ae78f45df9eaa914b4a3c7c86fb72910ccefce3"
     },
     {
       "func_id": 14,
+      "completes_on_return": true,
       "name": "norm_rope_publish",
       "source": "vendor/aiv/norm_rope_publish.cpp",
       "core_type": "aiv",
@@ -427,12 +358,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "52ad5cc46565b68edf49684807e9ee1a43075a384ce793ba24cf540ff958fca8",
       "code_name": "norm_rope_publish",
       "vf_llvm": [
@@ -448,6 +373,7 @@
     },
     {
       "func_id": 15,
+      "completes_on_return": true,
       "name": "sparse_gather_reset",
       "source": "vendor/aiv/sparse_gather_reset.cpp",
       "core_type": "aiv",
@@ -457,17 +383,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "052812d18b0054a575d26f47e5395a6cb37869714fdc9803993cdbab2bb7f9cb",
       "code_name": "sparse_gather_reset"
     },
     {
       "func_id": 16,
+      "completes_on_return": true,
       "name": "_gather_sparse_vf_rows_aic",
       "source": "vendor/external/sparse_gather_vf.cpp",
       "core_type": "aic",
@@ -484,16 +405,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "79271f034ca72c574fde694456e896c33741f90deba0890b2af60c6a18088e99"
     },
     {
       "func_id": 17,
+      "completes_on_return": true,
       "name": "_gather_sparse_vf_rows_aiv",
       "source": "vendor/external/sparse_gather_vf.cpp",
       "core_type": "aiv",
@@ -510,16 +426,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "79271f034ca72c574fde694456e896c33741f90deba0890b2af60c6a18088e99"
     },
     {
       "func_id": 18,
+      "completes_on_return": true,
       "name": "hc_rms",
       "source": "vendor/aiv/hc_rms.cpp",
       "core_type": "aiv",
@@ -530,17 +441,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "2e194a140d1212e1a9af9a0a7547d83b71354c152e7d94f38c48877443e62cb2",
       "code_name": "hc_rms"
     },
     {
       "func_id": 19,
+      "completes_on_return": true,
       "name": "hc_linear",
       "source": "vendor/aic/hc_linear.cpp",
       "core_type": "aic",
@@ -552,17 +458,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "4d77f3648c8f9a12d7d60705c0f96b533dc8766d8450c474d2674e48df5814d9",
       "code_name": "hc_linear"
     },
     {
       "func_id": 20,
+      "completes_on_return": true,
       "name": "mhc_sinkhorn",
       "source": "vendor/aiv/mhc_sinkhorn.cpp",
       "core_type": "aiv",
@@ -578,12 +479,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "d74cc57a8de661f1e40f1020ec9c11d5b94eef89af7a6b26c8300e24f171ab99",
       "code_name": "mhc_sinkhorn",
       "vf_llvm": [
@@ -592,6 +487,7 @@
     },
     {
       "func_id": 21,
+      "completes_on_return": true,
       "name": "_quant_o_vf",
       "source": "vendor/external/o_quant_vf.cpp",
       "core_type": "aiv",
@@ -605,16 +501,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "42df4bc2388e8fdef795dd424caaf8f1baa9ae01541376c9f8640dc0f9c459f3"
     },
     {
       "func_id": 22,
+      "completes_on_return": true,
       "name": "_o_proj_a_aic",
       "source": "vendor/external/o_proj_a.cpp",
       "core_type": "aic",
@@ -629,16 +520,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "fcb6958ddbc8886ca76b2e9d616b017c05c5c18527a337a7d114a711995f20b7"
     },
     {
       "func_id": 23,
+      "completes_on_return": true,
       "name": "_o_proj_a_aiv",
       "source": "vendor/external/o_proj_a.cpp",
       "core_type": "aiv",
@@ -653,16 +539,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "fcb6958ddbc8886ca76b2e9d616b017c05c5c18527a337a7d114a711995f20b7"
     },
     {
       "func_id": 24,
+      "completes_on_return": true,
       "name": "_o_proj_b_hc_post_aic",
       "source": "vendor/external/o_proj_b_hc_post.cpp",
       "core_type": "aic",
@@ -679,16 +560,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "c11ed612f7bf05e222fd4f62b38efd0f0dd7fe0fe96c19b09497db7314476a1c"
     },
     {
       "func_id": 25,
+      "completes_on_return": true,
       "name": "_o_proj_b_hc_post_aiv",
       "source": "vendor/external/o_proj_b_hc_post.cpp",
       "core_type": "aiv",
@@ -705,16 +581,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "c11ed612f7bf05e222fd4f62b38efd0f0dd7fe0fe96c19b09497db7314476a1c"
     },
     {
       "func_id": 26,
+      "completes_on_return": true,
       "name": "proj_cmp",
       "source": "vendor/aic/proj_cmp.cpp",
       "core_type": "aic",
@@ -728,17 +599,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "e51b1aa9a0cb8c9e6b7ddd2da112a9d50f4f3c4f42286a2e9252e79295977321",
       "code_name": "proj_cmp"
     },
     {
       "func_id": 27,
+      "completes_on_return": true,
       "name": "c2a_four_slot_requests",
       "source": "vendor/aiv/c2a_four_slot_requests.cpp",
       "core_type": "aiv",
@@ -754,17 +620,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "34a1f3d7675a20b262fcf16bd9813cd2036281190ab53bf4bef9320ebf00b9ef",
       "code_name": "c2a_four_slot_requests"
     },
     {
       "func_id": 28,
+      "completes_on_return": true,
       "name": "_c2a_compress__2",
       "source": "vendor/aiv/_c2a_compress__2.cpp",
       "core_type": "aiv",
@@ -786,12 +647,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "08147a03552898ea28fcf9f887c3f5ff7e7c67f3eab13de5dcf2526acfbd6c26",
       "code_name": "_c2a_compress__2",
       "vf_llvm": [
@@ -801,6 +656,7 @@
     },
     {
       "func_id": 29,
+      "completes_on_return": true,
       "name": "proj_idx_k",
       "source": "vendor/aic/proj_idx_k.cpp",
       "core_type": "aic",
@@ -812,17 +668,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "e53079b4ae28149fe3e22e6948212150f50846f0dc82bc4ed40d84997b2b53f7",
       "code_name": "proj_idx_k"
     },
     {
       "func_id": 30,
+      "completes_on_return": true,
       "name": "idx_k_norm_rope_publish",
       "source": "vendor/aiv/idx_k_norm_rope_publish.cpp",
       "core_type": "aiv",
@@ -838,12 +689,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "869c7dc51049a9e86e5b76b905051998ff5c24c1ff3af72a96d5c7633edfc4b2",
       "code_name": "idx_k_norm_rope_publish",
       "vf_llvm": [
@@ -852,6 +697,7 @@
     },
     {
       "func_id": 31,
+      "completes_on_return": true,
       "name": "_idx_q_aic",
       "source": "vendor/external/idx_q.cpp",
       "core_type": "aic",
@@ -868,16 +714,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "45f54423380f7ae639fc5a08ccf15a212729467b926f93e9ee6258768acfeb76"
     },
     {
       "func_id": 32,
+      "completes_on_return": true,
       "name": "_idx_q_aiv",
       "source": "vendor/external/idx_q.cpp",
       "core_type": "aiv",
@@ -894,16 +735,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "45f54423380f7ae639fc5a08ccf15a212729467b926f93e9ee6258768acfeb76"
     },
     {
       "func_id": 33,
+      "completes_on_return": true,
       "name": "proj_idx_w",
       "source": "vendor/aic/proj_idx_w.cpp",
       "core_type": "aic",
@@ -915,17 +751,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "034405062d56bb084675f04729ca8349de5c4a3e52d7335b66d2b2a9ea0a77b8",
       "code_name": "proj_idx_w"
     },
     {
       "func_id": 34,
+      "completes_on_return": true,
       "name": "reduce_idx_w",
       "source": "vendor/aiv/reduce_idx_w.cpp",
       "core_type": "aiv",
@@ -936,17 +767,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "49345bfb4dd5f51e868547ad3c35b6f1adc6d57a1845f4a435e70f21c9676f37",
       "code_name": "reduce_idx_w"
     },
     {
       "func_id": 35,
+      "completes_on_return": true,
       "name": "idx_plan_paged_runs",
       "source": "vendor/aiv/idx_plan_paged_runs.cpp",
       "core_type": "aiv",
@@ -958,17 +784,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "64c4becbef26694b1f53c73b5ce81bb6bca464501f93cc791649b93c4366d34c",
       "code_name": "idx_plan_paged_runs"
     },
     {
       "func_id": 36,
+      "completes_on_return": true,
       "name": "_idx_score_topk_aic",
       "source": "vendor/external/index_score_topk.cpp",
       "core_type": "aic",
@@ -992,16 +813,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "aa9615259aade5d4666ae1a9d8244786b0e87e16a083500adbaa52ba698d8052"
     },
     {
       "func_id": 37,
+      "completes_on_return": true,
       "name": "_idx_score_topk_aiv",
       "source": "vendor/external/index_score_topk.cpp",
       "core_type": "aiv",
@@ -1025,16 +841,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "aa9615259aade5d4666ae1a9d8244786b0e87e16a083500adbaa52ba698d8052"
     },
     {
       "func_id": 38,
+      "completes_on_return": true,
       "name": "_gather_sparse_vf_rows__2_aic",
       "source": "vendor/external/sparse_gather_vf.cpp",
       "core_type": "aic",
@@ -1051,16 +862,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "79271f034ca72c574fde694456e896c33741f90deba0890b2af60c6a18088e99"
     },
     {
       "func_id": 39,
+      "completes_on_return": true,
       "name": "_gather_sparse_vf_rows__2_aiv",
       "source": "vendor/external/sparse_gather_vf.cpp",
       "core_type": "aiv",
@@ -1077,16 +883,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "79271f034ca72c574fde694456e896c33741f90deba0890b2af60c6a18088e99"
     },
     {
       "func_id": 40,
+      "completes_on_return": true,
       "name": "hc_collapse_norm_2",
       "source": "vendor/aiv/hc_collapse_norm_2.cpp",
       "core_type": "aiv",
@@ -1100,12 +901,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "fa0729f2a23cf96e4a0132cc76a3091bb70d6aec7fa579254963229754c04b3f",
       "code_name": "hc_collapse_norm_2",
       "vf_llvm": [
@@ -1119,6 +914,7 @@
     },
     {
       "func_id": 41,
+      "completes_on_return": true,
       "name": "mhc_sinkhorn_2",
       "source": "vendor/aiv/mhc_sinkhorn_2.cpp",
       "core_type": "aiv",
@@ -1134,12 +930,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "9562be996cc5eb674a0e7528b8e0db7e982d50c511f20a902e894cefaf497bae",
       "code_name": "mhc_sinkhorn_2",
       "vf_llvm": [
@@ -1148,6 +938,7 @@
     },
     {
       "func_id": 42,
+      "completes_on_return": true,
       "name": "_gate_quant_vf",
       "source": "vendor/external/gate_quant_vf.cpp",
       "core_type": "aiv",
@@ -1159,16 +950,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "225afc6b9f1da9245a8d95d1310bdebfee48756e1ca485e31e04c3b648575c53"
     },
     {
       "func_id": 43,
+      "completes_on_return": true,
       "name": "_gate_pre_route_vf",
       "source": "vendor/aiv/_gate_pre_route_vf.cpp",
       "core_type": "aiv",
@@ -1180,12 +966,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "5f2ab45b10e097376501d351100c7c6ddb069b71091e164c4f3bf8418de2f808",
       "code_name": "_gate_pre_route_vf",
       "vf_llvm": [
@@ -1195,6 +975,7 @@
     },
     {
       "func_id": 44,
+      "completes_on_return": true,
       "name": "_gate_scores_vf_aic",
       "source": "vendor/aic/_gate_scores_vf_aic.cpp",
       "core_type": "aic",
@@ -1208,17 +989,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "af179cef2dd372ee57de466b26850b13a64325aa75161337b313649c9227339b",
       "code_name": "_gate_scores_vf_aic"
     },
     {
       "func_id": 45,
+      "completes_on_return": true,
       "name": "_gate_scores_vf_aiv",
       "source": "vendor/aiv/_gate_scores_vf_aiv.cpp",
       "core_type": "aiv",
@@ -1232,12 +1008,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "2806939bc53b2ff8bd1d4233360db2fd2e8786df07b8e2fbae738fa57e8c04f4",
       "code_name": "_gate_scores_vf_aiv",
       "vf_llvm": [
@@ -1246,6 +1016,7 @@
     },
     {
       "func_id": 46,
+      "completes_on_return": true,
       "name": "_gate_route_sort_vf",
       "source": "vendor/aiv/_gate_route_sort_vf.cpp",
       "core_type": "aiv",
@@ -1258,12 +1029,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "4ac7c30c83052abc6f83a8db10b4b2d92d1116f8fe31fa8e463276946983679b",
       "code_name": "_gate_route_sort_vf",
       "vf_llvm": [
@@ -1272,6 +1037,7 @@
     },
     {
       "func_id": 47,
+      "completes_on_return": true,
       "name": "_shared_w13_mm",
       "source": "vendor/external/expert_shared_w13.cpp",
       "core_type": "aic",
@@ -1287,16 +1053,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "5005ffe4b80bf22fda86f2e66d128cd2b823e2af5a7d4ddef5bc1d049f7f6509"
     },
     {
       "func_id": 48,
+      "completes_on_return": true,
       "name": "_shared_swiglu_vf",
       "source": "vendor/external/expert_shared_swiglu.cpp",
       "core_type": "aiv",
@@ -1308,16 +1069,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "7e31b127c5e385b0faac941e03d4f19983237aab3bfa6144d78d99033b9df68d"
     },
     {
       "func_id": 49,
+      "completes_on_return": true,
       "name": "sh_w2_mm",
       "source": "vendor/aic/sh_w2_mm.cpp",
       "core_type": "aic",
@@ -1331,17 +1087,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "4bfc1ecfbdcd235a7fdc15aac4bc2db76fa8a09394bef318d381758a584bf24c",
       "code_name": "sh_w2_mm"
     },
     {
       "func_id": 50,
+      "completes_on_return": true,
       "name": "dispatch_scale_unpack",
       "source": "vendor/aiv/dispatch_scale_unpack.cpp",
       "core_type": "aiv",
@@ -1352,17 +1103,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "54332d9bdc464a75e06d5f3f8681e2e4344d3ca185a5434562eb04961257ee7a",
       "code_name": "dispatch_scale_unpack"
     },
     {
       "func_id": 51,
+      "completes_on_return": true,
       "name": "dispatch_push",
       "source": "vendor/aiv/dispatch_push.cpp",
       "core_type": "aiv",
@@ -1377,17 +1123,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "92519f1a450677a94e20b933a5c613a2cad8995fc40f4d479df18e12e4e97533",
       "code_name": "dispatch_push"
     },
     {
       "func_id": 52,
+      "completes_on_return": true,
       "name": "combine_notify",
       "source": "vendor/aiv/combine_notify.cpp",
       "core_type": "aiv",
@@ -1397,17 +1138,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "4958f19d781797103ae28a09a2ae20a2f288c2605cc3976264b6556e6b485d64",
       "code_name": "combine_notify"
     },
     {
       "func_id": 53,
+      "completes_on_return": false,
       "name": "combine_wait",
       "source": "vendor/aiv/combine_wait.cpp",
       "core_type": "aiv",
@@ -1417,17 +1153,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "DEFERRED",
-        "max_conditions": 2,
-        "condition_types": 1
-      },
       "source_sha256": "1be18456d4020037ae55e3b6cc55350ce5c60e82018e67b03a32a47251da397b",
       "code_name": "combine_wait"
     },
     {
       "func_id": 54,
+      "completes_on_return": true,
       "name": "dispatch_gather",
       "source": "vendor/aiv/dispatch_gather.cpp",
       "core_type": "aiv",
@@ -1446,17 +1177,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "21fe377dd8c3e99937489e43e239d65d6e7ba43f580487eaa7501086df5028be",
       "code_name": "dispatch_gather"
     },
     {
       "func_id": 55,
+      "completes_on_return": true,
       "name": "_routed_w13_aic",
       "source": "vendor/external/expert_routed_w13.cpp",
       "core_type": "aic",
@@ -1475,16 +1201,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "9643c47e88f8749ab185dd8373efa7657fbde891fb22b6c2c6410909b3800213"
     },
     {
       "func_id": 56,
+      "completes_on_return": true,
       "name": "_routed_w13_aiv",
       "source": "vendor/external/expert_routed_w13.cpp",
       "core_type": "aiv",
@@ -1503,16 +1224,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "9643c47e88f8749ab185dd8373efa7657fbde891fb22b6c2c6410909b3800213"
     },
     {
       "func_id": 57,
+      "completes_on_return": true,
       "name": "_routed_swiglu_quant",
       "source": "vendor/external/expert_routed_swiglu.cpp",
       "core_type": "aiv",
@@ -1526,16 +1242,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "01959e6e30a5d37e68d7492fffc36bf5e58282530140758fc59c60af50d8fb5a"
     },
     {
       "func_id": 58,
+      "completes_on_return": true,
       "name": "_routed_w2_aic",
       "source": "vendor/external/expert_routed_w2.cpp",
       "core_type": "aic",
@@ -1550,16 +1261,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "4a8bc037f68c82c0f049626525094dfe2e2c439272d0d932b8d559dcffd2ef1c"
     },
     {
       "func_id": 59,
+      "completes_on_return": true,
       "name": "_routed_w2_aiv",
       "source": "vendor/external/expert_routed_w2.cpp",
       "core_type": "aiv",
@@ -1574,16 +1280,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "4a8bc037f68c82c0f049626525094dfe2e2c439272d0d932b8d559dcffd2ef1c"
     },
     {
       "func_id": 60,
+      "completes_on_return": true,
       "name": "ffn_scatter",
       "source": "vendor/aiv/ffn_scatter.cpp",
       "core_type": "aiv",
@@ -1597,17 +1298,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "5b49053c1371a334e1b3d6d8182f9e67ab830ae3de4f05c16b8a8d1a425bcb08",
       "code_name": "ffn_scatter"
     },
     {
       "func_id": 61,
+      "completes_on_return": true,
       "name": "combine_reduce",
       "source": "vendor/aiv/combine_reduce.cpp",
       "core_type": "aiv",
@@ -1619,17 +1315,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "1c5acece8dd9a5ae23baab623f89cdac935aedff624a580f5a82fd76ce6f7950",
       "code_name": "combine_reduce"
     },
     {
       "func_id": 62,
+      "completes_on_return": true,
       "name": "_hc_post",
       "source": "vendor/external/hc_post.cpp",
       "core_type": "aiv",
@@ -1643,16 +1334,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "cc763495603b67acf00081043e7876881d2c64f57dc5959aca4ba36792f97825"
     },
     {
       "func_id": 63,
+      "completes_on_return": true,
       "name": "prepare_compressed_lens_0",
       "source": "vendor/aiv/prepare_compressed_lens_0.cpp",
       "core_type": "aiv",
@@ -1663,17 +1349,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "d61a7a96d2f674d006f7b75ee59b2f946c719f7bb01695b266e9e837ca08b4bd",
       "code_name": "prepare_compressed_lens_0"
     },
     {
       "func_id": 64,
+      "completes_on_return": true,
       "name": "_l2_decode_fwd_incore_46",
       "source": "vendor/aic/_l2_decode_fwd_incore_46.cpp",
       "core_type": "aic",
@@ -1685,17 +1366,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "67b231590472d0618c0fefab8c9287ec87c305bec138a8cb0fd140c018c5c0ec",
       "code_name": "_l2_decode_fwd_incore_46"
     },
     {
       "func_id": 65,
+      "completes_on_return": true,
       "name": "_c1a_compress",
       "source": "vendor/external/compressor_publish.cpp",
       "core_type": "aiv",
@@ -1711,16 +1387,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "ab7a7dc6a0651380ef156b174d6da6f9fa5199c01f74dda6441125fe558be593"
     },
     {
       "func_id": 66,
+      "completes_on_return": true,
       "name": "idx_k_norm_rope_publish_0",
       "source": "vendor/aiv/idx_k_norm_rope_publish_0.cpp",
       "core_type": "aiv",
@@ -1736,12 +1407,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "d87749ed0842a4bbb7990fc5c8947a0676b0008744007e81355b9eaafb815cc3",
       "code_name": "idx_k_norm_rope_publish_0",
       "vf_llvm": [
@@ -1750,6 +1415,7 @@
     },
     {
       "func_id": 67,
+      "completes_on_return": true,
       "name": "idx_plan_paged_runs_0",
       "source": "vendor/aiv/idx_plan_paged_runs_0.cpp",
       "core_type": "aiv",
@@ -1761,17 +1427,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "c4da3cd2126d4d47879b0597e7d31f1fc1378a5a1fc96a4b883f689a98ea38bd",
       "code_name": "idx_plan_paged_runs_0"
     },
     {
       "func_id": 68,
+      "completes_on_return": true,
       "name": "_idx_score_topk__2_aic",
       "source": "vendor/external/index_score_topk.cpp",
       "core_type": "aic",
@@ -1795,16 +1456,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "aa9615259aade5d4666ae1a9d8244786b0e87e16a083500adbaa52ba698d8052"
     },
     {
       "func_id": 69,
+      "completes_on_return": true,
       "name": "_idx_score_topk__2_aiv",
       "source": "vendor/external/index_score_topk.cpp",
       "core_type": "aiv",
@@ -1828,16 +1484,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "aa9615259aade5d4666ae1a9d8244786b0e87e16a083500adbaa52ba698d8052"
     },
     {
       "func_id": 70,
+      "completes_on_return": true,
       "name": "pool_all",
       "source": "vendor/aiv/pool_all.cpp",
       "core_type": "aiv",
@@ -1849,17 +1500,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "9fd5b25f76908fba4c3514df0ffa09a0ce8965b8b733e82c1b70a406404ff595",
       "code_name": "pool_all"
     },
     {
       "func_id": 71,
+      "completes_on_return": true,
       "name": "_index_pool_select",
       "source": "vendor/external/index_pool_select.cpp",
       "core_type": "aiv",
@@ -1872,16 +1518,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "81d60eb1c35795108a8d85d973e402327eb8ed553dd11a5029a3e21c2fa23435"
     },
     {
       "func_id": 72,
+      "completes_on_return": true,
       "name": "pool_score",
       "source": "vendor/aiv/pool_score.cpp",
       "core_type": "aiv",
@@ -1893,17 +1534,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "161605db1d3cb4df311d31144e40c0079b20a7200709f9b9ae00030d662d91c6",
       "code_name": "pool_score"
     },
     {
       "func_id": 73,
+      "completes_on_return": true,
       "name": "pool_select",
       "source": "vendor/aiv/pool_select.cpp",
       "core_type": "aiv",
@@ -1916,17 +1552,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "12abda8132b3f7e49e06ad5683ffa809038aa3845d6ed1a887b352572f40fdee",
       "code_name": "pool_select"
     },
     {
       "func_id": 74,
+      "completes_on_return": true,
       "name": "pool_count",
       "source": "vendor/aiv/pool_count.cpp",
       "core_type": "aiv",
@@ -1937,17 +1568,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "cc31e25c656e20fba30bb8d6a0040f3a3fd72ec01c3c0d10effa2382c5d4d975",
       "code_name": "pool_count"
     },
     {
       "func_id": 75,
+      "completes_on_return": true,
       "name": "_gather_sparse_vf_rows__3_aic",
       "source": "vendor/external/sparse_gather_vf.cpp",
       "core_type": "aic",
@@ -1964,16 +1590,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "79271f034ca72c574fde694456e896c33741f90deba0890b2af60c6a18088e99"
     },
     {
       "func_id": 76,
+      "completes_on_return": true,
       "name": "_gather_sparse_vf_rows__3_aiv",
       "source": "vendor/external/sparse_gather_vf.cpp",
       "core_type": "aiv",
@@ -1990,16 +1611,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "79271f034ca72c574fde694456e896c33741f90deba0890b2af60c6a18088e99"
     },
     {
       "func_id": 77,
+      "completes_on_return": true,
       "name": "_idx_pool_score_topk_aic",
       "source": "vendor/external/index_score_topk.cpp",
       "core_type": "aic",
@@ -2023,16 +1639,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "aa9615259aade5d4666ae1a9d8244786b0e87e16a083500adbaa52ba698d8052"
     },
     {
       "func_id": 78,
+      "completes_on_return": true,
       "name": "_idx_pool_score_topk_aiv",
       "source": "vendor/external/index_score_topk.cpp",
       "core_type": "aiv",
@@ -2056,16 +1667,11 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "aa9615259aade5d4666ae1a9d8244786b0e87e16a083500adbaa52ba698d8052"
     },
     {
       "func_id": 79,
+      "completes_on_return": true,
       "name": "decode_dspark_target_hidden",
       "source": "vendor/aiv/decode_dspark_target_hidden.cpp",
       "core_type": "aiv",
@@ -2076,17 +1682,12 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "e98f86f9b0e5b1afb611ccabc96773b3e489fbd88c6b31480ba6ffb3669eb5a4",
       "code_name": "decode_dspark_target_hidden"
     },
     {
       "func_id": 80,
+      "completes_on_return": true,
       "name": "moe_signal_clear",
       "source": "vendor/aiv/moe_signal_clear.cpp",
       "core_type": "aiv",
@@ -2098,12 +1699,6 @@
       "include_dirs": [
         "vendor/external"
       ],
-      "async_capability": {
-        "version": 1,
-        "mode": "SYNCHRONOUS",
-        "max_conditions": 0,
-        "condition_types": 0
-      },
       "source_sha256": "b0c7e736c38bbe9c01081159285bb80aaa521c4dc0a0c44f55d053a2ebe2552e",
       "code_name": "moe_signal_clear"
     }

@@ -10,20 +10,23 @@
 """List the active variant/case paths for a complete scheduler benchmark run."""
 
 import argparse
-import json
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+MODEL_CASES = ("swa", "c2a_full", "c1a_reindex", "c1a_reuse", "engram")
+FULL_WAVE = "synthetic/full_wave_mix_chain"
+DIAMOND = "synthetic/mpmd_diamond"
 
 
-def selected_cases():
-    manifest = ROOT / "workloads/pypto_lib_latest/source.json"
-    for name in json.loads(manifest.read_text())["cases"]:
-        yield f"pypto_lib_latest/{name}"
+def selected_cases(flavor="all"):
+    if flavor in ("all", "pypto_lib_latest"):
+        for name in MODEL_CASES:
+            yield f"pypto_lib_latest/{name}"
+    if flavor in ("all", "synthetic"):
+        yield FULL_WAVE
+        yield DIAMOND
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime", choices=("host_build_graph", "percounter"), default="host_build_graph")
-    parser.parse_args()
-    print("\n".join(selected_cases()))
+    parser.add_argument("--flavor", choices=("all", "pypto_lib_latest", "synthetic"), default="all")
+    print("\n".join(selected_cases(parser.parse_args().flavor)))

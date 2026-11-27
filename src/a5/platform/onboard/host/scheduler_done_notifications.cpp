@@ -46,11 +46,11 @@ public:
             notifications_.emplace_back();
             auto &notification = notifications_.back();
             const auto rc = aclrtCntNotifyCreate(&notification.handle, 0);
-            if (!required_ && (rc == ACL_ERROR_RT_NO_NOTIFY_RESOURCE || rc == ACL_ERROR_RT_RESOURCE_ALLOC_FAIL)) {
+            if (rc == ACL_ERROR_RT_NO_NOTIFY_RESOURCE || rc == ACL_ERROR_RT_RESOURCE_ALLOC_FAIL) {
                 notifications_.pop_back();
+                if (required_) throw SchedulerNotificationQuotaExceeded("CntNotify create: " + std::to_string(rc));
                 LOG_WARN(
-                    "A5 HBG: CntNotify capacity exhausted at %zu/%zu; remaining nodes use GM", notifications_.size(),
-                    count
+                    "A5 scheduler: optional CntNotify capacity exhausted at %zu/%zu", notifications_.size(), count
                 );
                 break;
             }
@@ -58,7 +58,7 @@ public:
             check(aclrtCntNotifyGetId(notification.handle, &notification.mapping.resId), "get id");
             map(notification.mapping, notification.address, notification.mapped);
             if (required_ && a5_cnt_notify_increment_address(notification.address) == 0)
-                throw std::runtime_error("HBG requires an aligned CntNotify SET slot");
+                throw std::runtime_error("scheduler requires an aligned CntNotify SET slot");
             if (counter_) {
                 // A5 CntNotify owns a 32-byte register slot. Its ADD register
                 // is offset 8 from the mapped SET/read base and shares the SET

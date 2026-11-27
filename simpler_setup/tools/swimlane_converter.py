@@ -53,7 +53,6 @@ from simpler_setup.tools._runtime_dispatch import (
     normalize_task_id_int,
     resolve_runtime,
 )
-from simpler_setup.tools.percounter import schedule_timing as percounter_schedule_timing
 from simpler_setup.tools.percounter import scheduler_view as percounter_scheduler_view
 from simpler_setup.tools.strace_timing import host_process_lanes, parse_span_records, parse_spans, span_family
 
@@ -236,7 +235,7 @@ def _is_recorded_window(raw):
     return isinstance(collection, dict) and collection.get("recorded_window") is True
 
 
-def _hbg_l1_worker_lanes(core_types):
+def _l1_worker_lanes(core_types):
     """Map captured worker IDs to type-local names and numeric display order, counting idle cores."""
     lanes = {}
     for kind in ("aic", "aiv"):
@@ -244,6 +243,28 @@ def _hbg_l1_worker_lanes(core_types):
         for ordinal, worker in enumerate(workers):
             lanes[worker] = (f"{kind.upper()}{ordinal}", len(lanes))
     return lanes
+
+
+def _aicore_record_fields(row, runtime, row_index):
+    expected = 9 if runtime == "percounter" else 7
+    if not isinstance(row, list) or len(row) != expected:
+        raise ValueError(f"aicore_tasks[{row_index}] must contain {expected} columns")
+    if runtime != "percounter":
+        return {}
+    block, blocks = row[7:9]
+    if type(block) is not int or type(blocks) is not int or not 0 <= block < blocks:
+        raise ValueError("invalid percounter AICore block identity")
+    return {"block_idx": block, "block_num": blocks}
+
+
+def _percounter_worker_lanes(core_types):
+    cluster_count = core_types.count("aic")
+    return {
+        worker: (worker, 0)
+        if worker < cluster_count
+        else ((worker - cluster_count) // 2, 1 + (worker - cluster_count) % 2)
+        for worker in range(len(core_types))
+    }
 
 
 def _decode_recorded_window(raw):  # noqa: PLR0912, PLR0915
@@ -283,13 +304,18 @@ def _decode_recorded_window(raw):  # noqa: PLR0912, PLR0915
         )
 
     runtime = resolve_runtime(metadata.get("runtime"))
-    worker_lanes = (
-        _hbg_l1_worker_lanes(metadata.get("core_types") or []) if runtime == "host_build_graph" and level == 1 else {}
-    )
+    core_types = metadata.get("core_types") or []
+    worker_lanes = {}
+    if level == 1:
+        worker_lanes = _l1_worker_lanes(core_types)
+    elif runtime == "percounter":
+        worker_lanes = {
+            worker: percounter_scheduler_view.worker_lane(cluster, role)
+            for worker, (cluster, role) in _percounter_worker_lanes(core_types).items()
+        }
     for index, row in enumerate(rows(raw.get("aicore_tasks", []), "aicore_tasks")):
-        if not isinstance(row, list) or len(row) != 7:
-            raise ValueError("recorded aicore_tasks must contain seven-column arrays")
-        core, token, reg, start, end, receive, epoch = row
+        row_fields = _aicore_record_fields(row, runtime, index)
+        core, token, reg, start, end, receive, epoch = row[:7]
         if type(receive) is not int or not 0 <= receive < start:
             raise ValueError(f"invalid aicore_tasks receive_to_start_cycles at {index}")
         append(
@@ -305,6 +331,7 @@ def _decode_recorded_window(raw):  # noqa: PLR0912, PLR0915
                 "reg_task_id": reg,
                 "receive_to_start_cycles": receive,
                 "run_epoch": epoch,
+                **row_fields,
             },
         )
         if core in worker_lanes:
@@ -791,7 +818,8 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
     is what makes the key unique once one file holds more than one run. Task
     rows and graph execution instances carry it for the same reason.
 
-    Every row carries it: aicore_tasks rows are seven columns, scheduler_tasks
+    Every row carries it: aicore_tasks rows carry seven timing columns plus
+    the block index and count for Percounter. The scheduler_tasks
     rows five, and each phase record has a ``run_epoch`` field. A row of any
     other width is a producer this module does not read.
 
@@ -1083,10 +1111,11 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
     # Key is (run_epoch, core_id, reg_task_id). Spelled loosely because this
     # module has no `from __future__ import annotations` and pyright targets 3.9.
     aicore_lookup: dict[tuple, tuple[int, int, int, int]] = {}
+    percounter_worker_lanes = _percounter_worker_lanes(core_types) if runtime_name == "percounter" else {}
+    worker_fields = {}
     for row_index, row in enumerate(aicore_rows):
-        if not isinstance(row, list) or len(row) != 7:
-            raise ValueError(f"aicore_tasks[{row_index}] must contain seven columns")
-        core_id, task_token, reg_task_id, start_cycles, end_cycles, r2s_cycles, run_epoch = row
+        row_fields = _aicore_record_fields(row, runtime_name, row_index)
+        core_id, task_token, reg_task_id, start_cycles, end_cycles, r2s_cycles, run_epoch = row[:7]
         start_cycles = int(start_cycles)
         end_cycles = int(end_cycles)
         r2s_cycles = int(r2s_cycles)
@@ -1101,6 +1130,10 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
         key = (run_epoch, int(core_id), int(reg_task_id))
         if key in aicore_lookup:
             raise ValueError(f"duplicate aicore_tasks join key: {key}")
+        if row_fields:
+            cluster, role = percounter_worker_lanes[int(core_id)]
+            row_fields.update(cluster_index=cluster, cluster_lane=role, kernel_only=True)
+            worker_fields[key] = row_fields
         aicore_lookup[key] = (
             int(task_token),
             start_cycles,
@@ -1168,6 +1201,8 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
             _track(record["cycles"])
             _track(record.get("claim_start_cycles", 0))
             _track(record.get("kernel_start_cycles", 0))
+        for record in percounter_events_raw["range_records"]:
+            _track(record["cycles"])
     for thread_records in sched_phases_raw:
         for pr in thread_records:
             _track(int(pr.get("start_cycles", 0)))
@@ -1191,6 +1226,16 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
         "exit_signal_end_cycles",
         "exit_wait_start_cycles",
         "exit_wait_end_cycles",
+        "ready_publish_start_cycles",
+        "ready_publish_end_cycles",
+        "observe_start_cycles",
+        "sinks_observed_cycles",
+        "observe_end_cycles",
+        "shutdown_start_cycles",
+        "shutdown_end_cycles",
+        "materialize_start_cycles",
+        "graph_watermark_published_cycles",
+        "materialize_end_cycles",
     )
     for record in lifecycle_raw:
         for field in lifecycle_cycle_fields:
@@ -1266,6 +1311,7 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
                     "core_id": core_id,
                     "core_type": _core_type(core_id),
                     **task_id_fields(task_token, core_id, run_epoch),
+                    **worker_fields.get((run_epoch, core_id, int(reg_task_id)), {}),
                     "start_time_us": start_us,
                     "end_time_us": end_us,
                     "duration_us": end_us - start_us,
@@ -1279,7 +1325,7 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
             )
     elif aicore_rows and level == 1:
         for row in aicore_rows:
-            core_id, task_token, reg_task_id, start_cycles, end_cycles, r2s_cycles, run_epoch = row
+            core_id, task_token, reg_task_id, start_cycles, end_cycles, r2s_cycles, run_epoch = row[:7]
             r2s_cycles = int(r2s_cycles)
             run_epoch = int(run_epoch)
             core_id = int(core_id)
@@ -1296,6 +1342,7 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
                     "core_id": core_id,
                     "core_type": _core_type(core_id),
                     **task_id_fields(task_token, core_id, run_epoch),
+                    **worker_fields.get((run_epoch, core_id, int(reg_task_id)), {}),
                     "start_time_us": start_us,
                     "end_time_us": end_us,
                     "duration_us": end_us - start_us,
@@ -1308,8 +1355,8 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
     elif aicore_rows:
         raise ValueError(f"level {level} requires Scheduler task timing records")
 
-    if runtime_name == "host_build_graph" and level == 1:
-        lanes = _hbg_l1_worker_lanes(core_types)
+    if level == 1:
+        lanes = _l1_worker_lanes(core_types)
         for task in tasks:
             task["worker_lane"] = lanes.get(task["core_id"])
 
@@ -1460,10 +1507,21 @@ def _decode_perf_data(data, *, timeline_origin_ns=None, placement=None, source=N
             data.get("aicore_tasks", []),
             data.get("aicore_execution_identities"),
         )
+        idle_by_worker_epoch = defaultdict(list)
+        if runtime_name == "host_build_graph" and level == 3:
+            for records, stream in zip(sched_phases_raw, scheduler_stream_metadata):
+                if stream["producer"] == "aicore":
+                    for record in records:
+                        if record["kind"] == "idle":
+                            key = stream["worker_id"], record["run_epoch"]
+                            idle_by_worker_epoch[key].append((record["start_cycles"], record["end_cycles"]))
         for profile in profiles:
             if runtime_name == "host_build_graph" and level == 3:
                 scalar_profile.apply_l3_detail_policy(profile)
             profile["clock_freq_hz"] = clock_freq_hz
+            if idle_by_worker_epoch and profile.get("complete"):
+                key = profile["worker_id"], profile["run_epoch"]
+                profile["no_progress_intervals"] = idle_by_worker_epoch.get(key, [])
             for key in ("rows", "exclusive"):
                 for row in profile[key]:
                     row["start_time_us"] = _to_us(row["start_cycles"])
@@ -1695,7 +1753,7 @@ def _identify_spmd_task_ids(task_maps_by_run, deps_block_map=None):
 
 def _task_slice_start_us(task):
     """Start of the task slice emitted in Worker View."""
-    if "schedule_checkpoints" in task:
+    if "schedule_checkpoints" in task or task.get("kernel_only"):
         return task["start_time_us"]
     receive_time_us = task.get("receive_time_us")
     return receive_time_us if receive_time_us is not None else task["start_time_us"]
@@ -1740,7 +1798,8 @@ def _with_execution_identity(args, row):
             "cluster_lane",
             "executed",
         ):
-            args[field] = row[field]
+            if field in row:
+                args[field] = row[field]
     return args
 
 
@@ -1779,7 +1838,9 @@ def _order_hbg_cluster_lanes(events, tasks, core_to_tid, scheduler_streams, *, c
         lane_workers[(3, tid + 1)] = worker
     for index, stream in enumerate(scheduler_streams or []):
         if stream.get("producer") == "aicore" and type(stream.get("worker_id")) is int:
-            lane_workers[(2, 30000 + index * 10)] = stream["worker_id"]
+            tid = 30000 + index * 10
+            lane_workers[(2, tid)] = stream["worker_id"]
+            lane_workers[(2, tid + 2)] = stream["worker_id"]
     workers = sorted(set(lane_workers.values()), key=lambda w: (w not in positions, positions.get(w, (w, 0)), w))
     order = {worker: index for index, worker in enumerate(workers)}
     desired, present = {}, set()
@@ -1790,7 +1851,7 @@ def _order_hbg_cluster_lanes(events, tasks, core_to_tid, scheduler_streams, *, c
         worker = lane_workers.get(key)
         if worker is None:
             continue
-        sort_index = order[worker] * 10 + (key[1] - core_to_tid[worker] if key[0] == 3 else 0)
+        sort_index = order[worker] * 10 + key[1] % 10
         if event["name"] == "thread_name":
             event["args"]["name"] = _cluster_track_label(
                 positions.get(worker), event["args"]["name"], compact_workers and key[0] == 4
@@ -2520,7 +2581,6 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
     scheduler_task_producer=None,
     chip_swimlane_level=None,
     percounter_task_events=None,
-    percounter_block_view=False,
     sources_by_consumer=None,
 ):
     """Generate Chrome Trace Event Format JSON from task data.
@@ -2613,21 +2673,33 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
             ("register_release", "register_release_start_time_us", "register_release_end_time_us"),
             ("exit_signal", "exit_signal_start_time_us", "exit_signal_end_time_us"),
             ("exit_wait", "exit_wait_start_time_us", "exit_wait_end_time_us"),
+            ("Publish core READY", "ready_publish_start_time_us", "ready_publish_end_time_us"),
+            ("Observe run completion", "observe_start_time_us", "observe_end_time_us"),
+            ("Wait for shutdown", "shutdown_start_time_us", "shutdown_end_time_us"),
+            ("Materialize Graph", "materialize_start_time_us", "materialize_end_time_us"),
         )
+        seen_threads = set()
         for record in aicpu_lifecycle_records:
             thread_id = int(record.get("aicpu_thread_id", record.get("record_index", 0)))
             tid = 60000 + thread_id
-            events.append(
-                {
-                    "args": {"name": f"AICPU Thread {thread_id}"},
-                    "cat": "__metadata",
-                    "name": "thread_name",
-                    "ph": "M",
-                    "pid": 6,
-                    "tid": tid,
-                }
-            )
+            if thread_id not in seen_threads:
+                seen_threads.add(thread_id)
+                events.append(
+                    {
+                        "args": {"name": f"AICPU Thread {thread_id}"},
+                        "cat": "__metadata",
+                        "name": "thread_name",
+                        "ph": "M",
+                        "pid": 6,
+                        "tid": tid,
+                    }
+                )
             identity = {"aicpu_thread_id": thread_id}
+            shell = record.get("graph_shell_id")
+            if shell is not None:
+                identity["graph_shell_id"] = shell
+            if "watermark" in record:
+                identity["watermark"] = record["watermark"]
             for interval in record.get("detail_intervals", []):
                 start = float(interval["start_time_us"])
                 end = float(interval["end_time_us"])
@@ -2652,7 +2724,7 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
                     {
                         "args": identity,
                         "cat": "aicpu_lifecycle",
-                        "name": name,
+                        "name": f"{name} {shell}" if shell is not None else name,
                         "ph": "X",
                         "pid": 6,
                         "tid": tid,
@@ -2660,6 +2732,24 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
                         "dur": end - start,
                     }
                 )
+
+            for field, label in (
+                ("graph_watermark_published_time_us", "Graph watermark published"),
+                ("sinks_observed_time_us", "Sinks and deferred completions observed"),
+            ):
+                if field in record and record[field] >= 0:
+                    events.append(
+                        {
+                            "args": identity,
+                            "cat": "aicpu_lifecycle",
+                            "name": label,
+                            "ph": "i",
+                            "s": "t",
+                            "pid": 6,
+                            "tid": tid,
+                            "ts": record[field],
+                        }
+                    )
 
     # Metadata event: Process names and sort order.
     # pid is renumbered in pipeline order (top → bottom in Perfetto):
@@ -2737,24 +2827,8 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
     show_scheduler_view = has_scheduler_task_data and not worker_scheduler_details and runtime_name != "percounter"
 
     pc_l2_events = percounter_task_events if chip_swimlane_level == 2 else None
-    if (
-        pc_l2_events is not None
-        and not percounter_block_view
-        and any(row["kind"] == "claim" and "slot" in row for row in pc_l2_events["records"])
-    ):
-        events.extend(percounter_schedule_timing.schedule_events(pc_l2_events, pid=7, task_name=task_display))
-    elif percounter_task_events is not None:
-        events.extend(
-            percounter_scheduler_view.trace_events(
-                percounter_task_events,
-                pid=3,
-                task_name=lambda task_id: _marker_event_name(task_id, task_display(task_id)),
-                include_kernel_execution=pc_l2_events is None,
-                deps_edges=deps_edges if chip_swimlane_level == 2 else None,
-                deps_kernel_map=deps_kernel_map,
-                deps_block_map=deps_block_map,
-            )
-        )
+    if percounter_task_events is not None:
+        events.extend(percounter_scheduler_view.trace_events(percounter_task_events, pid=3, task_name=task_display))
 
     if show_scheduler_view:
         events.append(
@@ -2764,12 +2838,13 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
             {"args": {"sort_index": 3}, "cat": "__metadata", "name": "process_sort_index", "ph": "M", "pid": 3}
         )
 
-    hbg_l1 = runtime_name == "host_build_graph" and chip_swimlane_level == 1
-    pc_worker_lanes = percounter_schedule_timing.worker_lanes(pc_l2_events) if pc_l2_events is not None else {}
     for core_id, tid in core_to_tid.items():
         task = worker_rows[core_id]
         track = {"ph": "M", "cat": "__metadata", "pid": 4, "tid": tid}
-        worker_lane = task.get("worker_lane") if hbg_l1 else pc_worker_lanes.get(core_id)
+        worker_lane = task.get("worker_lane")
+        if worker_lane is None and runtime_name == "percounter" and "cluster_index" in task:
+            cluster, role = task["cluster_index"], task["cluster_lane"]
+            worker_lane = percounter_scheduler_view.worker_lane(cluster, role)
         if worker_lane is not None:
             name, order = worker_lane
             events.append({**track, "name": "thread_sort_index", "args": {"sort_index": order}})
@@ -2863,7 +2938,7 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
                     "cat": "Percounter L2 control",
                     "ts": ts,
                     "id": marker_id,
-                    "name": f"Control completion · {task_display(ref)}",
+                    "name": f"{task_display(ref)}-Control completion",
                     "args": {
                         "task_id": ref,
                         "run_epoch": epoch,
@@ -2903,7 +2978,7 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
         for event in events:
             if event.get("cat") not in ("Percounter L2", "HBG L2", "percounter_task_timing"):
                 continue
-            if event.get("ph") not in ("b", "X") or not event["name"].startswith(
+            if event.get("ph") not in ("b", "X") or not event["name"].split("-", 2)[-1].startswith(
                 ("Bound", "Predecessor pending", "Claim →", "Ideal ready →")
             ):
                 continue
@@ -3427,6 +3502,10 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
                 kernel_labels=hbg_kernel_labels,
             )
         )
+        if runtime_name == "host_build_graph" and chip_swimlane_level == 3:
+            from simpler_setup.tools.hbg.kernel_gaps import kernel_gap_events  # noqa: PLC0415
+
+            events.extend(kernel_gap_events(scalar_profiles, scheduler_streams, tasks, fanin_map))
 
     # AICPU Orchestrator lane (chip_swimlane_level >= 4)
     #
@@ -4154,7 +4233,7 @@ def generate_chrome_trace_json(  # noqa: PLR0912, PLR0913, PLR0915
         if verbose:
             print(f"  Overhead Analysis: {sum(1 for e in oh if e.get('ph') == 'C')} counter points (8 tracks)")
 
-    if runtime_name in ("host_build_graph", "percounter") and not hbg_l1 and pc_l2_events is None:
+    if runtime_name == "host_build_graph" and chip_swimlane_level != 1:
         _order_hbg_cluster_lanes(events, tasks, core_to_tid, scheduler_streams, compact_workers=hbg_l2)
 
     if chip_swimlane_level == 2 and runtime_name in ("host_build_graph", "percounter"):
@@ -4237,11 +4316,6 @@ Examples:
             "Path to a dep_gen replay deps.json (defaults to sibling of the perf JSON). "
             "Without one the trace has no dependency arrows — re-run with --enable-dep-gen first."
         ),
-    )
-    parser.add_argument(
-        "--percounter-block-view",
-        action="store_true",
-        help="Display Percounter L2 by block lifetime instead of physical slot.",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     parser.add_argument(
@@ -5915,7 +5989,6 @@ def _generate_l3_trace(args, root):  # noqa: PLR0912
             sources_by_consumer=artifacts["sources_by_consumer"],
             deps_kernel_map=artifacts["deps_kernel_map"],
             deps_block_map=artifacts["deps_block_map"],
-            percounter_block_view=args.percounter_block_view,
             emit_overhead=args.overhead,
         )
         _namespace_rank_trace(trace, rank, int(round(placement.slack_ns)))
@@ -6137,7 +6210,6 @@ def main():
             sources_by_consumer=sources_by_consumer,
             deps_kernel_map=deps_kernel_map,
             deps_block_map=deps_block_map,
-            percounter_block_view=args.percounter_block_view,
             emit_overhead=args.overhead,
         )
         if args.overhead and deps_edges is None:

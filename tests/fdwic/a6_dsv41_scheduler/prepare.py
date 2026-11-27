@@ -301,9 +301,6 @@ def build_bundle(args, build_dir, bundle, source):
 
 
 def assemble_replay(tools, bundle, build_dir, binary_dir, compiled, kernels, metadata):
-    sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
-    from build_sources import capability_words  # noqa: PLC0415
-
     def signature(values):
         return f"{len(values)} " + " ".join(map(str, values))
 
@@ -312,8 +309,7 @@ def assemble_replay(tools, bundle, build_dir, binary_dir, compiled, kernels, met
         rows.append(
             f"{kernel['func_id']} {signature(kernel['signature'])} "
             + json.dumps(str(binary_dir / record.get("registration_file", record["file"])), ensure_ascii=False)
-            + " "
-            + " ".join(map(str, capability_words(kernel)))
+            + (" on_return" if record["completes_on_return"] else "")
         )
     assembly = build_dir / "assembly.txt"
     assembly.write_text("\n".join(rows) + "\n")
@@ -329,7 +325,10 @@ def assemble_replay(tools, bundle, build_dir, binary_dir, compiled, kernels, met
     )
     expected = {
         "signature": metadata["signature"],
-        "kernels": [{"id": k["func_id"], "signature": k["signature"]} for k in kernels],
+        "kernels": [
+            {"id": k["func_id"], "signature": k["signature"], "completes_on_return": record["completes_on_return"]}
+            for k, record in zip(kernels, compiled, strict=True)
+        ],
     }
     image = bundle / "callable.bin"
     layout = json.loads(capture([tools / "native-runner", "--describe-layout", image]))

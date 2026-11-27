@@ -168,6 +168,7 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
             "bytes": len(binary),
             "source": os.path.relpath(source, SOURCES),
             "source_sha256": sha256(source),
+            "completes_on_return": bool(kernel.get("completes_on_return") and sha256(source) == kernel["source_sha256"]),
             "vf_llvm": {path: sha256(SOURCES / path) for path in vf_paths},
             "binary_sha256": sha256(target),
         }

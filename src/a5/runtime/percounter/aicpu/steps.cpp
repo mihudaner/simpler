@@ -58,8 +58,15 @@ int32_t AicpuExecutor::post_handshake_init(Runtime *runtime) {
     return simpler::percounter::percounter_post_handshake_init(runtime, aicore_lifecycle_, scheduler_timeout_cycles());
 }
 
-void AicpuExecutor::publish_partition(Runtime *runtime, int32_t tidx, int32_t nthreads) {
-    simpler::percounter::percounter_publish_partition(runtime, aicore_lifecycle_, tidx, nthreads);
+void AicpuExecutor::publish_partition(Runtime *runtime, int32_t tidx, int32_t) {
+    if (tidx != 0) return;
+    auto *timing = simpler::percounter::percounter_aicpu_timing(simpler::percounter::percounter_control(runtime), tidx);
+    if (timing != nullptr) timing->ready_publish_start_cycles = get_sys_cnt_aicpu();
+    aicore_lifecycle_.publish_lifecycle_start();
+    if (timing != nullptr) {
+        timing->ready_publish_end_cycles = get_sys_cnt_aicpu();
+        cache_flush_range(timing, sizeof(*timing));
+    }
 }
 
 // The lanes take their start from the control block the host published before
@@ -78,7 +85,10 @@ int32_t AicpuExecutor::supervise(Runtime *runtime, int32_t thread_idx) {
 // waits. The percounter supervisor's own progress watchdog bounds the wait;
 // the ready watchdog's stamp is never advanced in this runtime.
 bool AicpuExecutor::await_shutdown(Runtime *runtime, int32_t thread_idx) {
-    simpler::percounter::percounter_assist(runtime);
+    simpler::percounter::percounter_assist(runtime, thread_idx);
+    auto *timing =
+        simpler::percounter::percounter_aicpu_timing(simpler::percounter::percounter_control(runtime), thread_idx);
+    if (timing != nullptr) timing->shutdown_start_cycles = get_sys_cnt_aicpu();
     uint32_t checks = 0;
     while (!shutdown_ready_.load(std::memory_order_acquire)) {
         if (++checks == 64) {
@@ -86,6 +96,10 @@ bool AicpuExecutor::await_shutdown(Runtime *runtime, int32_t thread_idx) {
             chip_swimlane_aicpu_poll_self_scheduled_cores(thread_idx, aicpu_thread_num_, runtime->get_worker_count());
         }
         SPIN_WAIT_HINT();
+    }
+    if (timing != nullptr) {
+        timing->shutdown_end_cycles = get_sys_cnt_aicpu();
+        cache_flush_range(timing, sizeof(*timing));
     }
     return false;
 }

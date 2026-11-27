@@ -76,11 +76,26 @@ TEST_F(HbgPreparedBindings, OnboardCallsResolveCodeWithoutDereferencingDeviceObj
         EXPECT_EQ(calls[block].function_bin_addr, UINT64_C(0x1000000c0));
 }
 
+TEST_F(HbgPreparedBindings, MixCallsExposeOnlyTheTensorPrefixForPrefetch) {
+    constexpr uint64_t functions[]{0x1000, 0, 0x2000};
+    constexpr uint64_t tensors = 0x4000;
+    constexpr uint64_t scalar = 7;
+    ASSERT_TRUE(scheduler_prepare_host_calls(base, layout, kDeviceBase, 1, functions, tensors, &scalar, 2, 1));
+    const auto *plans = scheduler_state_at<SchedulerExecutionPlan>(base, layout.prepared.plans_offset);
+    const auto *calls = scheduler_state_at<SchedulerPreparedCall>(base, layout.prepared.calls_offset);
+    for (uint64_t i = 0; i < plans[1].execution_count; ++i) {
+        const auto &call = calls[plans[1].execution_begin + i];
+        EXPECT_EQ(call.tensor_count, 2u);
+        EXPECT_EQ(call.num_args, 3u);
+        EXPECT_EQ(call.args[0], tensors);
+        EXPECT_EQ(call.args[1], tensors + TASK_IMAGE_TENSOR_STRIDE);
+        EXPECT_EQ(call.args[2], scalar);
+    }
+}
+
 TEST_F(HbgPreparedBindings, SimCallsUseTheResolvedSymbolRatherThanTheObjectAddress) {
     const std::array<uint8_t, 4> binary{};
-    auto bytes = make_callable<CORE_MAX_TENSOR_ARGS>(
-        nullptr, 0, binary.data(), binary.size(), {1, CoreAsyncMode::SYNCHRONOUS, 0, 0, 0}
-    );
+    auto bytes = make_callable<CORE_MAX_TENSOR_ARGS>(nullptr, 0, binary.data(), binary.size());
     auto *callable = reinterpret_cast<CoreCallable *>(bytes.data());
     constexpr uint64_t entry = UINT64_C(0x98760000);
     callable->set_resolved_addr(entry);

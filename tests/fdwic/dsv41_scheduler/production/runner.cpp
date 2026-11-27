@@ -23,7 +23,6 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "chip_worker.h"
@@ -53,26 +52,16 @@ T read(std::istream &stream) {
     return value;
 }
 
-CoreAsyncCapability read_capability(std::istream &stream) {
-    // Each kernel occupies one manifest row. An omitted declaration must not
-    // consume the next kernel's ID as a version field.
+// Read only this row so a bare kernel cannot consume the next kernel's fields.
+bool completion_on_return(std::istream &manifest) {
     std::string row;
-    std::getline(stream, row);
+    std::getline(manifest, row);
     std::istringstream fields(row);
-    CoreAsyncCapability value{};
+    std::string declaration;
+    if (!(fields >> declaration)) return false;
     fields >> std::ws;
-    if (fields.eof()) return normalize_core_async_capability(value);
-    value.version = read<uint32_t>(fields);
-    const auto mode = read<uint32_t>(fields);
-    const auto capacity = read<uint32_t>(fields);
-    const auto types = read<uint32_t>(fields);
-    fields >> std::ws;
-    if (!fields.eof() || mode > UINT8_MAX || capacity > UINT8_MAX || types > UINT8_MAX)
-        throw std::runtime_error("Invalid kernel async capability fields");
-    value.mode = static_cast<CoreAsyncMode>(mode);
-    value.max_conditions = static_cast<uint8_t>(capacity);
-    value.condition_types = static_cast<uint8_t>(types);
-    return normalize_core_async_capability(value);
+    if (declaration != "on_return" || !fields.eof()) throw std::runtime_error("Invalid kernel completion declaration");
+    return true;
 }
 
 // Host launch alignment only. Device dependencies and defer_wait remain owned
@@ -169,7 +158,7 @@ int run(int argc, char **argv) {
                 if (j) std::cout << ',';
                 std::cout << static_cast<int>(child.sig(j));
             }
-            std::cout << ']';
+            std::cout << "],\"completes_on_return\":" << (child.completes_on_return() ? "true" : "false");
             if (describe_layout) {
                 const auto offset =
                     reinterpret_cast<const uint8_t *>(&child) - binary.data() + CoreCallable::binary_data_offset();
@@ -178,53 +167,6 @@ int run(int argc, char **argv) {
             std::cout << '}';
         }
         std::cout << "]}\n";
-        return 0;
-    }
-    if (argc == 5 && std::string(argv[1]) == "--declare-async-capabilities") {
-        auto packed = read_binary(argv[2]);
-        if (packed.size() < offsetof(ChipCallable, storage_))
-            throw std::runtime_error("Truncated callable for completion declaration");
-        std::ifstream declarations(argv[3]);
-        std::unordered_map<int32_t, CoreAsyncCapability> capabilities;
-        const auto count = read<size_t>(declarations);
-        for (size_t i = 0; i < count; ++i) {
-            const auto id = read<int32_t>(declarations);
-            if (!capabilities.emplace(id, read_capability(declarations)).second)
-                throw std::runtime_error("Duplicate kernel completion declaration");
-        }
-        const auto *callable = reinterpret_cast<const ChipCallable *>(packed.data());
-        const size_t storage_size = packed.size() - offsetof(ChipCallable, storage_);
-        if (callable->child_count() < 0 || callable->child_count() > ChipCallable::MAX_CHILDREN ||
-            callable->wire_version_ != CHIP_CALLABLE_WIRE_VERSION || callable->binary_size() > storage_size)
-            throw std::runtime_error("Invalid callable layout for completion declaration");
-        if (count != static_cast<size_t>(callable->child_count()))
-            throw std::runtime_error("Completion declarations must cover every registered kernel");
-        std::cout << '[';
-        for (int i = 0; i < callable->child_count(); ++i) {
-            const auto id = callable->child_func_ids_[i];
-            const auto declaration = capabilities.find(id);
-            if (declaration == capabilities.end()) throw std::runtime_error("Missing kernel completion declaration");
-            const auto relative = callable->child_offset(i);
-            if (relative % CALLABLE_ALIGN != 0 || relative < callable->binary_size() || relative > storage_size ||
-                CoreCallable::binary_data_offset() > storage_size - relative)
-                throw std::runtime_error("Truncated kernel for completion declaration");
-            const auto *old = &callable->child(i);
-            if (old->binary_size() > storage_size - relative - CoreCallable::binary_data_offset())
-                throw std::runtime_error("Truncated kernel binary for completion declaration");
-            const size_t offset = reinterpret_cast<const uint8_t *>(old) - packed.data();
-            auto *child = reinterpret_cast<CoreCallable *>(packed.data() + offset);
-            child->async_capability_ = declaration->second;
-            if (i != 0) std::cout << ',';
-            std::cout << "{\"func_id\":" << id
-                      << ",\"metadata_offset\":" << offset + offsetof(CoreCallable, async_capability_)
-                      << ",\"binary_offset\":" << offset + CoreCallable::binary_data_offset()
-                      << ",\"binary_size\":" << child->binary_size() << '}';
-        }
-        std::cout << "]\n";
-        validate_chip_callable_buffer(packed.data(), packed.size());
-        std::ofstream target(argv[4], std::ios::binary);
-        target.write(reinterpret_cast<const char *>(packed.data()), packed.size());
-        if (!target) throw std::runtime_error("Cannot write declared kernel bundle");
         return 0;
     }
     if (argc == 5 && std::string(argv[1]) == "--assemble-orchestration") {
@@ -246,10 +188,10 @@ int run(int argc, char **argv) {
             std::string path;
             if (!(manifest >> std::quoted(path))) throw std::runtime_error("Missing cached kernel path");
             const auto binary = read_binary(path);
-            const auto capability = read_capability(manifest);
-            auto child = make_callable<CORE_MAX_TENSOR_ARGS>(
-                directions.data(), directions.size(), binary.data(), binary.size(), capability
-            );
+            auto child =
+                make_callable<CORE_MAX_TENSOR_ARGS>(directions.data(), directions.size(), binary.data(), binary.size());
+            if (completion_on_return(manifest))
+                reinterpret_cast<CoreCallable *>(child.data())->declare_completion_on_return();
             children.push_back(std::move(child));
         }
         const auto orchestration = read_binary(argv[3]);
@@ -323,7 +265,11 @@ int run(int argc, char **argv) {
     const bool all_levels = std::string(argv[7]) == "all";
     const int level = all_levels ? 0 : std::stoi(argv[7]), warmup = std::stoi(argv[8]), rounds = std::stoi(argv[9]);
     const bool sliced = fs::exists(bundle / "slice.txt");
-    const bool snapshot = fs::exists(bundle / "snapshot.txt");
+    std::ifstream snapshot_marker(bundle / "snapshot.txt");
+    const bool snapshot = snapshot_marker.is_open();
+    std::string reference_kind;
+    snapshot_marker >> reference_kind;
+    const bool analytical_snapshot = reference_kind == "analytical";
     if (runtime_name == "tensormap_and_ringbuffer" && !fs::exists(bundle / "tmr.json"))
         throw std::runtime_error("Prepare a TMR bundle before selecting AICPU scheduling");
     if ((snapshot && (!sliced || materialize)) || (materialize && !sliced))
@@ -361,7 +307,8 @@ int run(int argc, char **argv) {
     CallConfig config;
     // Capturing the EP2 forward and materializing its long prefixes can both exceed 2 GiB.
     const bool ep2_forward =
-        runtime_name == "host_build_graph" && (!sliced || materialize) && !native_moe && ranks == 2;
+        (runtime_name == "host_build_graph" || runtime_name == "percounter") && (!sliced || materialize) &&
+        !native_moe && ranks == 2;
     const uint64_t heaps[] = {ep2_forward ? 4ULL << 30 : 2ULL << 30, 2ULL << 30, 1ULL << 30, 512ULL << 20};
     for (int i = 0; i < RUNTIME_ENV_RING_COUNT; ++i) {
         config.runtime_env.ring_task_window[i] = 262144;
@@ -594,15 +541,17 @@ int run(int argc, char **argv) {
     }
     worker.finalize();
     HostLogger::get_instance().flush();
+    const char *execution =
+        native_moe ? "native_moe_host_control" : (analytical_snapshot ? "analytical_snapshot" : "replay");
     std::ofstream result(output / "result.json");
     result << "{\"passed\":true,\"device\":" << device << ",\"rank\":" << rank << ",\"runtime\":\"" << runtime_name
            << "\""
            << ",\"original_kernels\":" << registered->child_count()
            << ",\"isolated_case\":" << (sliced ? "true" : "false")
-           << ",\"validated_against_fused_prefix\":" << (sliced ? "true" : "false") << ",\"warmup\":" << warmup
-           << ",\"rounds\":" << rounds << ",\"snapshot_inputs\":" << (snapshot ? "true" : "false")
-           << ",\"ranks\":" << ranks << ",\"execution\":\"" << (native_moe ? "native_moe_host_control" : "replay")
-           << "\""
+           << ",\"validated_against_fused_prefix\":" << (sliced && !analytical_snapshot ? "true" : "false")
+           << ",\"warmup\":" << warmup << ",\"rounds\":" << rounds
+           << ",\"snapshot_inputs\":" << (snapshot ? "true" : "false") << ",\"ranks\":" << ranks << ",\"execution\":\""
+           << execution << "\""
            << ",\"numerical_validation\":" << (native_moe ? "false" : "true") << "}\n";
     return 0;
 }

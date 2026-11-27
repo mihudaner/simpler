@@ -2545,11 +2545,17 @@ uint64_t DeviceRunnerBase::upload_chip_callable_buffer(const ChipCallable *calla
     // scratch fill, the patch, the table fill and the copy — allocates nothing.
     std::vector<uint8_t> scratch(alloc_size);
     std::vector<uint64_t> object_table(table_len, 0);
-    std::vector<CoreAsyncCapability> async_capabilities(table_len);
     auto input_cache_proofs = chip_callable_input_cache_proofs(callable, table_len);
-    for (int32_t index = 0; index < callable->child_count(); ++index) {
-        async_capabilities[callable->child_func_id(index)] =
-            normalize_core_async_capability(callable->child(index).async_capability());
+    std::vector<uint8_t> synchronous_kernels;
+    if constexpr (std::string_view(SIMPLER_RUNTIME_NAME) == "percounter") {
+        for (int32_t child = 0; child < callable->child_count(); ++child) {
+            const bool synchronous = callable->child(child).completes_on_return();
+            if (synchronous_kernels.empty()) {
+                if (!synchronous) continue;
+                synchronous_kernels.resize(table_len);
+            }
+            synchronous_kernels[callable->child_func_id(child)] = synchronous;
+        }
     }
     std::vector<uint64_t> entry_table;
     if (want_entry_table) entry_table.assign(table_len, 0);
@@ -2581,11 +2587,6 @@ uint64_t DeviceRunnerBase::upload_chip_callable_buffer(const ChipCallable *calla
     // path's `reinterpret_cast<CoreCallable*>(addr)->resolved_addr()` lands
     // on the right device offset).
     std::memcpy(scratch.data(), callable, layout.total_size);
-    for (int32_t index = 0; index < callable->child_count(); ++index) {
-        auto *child =
-            reinterpret_cast<CoreCallable *>(scratch.data() + layout.header_size + callable->child_offset(index));
-        child->async_capability_ = async_capabilities[callable->child_func_id(index)];
-    }
     patch_chip_callable_scratch_for_device(callable, layout, chip_dev, scratch.data());
 
     // The function tables go in the alignment-padded tail of that same scratch,
@@ -2639,8 +2640,8 @@ uint64_t DeviceRunnerBase::upload_chip_callable_buffer(const ChipCallable *calla
     }
     auto inserted = chip_callable_buffers_.emplace(layout.content_hash, std::move(retained));
     inserted.first->second.object_table = std::move(object_table);
-    inserted.first->second.async_capabilities = std::move(async_capabilities);
     inserted.first->second.input_cache_proofs = std::move(input_cache_proofs);
+    inserted.first->second.synchronous_kernels = std::move(synchronous_kernels);
     published = true;
     LOG_DEBUG(
         "Uploaded chip callable: chip_dev=0x%lx, size=%zu, child_count=%d, table_len=%u, hash=0x%lx", chip_dev,
@@ -2938,6 +2939,16 @@ int DeviceRunnerBase::unregister_callable(int32_t callable_id) {
 
 bool DeviceRunnerBase::has_callable(int32_t callable_id) const { return callables_.count(callable_id) != 0; }
 
+std::shared_ptr<void>
+DeviceRunnerBase::acquire_callable_calendar_cache(int32_t callable_id, std::shared_ptr<void> (*factory)()) {
+    const std::lock_guard<std::mutex> lock(callable_registration_mu_);
+    auto it = callables_.find(callable_id);
+    if (it == callables_.end() || it->second.host_dlopen_handle == nullptr) return {};
+    auto &cache = it->second.calendar_cache;
+    if (cache == nullptr) cache = factory();
+    return cache;
+}
+
 int DeviceRunnerBase::ensure_dma_workspace_provisioned() {
     if (dma_workspace_handle_ != nullptr) {
         return dma_workspace_failed_ ? COMM_RECLAMATION_UNCONFIRMED : 0;
@@ -3173,25 +3184,11 @@ int DeviceRunnerBase::validate_caller_submission_args(int32_t callable_id, const
     return 0;
 }
 
-bool DeviceRunnerBase::get_callable_async_capabilities(
-    int32_t callable_id, const CoreAsyncCapability **data, uint32_t *count
-) const {
-    if (data == nullptr || count == nullptr) return false;
-    *data = nullptr;
-    *count = 0;
-    const auto state = callables_.find(callable_id);
-    if (state == callables_.end()) return false;
-    const auto block = chip_callable_buffers_.find(state->second.chip_buffer_hash);
-    if (block == chip_callable_buffers_.end() || block->second.release_pending) return false;
-    const auto &tables = block->second;
-    if (tables.async_capabilities.size() != tables.table_len) return false;
-    *data = tables.async_capabilities.empty() ? nullptr : tables.async_capabilities.data();
-    *count = tables.table_len;
-    return true;
-}
-
 template <class RuntimeType>
-static void bind_runtime_input_cache_proofs(RuntimeType &runtime, const std::vector<CoreInputCacheProof> &proofs) {
+static void bind_runtime_kernel_proofs(
+    RuntimeType &runtime, const std::vector<CoreInputCacheProof> &proofs, const std::vector<uint8_t> &synchronous
+) {
+    if constexpr (std::string_view(SIMPLER_RUNTIME_NAME) == "percounter") runtime.bind_synchronous_kernels(synchronous);
     if constexpr (std::string_view(SIMPLER_RUNTIME_NAME) == "host_build_graph") {
         bind_registered_input_cache_proofs(runtime, proofs);
     }
@@ -3232,7 +3229,7 @@ int DeviceRunnerBase::bind_callable_to_runtime(
     // Tell the AICPU which orch_so_table_ slot this run dispatches. The orch SO
     // descriptor itself was delivered at register time via RegisterCallableArgs.
     runtime.set_active_callable_id(callable_id);
-    bind_runtime_input_cache_proofs(runtime, tables.input_cache_proofs);
+    bind_runtime_kernel_proofs(runtime, tables.input_cache_proofs, tables.synchronous_kernels);
 
     // Per-run binding (tensor args, GM heap, SM alloc). host_orch_func_ptr is
     // non-null only on the hbg path; signature is the cached ChipCallable
@@ -3884,6 +3881,19 @@ DeviceRunnerBase::device_run_result(uint32_t pipeline_slot, uint64_t run_epoch, 
     if (!device_run_result_published(region, run_epoch)) return nullptr;
     if (bytes_out != nullptr) *bytes_out = region.payload_bytes;
     return region.payload;
+}
+
+int DeviceRunnerBase::request_peer_cancel(uint32_t pipeline_slot, uint64_t run_epoch) {
+    if (run_epoch == 0) return PTO_RUNTIME_ERR_INVALID_STATE;
+    std::lock_guard<std::mutex> lock(run_result_mu_);
+    const auto it = run_result_storage_.find(run_epoch);
+    if (it == run_result_storage_.end() || it->second.pipeline_slot != pipeline_slot ||
+        it->second.lease.device_ptr == nullptr)
+        return PTO_RUNTIME_ERR_INVALID_STATE;
+    auto *storage = reinterpret_cast<NativeInvocationResultStorage *>(it->second.lease.device_ptr);
+    return rtMemcpy(
+        &storage->peer_cancel_epoch, sizeof(run_epoch), &run_epoch, sizeof(run_epoch), RT_MEMCPY_HOST_TO_DEVICE
+    );
 }
 
 int DeviceRunnerBase::ensure_device_run_result_region(

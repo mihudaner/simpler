@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Prepare the seven native PyPTO-lib cases."""
+"""Prepare the PyPTO-lib cases and the two single-device synthetic workloads."""
 
 import argparse
 import json
@@ -17,7 +17,10 @@ from pathlib import Path
 
 from device_start_gate import validate_runtime_gate
 from export_cases import export
+from full_wave_mix_chain import build_bundle
+from list_cases import DIAMOND, FULL_WAVE, MODEL_CASES
 from materialize import materialize
+from mpmd_diamond import build as build_diamond
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,11 +38,13 @@ def main():
         default=os.environ.get("DSV41_RUNNER"),
         help="Native runner used for capture, repacking and materialization",
     )
-    parser.add_argument("--flavor", choices=("pypto_lib_latest", "all"), default="pypto_lib_latest")
+    parser.add_argument("--flavor", choices=("all", "pypto_lib_latest", "synthetic"), default="all")
     parser.add_argument("--native-moe-bundle", type=Path, help="Reuse an existing compatible native MoE bundle")
     parser.add_argument("--runtime", choices=("host_build_graph", "percounter"), default="host_build_graph")
     parser.add_argument("--case", choices=["swa"], help="Prepare only the selected SWA slice")
     args = parser.parse_args()
+    if args.flavor == "synthetic" and args.case is not None:
+        parser.error("--case selects a model workload")
     output, build, runtime = args.output.resolve(), args.build_dir.resolve(), args.runtime_dir.resolve()
     runtime_files = (
         f"{args.runtime}/libhost_runtime.so",
@@ -50,16 +55,28 @@ def main():
     for name in runtime_files:
         if not (runtime / name).is_file():
             parser.error(f"Required production runtime file is missing: {runtime / name}")
-    try:
-        validate_runtime_gate(runtime, args.runtime)
-    except ValueError as exc:
-        parser.error(str(exc))
+    if args.flavor != "synthetic":
+        try:
+            validate_runtime_gate(runtime, args.runtime)
+        except ValueError as exc:
+            parser.error(str(exc))
     output.mkdir(parents=True, exist_ok=False)
     runner = (args.runner or build / "host/native-runner").resolve()
-    env = {**os.environ, "DSV41_RUNNER": str(runner)}
     (output / "runtime.json").write_text(
         json.dumps({"path": str(runtime), "runtime": args.runtime, "runner": str(runner)}, indent=2) + "\n"
     )
+    if args.flavor in ("all", "pypto_lib_latest"):
+        prepare_model_cases(output, build, runtime, args.runtime, runner, args.native_moe_bundle, args.case)
+    if args.flavor in ("all", "synthetic") and args.case is None:
+        build_bundle(output / "cases" / FULL_WAVE, args.runtime, runner)
+        variants = output / "diagnostics" / "mpmd_diamond"
+        build_diamond(variants, runner, args.runtime, ROOT.parents[2] / "build/pto-isa")
+        (variants / "balanced").rename(output / "cases" / DIAMOND)
+    print(f"Prepared cases: {output / 'cases'}")
+
+
+def prepare_model_cases(output, build, runtime, runtime_name, runner, moe_bundle, case):
+    env = {**os.environ, "DSV41_RUNNER": str(runner)}
     flavor = "pypto_lib_latest"
     bundle = build / "forward" / flavor
     capture = output / "capture" / flavor
@@ -73,16 +90,17 @@ def main():
             "1",
             "0",
             "1",
-            f"--runtime={args.runtime}",
+            f"--runtime={runtime_name}",
         ],
         env=env,
         check=True,
     )
-    cases = export(bundle, capture, flavor, output / "cases", build / "host", args.native_moe_bundle, args.case, runner)
+    cases = export(
+        bundle, capture, flavor, output / "cases", build / "host", moe_bundle, [case] if case else MODEL_CASES, runner
+    )
     for case in cases:
         if json.loads((case / "case.json").read_text())["device_count"] == 1:
-            materialize(case, runtime, output / "preparation" / flavor / case.name, env, args.runtime)
-    print(f"Prepared cases: {output / 'cases'}")
+            materialize(case, runtime, output / "preparation" / flavor / case.name, env, runtime_name)
 
 
 if __name__ == "__main__":

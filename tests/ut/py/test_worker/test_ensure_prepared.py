@@ -83,9 +83,11 @@ def test_a5_worker_register_enriches_only_the_uploaded_copy(monkeypatch):
     upload = chip_worker.register_callable.call_args.args[1]
     assert upload is not target
     assert ctypes.string_at(target.buffer_ptr(), target.buffer_size()) == original
+    expected_child = CoreCallable.build(signature=[], binary=code + footer)
+    expected = ctypes.string_at(expected_child.buffer_ptr(), expected_child.buffer_size())
     for index in range(2):
         child = upload.child(index)
-        assert ctypes.string_at(child.buffer_ptr(), child.buffer_size())[-len(footer + code) :] == footer + code
+        assert ctypes.string_at(child.buffer_ptr(), child.buffer_size()) == expected
 
 
 @pytest.mark.parametrize(
@@ -108,12 +110,20 @@ def test_each_upload_observes_the_current_decoder(monkeypatch, tmp_path):
     monkeypatch.setenv("ASCEND_HOME_PATH", str(tmp_path))
     tool = tmp_path / "bin/llvm-objdump"
     tool.parent.mkdir()
-    assert worker_module._chip_callable_for_upload(target, "a5", "host_build_graph") is target
+    deadline = worker_module._monotonic() + 5.0
+    assert (
+        worker_module._chip_callable_for_upload(target, "a5", "host_build_graph", analysis_deadline=deadline) is target
+    )
     tool.write_text("#!/bin/sh\nprintf '%s\\n' '0: 4061f000 RET'\n")
     tool.chmod(0o755)
-    assert worker_module._chip_callable_for_upload(target, "a5", "host_build_graph") is not target
+    assert (
+        worker_module._chip_callable_for_upload(target, "a5", "host_build_graph", analysis_deadline=deadline)
+        is not target
+    )
     tool.write_text("#!/bin/sh\nexit 1\n")
-    assert worker_module._chip_callable_for_upload(target, "a5", "host_build_graph") is target
+    assert (
+        worker_module._chip_callable_for_upload(target, "a5", "host_build_graph", analysis_deadline=deadline) is target
+    )
 
 
 def test_late_prepare_falls_back_when_its_short_analysis_budget_is_spent(monkeypatch):

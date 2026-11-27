@@ -14,7 +14,7 @@
     "edge_table_sha256": "0b4b8a5155d41caee68f6fbaffdbb5f6e2809f0127216dc8860c811d6ac90e39"
   },
   "archive": "engram.tar.xz",
-  "archive_sha256": "c9d41c1ceb23b803c9801cf3314f47612e6d539e94a8615941071625e2057d08",
+  "archive_sha256": "f028817587c16411672b4fa254b71060ed8184896f83c72046ce3e0c7edb18be",
   "files": {
     "case.json": "65ea17f3ff09de80577539a0efdf9225c148a7719c334961e67d7a1f27ea4b67",
     "input-rank0-0.bin": "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7",
@@ -112,6 +112,7 @@
     "snapshot-input-78.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
     "snapshot.txt": "89d8c3b37a1d94a22cb7e1768a19dc4d247dcf77ab2e8875f4d0ac69d3740e4d",
     "zero.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
-    "callable.bin": "d93a460784c3f68b40733c02ba23c1fea28d7ad8f549f7b24693aabc84d56c27"
-  }
+    "callable.bin": "037bf899c3d7c3d582df33279c3d2a10f887230f02472a7a729883ff430e4783"
+  },
+  "callable_wire_version": 2
 }

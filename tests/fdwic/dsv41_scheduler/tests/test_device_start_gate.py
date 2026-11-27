@@ -125,7 +125,14 @@ def test_prepare_passes_valid_snapshot_to_capture(tmp_path, gate, monkeypatch, s
     monkeypatch.setattr(sys, "argv", ["prepare.py", str(runtime), str(output), "--runner", str(runner), *selection])
     monkeypatch.setattr(prepare.subprocess, "run", lambda command, **kwargs: calls.append((command, kwargs["env"])))
     monkeypatch.setattr(prepare, "export", lambda *args: exporters.append(args[-1]) or [])
+    def build_diamond(variants, *args):
+        (variants / "balanced").mkdir(parents=True)
+
+    monkeypatch.setattr(prepare, "build_diamond", build_diamond)
+    monkeypatch.setattr(prepare, "build_bundle", lambda path, *args: path.mkdir(parents=True))
     prepare.main()
+    if "pypto_lib_latest" not in selection:
+        assert (output / "cases/synthetic/mpmd_diamond").is_dir()
     assert len(calls) == 1
     command, env = calls[0]
     assert command[3] == str(runtime) and Path(command[2]).name == "pypto_lib_latest"

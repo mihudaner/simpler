@@ -34,6 +34,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -45,7 +46,6 @@
 #include "common/platform_config.h"
 #include "aicpu/platform_aicpu_affinity.h"  // MAX_GATE_THREADS (aicpu_allowed_cpus bound)
 #include "callable_limits.h"
-#include "core_async_capability.h"
 #include "core_input_cache_proof.h"
 #include "task_args.h"
 #include "aicore_teardown.h"
@@ -243,6 +243,9 @@ struct alignas(64) SchedulerBootstrapInputs {
     volatile uint32_t runtime_mode;         // A5 HBG: SCHEDULER_RUNTIME_MODE_*; 0 = none published
     volatile uint32_t reserved_;            // keeps worker_context_base 8-byte aligned
     volatile uint64_t worker_context_base;  // device address of worker 0's SchedulerWorkerContext, 0 when unused
+    uint64_t context_ready_address;         // Optional A5 READY generation, sampled before reporting this launch.
+    uint64_t lifecycle_notify_address;      // A5 calendar START/EXIT broadcast, owned by this run.
+    uint64_t rejected_exit_address;         // Launch-cleared per-worker slots for A5 calendar discovery failures.
 };
 
 static_assert(sizeof(SchedulerBootstrapInputs) == 64);
@@ -413,7 +416,6 @@ private:
         // the first is a host pointer, and because the host lookup must not
         // reach for the device address `dev` carries.
         const uint64_t *callable_table_host_;
-        const CoreAsyncCapability *callable_async_capabilities_;
         uint64_t callable_entry_table_addr_;
 
         // Host-side tensor ledger for the run's H2D and D2H transfers.
@@ -455,10 +457,12 @@ private:
             std::vector<HbgImageReference> image_references;
             std::vector<MetadataRegion> prerequisites;
             std::vector<std::shared_ptr<const void>> resources;
+            std::function<void(const struct HostApi &)> on_execution_complete;
         };
         RunImagePublication pending_publication_;
         std::shared_ptr<const RunImagePublication> prepared_publication_;
         const CoreInputCacheProof *callable_input_cache_proofs_{nullptr};
+        const uint8_t *synchronous_kernels_{nullptr};
     };
     HostOnlyState host_;
 
@@ -501,6 +505,9 @@ public:
     }
     void retain_pending_resource(std::shared_ptr<const void> resource) {
         host_.pending_publication_.resources.push_back(std::move(resource));
+    }
+    void on_pending_execution_complete(std::function<void(const struct HostApi &)> callback) {
+        host_.pending_publication_.on_execution_complete = std::move(callback);
     }
     using RunImagePublication = HostOnlyState::RunImagePublication;
     void restore_pending_publication(RunImagePublication publication) {
@@ -556,9 +563,15 @@ public:
     // through here: a resident base surviving a legacy selection would name an
     // allocation that selection has already released, and a resident mode
     // without its base would send each AICore to a null context.
-    void publish_scheduler_bootstrap(uint32_t mode, uint64_t worker_context_base) {
+    void publish_scheduler_bootstrap(
+        uint32_t mode, uint64_t worker_context_base, uint64_t context_ready_address = 0,
+        uint64_t lifecycle_notify_address = 0, uint64_t rejected_exit_address = 0
+    ) {
         dev.scheduler_bootstrap.runtime_mode = mode;
         dev.scheduler_bootstrap.worker_context_base = worker_context_base;
+        dev.scheduler_bootstrap.context_ready_address = context_ready_address;
+        dev.scheduler_bootstrap.lifecycle_notify_address = lifecycle_notify_address;
+        dev.scheduler_bootstrap.rejected_exit_address = rejected_exit_address;
     }
     AicoreTeardownControl *get_teardown_gates() {
         return reinterpret_cast<RuntimeSharedState *>(dev.shared_state_addr)->teardown_gates;
@@ -630,8 +643,8 @@ public:
      * the descriptor carries is never dereferenced here.
      */
     uint64_t get_function_bin_addr(int func_id) const;
-    CoreAsyncCapability get_function_async_capability(int func_id) const;
-    bool bind_callable_async_capabilities(const struct HostApi &api);
+    bool function_completes_on_return(int func_id) const;
+    void bind_synchronous_kernels(const std::vector<uint8_t> &declarations);
     const CoreInputCacheProof *get_function_input_cache_proof(int func_id) const;
     friend void bind_registered_input_cache_proofs(Runtime &runtime, const std::vector<CoreInputCacheProof> &proofs);
 

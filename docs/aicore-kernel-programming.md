@@ -133,8 +133,31 @@ safe result copy-back even after AICPU reports a completed drain. The original
 code and drain result remain in device logs; this contract does not promise
 Host code recovery or reuse through that platform failure path.
 
-SDMA and registered counters are covered locally; cross-rank cancellation,
-HBG and A5 require their own protocols. Checks belong before the unsafe
+For a registered peer-notification counter, failure cleanup waits for the
+actual expected value; it never sets the counter to bypass a missing peer.
+A notification that arrives after local failure can finish this drain without
+releasing the failed task's consumers or changing its original error. If the
+notification never arrives, the drain deadline leaves `complete=0` and the
+failed run remains isolated. Even `complete=1` only covers the registered local
+conditions: it does not certify that every peer has stopped accessing the
+communication window. Cleanup cannot interrupt a kernel blocked inside `TWAIT`;
+the kernel must return before the finalizer can drain its records. Use
+cooperative polling or deferred completion for waits that require cancellation.
+
+For A2/A3 TMR ChipWorkers directly managed by the same local L3 Worker, a
+failed task requests cancellation of the other active tasks in that L3 run.
+The parent checks each mailbox entry's identity before publishing the request.
+The native wait forwards it with the invocation epoch; AICPU periodically
+checks it even while scheduling makes progress. An old epoch is ignored.
+The peer reports runtime error 108 (`SIMPLER_ERROR_PEER_RUN_FAILED`) unless
+an earlier local error already owns the primary result. This is a runtime
+status, not an additional value accepted by `report_kernel_error`.
+
+Cancellation uses the same cooperative core exit and registered-request drain.
+It does not manufacture missing notifications, prove remote retirement, or
+make a failed Worker reusable. AICPU/stream failure and failed-output isolation
+remain in force. Remote or nested L3 propagation, HBG, A5 and direct Kernel
+mode require separate cancellation protocols. Checks belong before the unsafe
 operation and must respect the operator's valid shape, masking, and index
 semantics. The runtime does not insert checks into existing kernels.
 
@@ -198,7 +221,9 @@ When the device reports 24 clusters and a task requests one logical block,
 that task does not execute once on every physical cluster. Multiple logical
 blocks can be dispatched in batches as compatible cores become available.
 `require_sync_start` requests admission of one task's fitting cohort; it does
-not reserve resources for another task or a remote producer. See the
+not reserve resources for another task or a remote producer. Cohort blocks
+can enter at different times. A kernel that requires a rendezvous between
+blocks must perform that synchronization itself. See the
 [TMR task dependency and progress constraints](aicore-kernel-programming/task-progress.md)
 before adding waits between logical blocks or tasks.
 

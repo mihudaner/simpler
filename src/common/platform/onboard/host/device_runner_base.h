@@ -1270,6 +1270,8 @@ public:
      * those, not the second — nothing was copied, so nothing was lost.
      */
     RunRecordRead device_run_result_read_status(uint32_t pipeline_slot, uint64_t run_epoch) const;
+    int request_peer_cancel(uint32_t pipeline_slot, uint64_t run_epoch);
+    int peer_cancel_wait_timeout_ms() const { return timeout_config_.stream_sync_timeout_ms; }
 
     /**
      * The boundary completion this run's own drain or poll observed, or
@@ -1347,7 +1349,6 @@ public:
      * @return Device GM address of the ChipCallable header, or 0 on failure.
      */
     uint64_t upload_chip_callable_buffer(const ChipCallable *callable);
-    bool get_callable_async_capabilities(int32_t callable_id, const CoreAsyncCapability **data, uint32_t *count) const;
     int release_chip_callable_buffer(uint64_t hash);
 
     /**
@@ -1395,6 +1396,7 @@ public:
      * @return 0 on success or if the id was not registered.
      */
     int unregister_callable(int32_t callable_id);
+    std::shared_ptr<void> acquire_callable_calendar_cache(int32_t callable_id, std::shared_ptr<void> (*factory)());
 
     /**
      * True iff `callable_id` has registered state staged via
@@ -2898,8 +2900,8 @@ protected:
         // never CHIP_MAX_FUNC_ID: the content hash covers the child func_ids
         // and offsets, so every cid sharing this entry has exactly this table.
         std::vector<uint64_t> object_table;
-        std::vector<CoreAsyncCapability> async_capabilities;
         std::vector<CoreInputCacheProof> input_cache_proofs;
+        std::vector<uint8_t> synchronous_kernels;
         uint64_t object_table_dev{0};
         // The same domain resolved to kernel-entry addresses, present only on a
         // runtime whose device scheduler dispatches from them.
@@ -2933,6 +2935,7 @@ protected:
         // hbg path (host already dlopen'd the orch SO)
         void *host_dlopen_handle{nullptr};
         void *host_orch_func_ptr{nullptr};
+        std::shared_ptr<void> calendar_cache;
     };
     std::unordered_map<int32_t, CallableState> callables_;
     // Held by every registration/unregistration entry point and by

@@ -40,22 +40,22 @@
     {
       "source": "src/a5/platform/sim/host/CMakeLists.txt",
       "destination": "src/wse/platform/sim/host/CMakeLists.txt",
-      "sha256": "61bdbc742386c9301a668988162821f8e37a575709e7a230652134a9642d70fc"
+      "sha256": "e81d02e439a8e56259f54fca11a329015a0eea36bfcda0d6f742c73246969d5d"
     },
     {
       "source": "src/a5/platform/sim/host/device_runner.cpp",
       "destination": "src/wse/platform/sim/host/device_runner.cpp",
-      "sha256": "4f43901633ceee71fed1310520fdc713aba447f48b39097d0ad99f7f255a226b"
+      "sha256": "899d61d457c29d76a7b9f49315989394523058ac154efdb9b40041626e41a656"
     },
     {
       "source": "src/a5/platform/sim/host/device_runner.h",
       "destination": "src/wse/platform/sim/host/device_runner.h",
-      "sha256": "21c5f0dfbcfdfface247f515b38ba20c954d6927fc791cbd544552ccc8265a7c"
+      "sha256": "cfa6676b9b03820390f24da334dc59cdf27ccf92efed452c544d460d1f309a94"
     },
     {
       "source": "src/a5/platform/sim/host/runtime_c_api.cpp",
       "destination": "src/wse/platform/sim/host/runtime_c_api.cpp",
-      "sha256": "f9568d33d073957980727f2a438c54456d53cedc25104390edf775d178518771"
+      "sha256": "47dd456e711679baa0f9aee4aaa8f5148a0cf2ed6395ac8bdf02e7690c8034bd"
     },
     {
       "source": "src/a5/runtime/host_build_graph/build_config.py",
@@ -68,19 +68,25 @@
       "sha256": "547bd7a6a1b1e41208365bb287e3212f6290715d2b58253ac1213ebacda58057"
     },
     {
+      "source": "src/a5/runtime/host_build_graph/host/calendar_plan.h",
+      "source_revision": "31fcd9d834a51aa143781923362a6fa20c3a75f0",
+      "destination": "src/wse/runtime/host_build_graph/host/calendar_plan.h",
+      "sha256": "2b00d1edca68b13fd755a2a5725bd619a31850eafa3bda15db606a76ed690145"
+    },
+    {
       "source": "src/a5/runtime/host_build_graph/host/native_graph_plan.cpp",
       "destination": "src/wse/runtime/host_build_graph/host/native_graph_plan.cpp",
-      "sha256": "b76d4bc195fab7471846694fccbae0e0e83eec1f4f910a41205fbd413dd3c649"
+      "sha256": "9772a4c98a63e7f032887a58ea8cf5fe791a9e2f437a7fe13f2573fb0030cd1b"
     },
     {
       "source": "src/a5/runtime/host_build_graph/host/native_graph_plan.h",
       "destination": "src/wse/runtime/host_build_graph/host/native_graph_plan.h",
-      "sha256": "b9dcd5af87b05d6808c5200bac4ab2fd2528915d6437766eeda9e4c7a06e639c"
+      "sha256": "76a1864a736d0f7e17994d116d2614b54e1c8a4f0edc8832a3ce5b4cf4bced47"
     },
     {
       "source": "src/a5/runtime/host_build_graph/host/runtime_maker.cpp",
       "destination": "src/wse/runtime/host_build_graph/host/runtime_maker.cpp",
-      "sha256": "de6a2cdf66323d9c01fb41f6a28a52227aff71ced5874a1cd2db759cc9c68614"
+      "sha256": "2699f4a3b2fdb7023fe34b3195e2a17caf154adb923f8a1f51f80411420c1212"
     },
     {
       "source": "src/a5/runtime/host_build_graph/runtime/aicore_completion_mailbox.h",
@@ -141,7 +147,7 @@
       "source": "tests/st/a5/host_build_graph/vector_example/kernels/orchestration/example_orch.cpp",
       "destination": "tests/st/wse/host_build_graph/vector_example/kernels/orchestration/example_orch.cpp",
       "source_commit": "8a78542bda22d69d51cf88b5f95b5ba79de46e19",
-      "sha256": "b240fc91ff48a3b43868a3df7f410cc44cac9ecd81d7eaa5c48911674eee2efe"
+      "sha256": "de679f81ce2de0ed0907d3a47577e1243754c590da75b423235514b3458f3236"
     },
     {
       "source": "tests/st/a5/host_build_graph/vector_example/kernels/aiv/kernel_add_scalar.cpp",
@@ -171,7 +177,13 @@
       "source": "tests/st/a5/host_build_graph/predicated_dispatch/test_predicated_dispatch.py",
       "destination": "tests/st/wse/host_build_graph/direct_launch/test_predicate.py",
       "source_commit": "8a78542bda22d69d51cf88b5f95b5ba79de46e19",
-      "sha256": "54bfcfbb919155a6e6a0c3623c70883be05b0e0e675aa4fe8495017a3095b431"
+      "sha256": "e851497edcfa349fc3c6a264c36086231e08bd09bc8170afe2fa3a26d3584361"
+    },
+    {
+      "source": "tests/st/a5/host_build_graph/predicated_dispatch/kernels/orchestration/predicated_dispatch_orch.cpp",
+      "destination": "tests/st/wse/host_build_graph/direct_launch/kernels/predicate_orch.cpp",
+      "source_commit": "df65739f3266334e21bec08a5488cd6663f9d0fa",
+      "sha256": "e72a5c84fa8cc9586e3fbc6bd85bb03e437fb5f0fd1a0115afc7c4ed754db8fa"
     }
   ],
   "derivation_baseline": "a3a951a1f9ef4dd898b254dc88f233b9cfac0b32",
@@ -221,10 +233,6 @@
     {
       "source": "tests/st/a5/host_build_graph/predicated_dispatch/kernels/aic/kernel_write_const.cpp",
       "sha256": "74abaf7aaf19db0347be56e174df0ae2166178553aa2cba0a25f0bfa7bb8370b"
-    },
-    {
-      "source": "tests/st/a5/host_build_graph/predicated_dispatch/kernels/orchestration/predicated_dispatch_orch.cpp",
-      "sha256": "db2af41e502fb952fc7133d4aa8f7d850208a4b3cc3539c9c79ed13820d1efd0"
     },
     {
       "source": "src/a5/platform/include/common/kernel_args.h",

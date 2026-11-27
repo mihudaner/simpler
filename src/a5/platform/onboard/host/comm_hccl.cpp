@@ -25,6 +25,7 @@
 #include "platform_comm/comm.h"
 #include "platform_comm/comm_context.h"
 #include "platform_comm/comm_domain_onboard.h"
+#include "platform_comm/urma_workspace_layout.h"
 #include "platform_comm/ccu/ccu_domain_owner.h"
 #include "ccu_domain_backend_hcomm.h"
 #include "task_interface/ccu_module_package.h"
@@ -32,6 +33,7 @@
 #include "common/unified_log.h"
 #include "common/platform_config.h"
 #include "host/file_marker_handshake.h"
+#include "host/comm_generation_lease.h"
 #include "host/raii_scope_guard.h"
 #include "host/runtime_timeout_config.h"
 
@@ -177,6 +179,10 @@ struct CommHandle_ {
     int nranks;
     std::string rootinfo_path;
     uint64_t run_token = 0;
+    file_marker_handshake::GenerationLease generation_lease;
+    bool domain_admission_stopped = false;
+    bool domain_release_failed = false;
+    std::optional<uint64_t> last_allocation_id;
 
     // Caller-owned: supplied to comm_init, never created or destroyed here.
     aclrtStream stream = nullptr;
@@ -187,12 +193,13 @@ struct CommHandle_ {
     bool owns_device_ctx = false;
     std::vector<CommContext *> derived_contexts;
     std::map<uint64_t, std::unique_ptr<DomainAllocation>> domain_allocations;
-    std::unordered_set<uint64_t> used_domain_ids;
     std::map<uint64_t, std::unique_ptr<CcuCallableRegistration>> ccu_registrations;
     uint64_t next_ccu_registration = 1;
     std::map<uint64_t, CcuRunSet> ccu_run_sets;
     uint64_t next_ccu_run_set = 1;
     simpler::ccu::HcommMissionStreamPool ccu_stream_pool;
+    std::unordered_set<uint64_t> ccu_abort_pending_registrations;
+    bool ccu_admission_closed = false;
     bool cleanup_failed = false;
     pto::comm::Workspace sdma_workspace{};
     void *sdma_workspace_addr = nullptr;
@@ -247,8 +254,18 @@ barrier_marker_path(const std::string &rootinfo_path, uint64_t run_token, const 
     return file_marker_handshake::marker_path(rootinfo_path, run_token, tag, rank);
 }
 
-static void cleanup_handshake_files(const std::string &rootinfo_path) {
-    (void)file_marker_handshake::cleanup(rootinfo_path);
+static void log_marker_error(const file_marker_handshake::Result &result) {
+    LOG_ERROR(
+        "[comm] marker failure stage=%s rank=%d path=%s errno=%d failures=%zu",
+        file_marker_handshake::stage_name(result.stage), result.rank, result.path.c_str(), result.system_error.value(),
+        result.failure_count
+    );
+}
+
+static bool cleanup_handshake_files(const std::string &rootinfo_path) {
+    const auto result = file_marker_handshake::cleanup(rootinfo_path);
+    if (!result.ok()) log_marker_error(result);
+    return result.ok();
 }
 
 static bool
@@ -394,6 +411,11 @@ extern "C" CommHandle comm_init(int rank, int nranks, void *stream, const char *
     h->nranks = nranks;
     h->rootinfo_path = rootinfo_path;
     h->stream = static_cast<aclrtStream>(stream);
+    if (!h->generation_lease.acquire(h->rootinfo_path)) {
+        LOG_ERROR("[comm rank %d] generation lease unavailable: %s", rank, rootinfo_path);
+        delete h;
+        return nullptr;
+    }
 
     // NOTE: aclInit / aclrtSetDevice / stream creation are intentionally NOT
     // performed here — the caller (DeviceRunner::ensure_acl_ready + a stream
@@ -404,7 +426,10 @@ extern "C" CommHandle comm_init(int rank, int nranks, void *stream, const char *
     // RootInfo exchange
     HcclRootInfo rootInfo{};
     if (rank == 0) {
-        cleanup_handshake_files(h->rootinfo_path);
+        if (!cleanup_handshake_files(h->rootinfo_path)) {
+            delete h;
+            return nullptr;
+        }
         h->run_token = make_run_token(rank);
         HcclResult hret = hccl_get_root_info(&rootInfo);
         if (hret != HCCL_SUCCESS) {
@@ -973,7 +998,9 @@ static int init_urma_workspace(
         LOG_ERROR("[comm rank %d] URMA GetWorkspaceSize rejected configuration", h->rank);
         return COMM_DOMAIN_URMA_INIT_FAILED;
     }
-    if (aclrtMalloc(&alloc.urma_workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
+    const uint64_t allocation_size = simpler::urma::sender_view_offset(workspace_size, alloc.urma_aiv_count);
+    if (allocation_size == UINT64_MAX ||
+        aclrtMalloc(&alloc.urma_workspace_addr, allocation_size, ACL_MEM_MALLOC_HUGE_FIRST) != ACL_SUCCESS) {
         return COMM_DOMAIN_URMA_INIT_FAILED;
     }
     pto::comm::Workspace workspace{};
@@ -992,9 +1019,14 @@ static int init_urma_workspace(
         return COMM_DOMAIN_URMA_INIT_FAILED;
     }
     alloc.urma_workspace = workspace;
-    if (alloc.urma_workspace.addr == nullptr || alloc.urma_workspace.bytes == 0) {
+    if (workspace.addr != alloc.urma_workspace_addr || workspace.bytes == 0 || workspace.bytes > workspace_size) {
         LOG_ERROR("[comm rank %d] URMA manager returned an invalid workspace descriptor", h->rank);
         return COMM_DOMAIN_URMA_WORKSPACE_INVALID;
+    }
+    const uint64_t views_offset = simpler::urma::sender_view_offset(workspace.bytes, 0);
+    const uint64_t views_size = allocation_size - views_offset;
+    if (aclrtMemset(static_cast<uint8_t *>(workspace.addr) + views_offset, views_size, 0, views_size) != ACL_SUCCESS) {
+        return COMM_DOMAIN_URMA_INIT_FAILED;
     }
     return 0;
 } catch (const std::exception &e) {
@@ -2308,7 +2340,7 @@ static int allocate_domain_windows(
         (!urma_requested && (jetties != 1 || depth != 0))) {
         return COMM_DOMAIN_URMA_CONFIG_INVALID;
     }
-    if (h->used_domain_ids.count(allocation_id) > 0) {
+    if (h->last_allocation_id && allocation_id <= *h->last_allocation_id) {
         LOG_ERROR(
             "[comm rank %d] alloc_domain: allocation_id=%llu already used", h->rank,
             static_cast<unsigned long long>(allocation_id)
@@ -2335,6 +2367,7 @@ static int allocate_domain_windows(
         publish_host_cleanup_failure(h);
         return COMM_RECLAMATION_UNCONFIRMED;
     }
+    if (h->domain_admission_stopped) return COMM_DOMAIN_ADMISSION_STOPPED;
     uint32_t aiv_count = pto::comm::urma::kUrmaAutoAivCount;
     if (urma_requested) {
         aiv_count = pto::comm::urma::UrmaWorkspaceManager::QueryDeviceAivCount();
@@ -2349,7 +2382,8 @@ static int allocate_domain_windows(
             return COMM_DOMAIN_URMA_CONFIG_INVALID;
         }
     }
-    h->used_domain_ids.insert(allocation_id);
+    h->last_allocation_id = allocation_id;
+    h->domain_admission_stopped = true;
     auto entry = h->domain_allocations.emplace(allocation_id, std::make_unique<DomainAllocation>()).first;
     auto &alloc = entry->second;
     alloc->workspace_config = config;
@@ -2383,6 +2417,7 @@ static int allocate_domain_windows(
     *device_ctx_out = reinterpret_cast<uint64_t>(alloc->device_ctx);
     *local_window_base_out = reinterpret_cast<uint64_t>(alloc->local_buf);
     *actual_window_size_out = alloc->mapping_size;
+    h->domain_admission_stopped = false;
     return 0;
 } catch (const std::exception &e) {
     LOG_ERROR("[comm] alloc_domain: exception: %s", e.what());
@@ -2429,7 +2464,7 @@ extern "C" int comm_register_ccu_callable(
         if (h == nullptr || module_package == nullptr || module_package_size == 0 || sdk_build_id == nullptr ||
             pto_isa_build_id == nullptr || registration_id == nullptr || rank_ids == nullptr || rank_count < 2 ||
             domain_rank >= rank_count || rank_ids[domain_rank] != static_cast<uint32_t>(h->rank) || h->cleanup_failed ||
-            (workspace_mask & comm_workspace_bit(CommWorkspaceKind::CCU)) == 0 ||
+            h->ccu_admission_closed || (workspace_mask & comm_workspace_bit(CommWorkspaceKind::CCU)) == 0 ||
             rank_count != static_cast<size_t>(h->nranks))
             return -1;
         const std::vector<uint32_t> ranks(rank_ids, rank_ids + rank_count);
@@ -2499,6 +2534,7 @@ extern "C" int comm_register_domain_ccu(
     uint64_t pending = 0;
     try {
         if (h && h->cleanup_failed) return COMM_RECLAMATION_UNCONFIRMED;
+        if (h && h->ccu_admission_closed) return -1;
         if (!h || !module_package || !module_package_size || !sdk_build_id || !pto_isa_build_id || !registration_id ||
             ccu_id == UINT32_MAX)
             return -1;
@@ -2566,6 +2602,7 @@ extern "C" int comm_register_domain_ccu(
 
 extern "C" int comm_release_ccu_registration(CommHandle h, uint64_t id) try {
     if (!h || h->cleanup_failed) return -1;
+    if (h->ccu_abort_pending_registrations.count(id)) return COMM_RECLAMATION_UNCONFIRMED;
     auto found = h->ccu_registrations.find(id);
     if (found == h->ccu_registrations.end()) return -1;
     auto &registration = *found->second;
@@ -2607,12 +2644,34 @@ static bool release_ccu_set_storage(CcuRunSet &run) {
     return true;
 }
 
+static int abort_ccu_registration(CommHandle h, uint64_t registration_id) {
+    h->ccu_admission_closed = true;
+    try {
+        auto &session = *h->ccu_registrations.at(registration_id)->session;
+        if (session.abort()) {
+            h->ccu_abort_pending_registrations.erase(registration_id);
+            return 0;
+        }
+        if (session.abort_pending()) {
+            h->ccu_abort_pending_registrations.insert(registration_id);
+            return 1;
+        }
+    } catch (const std::exception &error) {
+        LOG_ERROR("[comm] CCU abort failed: %s", error.what());
+    } catch (...) {}
+    h->ccu_abort_pending_registrations.erase(registration_id);
+    h->cleanup_failed = true;
+    return COMM_RECLAMATION_UNCONFIRMED;
+}
+
 extern "C" int comm_prepare_ccu_run_set(
     CommHandle h, const uint64_t *ids, size_t count, uint64_t generation, uint64_t *set_id, uint64_t *workspace
 ) {
     uint64_t pending = 0;
     try {
-        if (!h || h->cleanup_failed || !ids || !count || !generation || !set_id || !workspace) return -1;
+        if (!h || h->cleanup_failed || h->ccu_admission_closed || !ids || !count || !generation || !set_id ||
+            !workspace)
+            return -1;
         std::set<uint64_t> unique(ids, ids + count);
         std::set<std::pair<uint64_t, uint32_t>> locations;
         for (auto id : unique) {
@@ -2696,7 +2755,7 @@ extern "C" int comm_control_ccu_run_set(CommHandle h, uint64_t id, uint32_t oper
     if (found == h->ccu_run_sets.end()) return -1;
     auto &run = found->second;
     if (operation == 1) {
-        if (h->cleanup_failed || run.activated) return -1;
+        if (h->cleanup_failed || h->ccu_admission_closed || run.activated) return -1;
         for (const auto &[other_id, other] : h->ccu_run_sets)
             if (other_id != id && other.activated) return -1;
         for (auto registration_id : run.registrations)
@@ -2731,18 +2790,19 @@ extern "C" int comm_control_ccu_run_set(CommHandle h, uint64_t id, uint32_t oper
         return complete ? 0 : 1;
     }
     if (operation == 4) {
-        h->cleanup_failed = true;
+        h->ccu_admission_closed = true;
+        int result = 0;
         for (auto registration_id : run.registrations) {
-            try {
-                h->ccu_registrations.at(registration_id)->session->abort();
-            } catch (...) {}
+            const int rc = abort_ccu_registration(h, registration_id);
+            if (rc < 0 || result == 0) result = rc;
         }
-        return COMM_RECLAMATION_UNCONFIRMED;
+        return result;
     }
     if (operation == 7) {
         for (auto registration_id : run.registrations) {
             auto &registration = *h->ccu_registrations.at(registration_id);
-            if (run.activated && !registration.owner->drained()) return COMM_RECLAMATION_UNCONFIRMED;
+            if ((run.activated || h->ccu_admission_closed) && !registration.owner->drained())
+                return COMM_RECLAMATION_UNCONFIRMED;
         }
         for (auto &[allocation_id, table] : run.domain_controls) {
             auto &allocation = *h->domain_allocations.at(allocation_id);
@@ -2767,13 +2827,17 @@ extern "C" int comm_control_ccu_run_set(CommHandle h, uint64_t id, uint32_t oper
     return -1;
 } catch (const std::exception &error) {
     LOG_ERROR("[comm] CCU set control failed: %s", error.what());
+    if (h) {
+        h->ccu_admission_closed = true;
+        if (operation == 4 || operation == 7) h->cleanup_failed = true;
+    }
     return COMM_RECLAMATION_UNCONFIRMED;
 }
 
 extern "C" int comm_prepare_ccu_run(
     CommHandle h, uint64_t registration_id, uint64_t generation, uint64_t allocation_id, uint64_t *workspace
 ) try {
-    if (!h || h->cleanup_failed) return -1;
+    if (!h || h->cleanup_failed || h->ccu_admission_closed) return -1;
     auto registered = h->ccu_registrations.find(registration_id);
     if (workspace == nullptr || registered == h->ccu_registrations.end()) return -1;
     auto &registration = *registered->second;
@@ -2808,6 +2872,7 @@ comm_control_ccu_run(CommHandle h, uint64_t registration_id, uint32_t operation,
     case 8:
         return static_cast<int>(h->ccu_registrations.size());
     case 1: {
+        if (h->cleanup_failed || h->ccu_admission_closed) return -1;
         for (const auto &entry : h->ccu_registrations)
             if (!entry.second->owner->drained()) return -1;
         auto prepared = registration.prepared_allocations.find(generation);
@@ -2831,7 +2896,7 @@ comm_control_ccu_run(CommHandle h, uint64_t registration_id, uint32_t operation,
                     allocation.ccu_workspace_addr, sizeof(workspace), &workspace, sizeof(workspace),
                     ACL_MEMCPY_HOST_TO_DEVICE
                 ) != ACL_SUCCESS) {
-                registration.session->abort();
+                h->ccu_admission_closed = true;
                 return COMM_RECLAMATION_UNCONFIRMED;
             }
         }
@@ -2842,9 +2907,9 @@ comm_control_ccu_run(CommHandle h, uint64_t registration_id, uint32_t operation,
     case 9:
         return registration.session->finish_completed_requests() ? 0 : 1;
     case 4:
-        registration.session->abort();
-        return COMM_RECLAMATION_UNCONFIRMED;
+        return abort_ccu_registration(h, registration_id);
     case 7:
+        if (h->ccu_admission_closed && !registration.owner->drained()) return COMM_RECLAMATION_UNCONFIRMED;
         for (auto &entry : h->domain_allocations) {
             auto &allocation = *entry.second;
             auto &workspace = allocation.ccu_workspace;
@@ -2869,6 +2934,10 @@ comm_control_ccu_run(CommHandle h, uint64_t registration_id, uint32_t operation,
     }
 } catch (const std::exception &error) {
     LOG_ERROR("[comm] CCU control failed: %s", error.what());
+    if (h) {
+        h->ccu_admission_closed = true;
+        if (operation == 4 || operation == 7) h->cleanup_failed = true;
+    }
     return COMM_RECLAMATION_UNCONFIRMED;
 }
 
@@ -2897,7 +2966,10 @@ static int release_domain_windows(
         publish_host_cleanup_failure(h);
         return COMM_RECLAMATION_UNCONFIRMED;
     }
+    if (!h->ccu_abort_pending_registrations.empty()) return COMM_RECLAMATION_UNCONFIRMED;
     if (collective && !alloc->initialized) return COMM_INITIALIZATION_ABORT_REQUIRED;
+    const bool prior_admission_stopped = h->domain_admission_stopped;
+    h->domain_admission_stopped = true;
     if (!domain_drained(*alloc) ||
         (collective && !file_barrier(
                            h->rootinfo_path, static_cast<int>(domain_rank), static_cast<int>(rank_count),
@@ -2915,8 +2987,25 @@ static int release_domain_windows(
             entry = h->ccu_registrations.erase(entry);
         else ++entry;
     }
+    int marker_rc = 0;
+    if (collective) {
+        const auto retired = file_marker_handshake::retire_allocation(
+            h->rootinfo_path, static_cast<int>(domain_rank), static_cast<int>(rank_count), h->run_token, allocation_id
+        );
+        if (!retired.ok()) {
+            log_marker_error(retired);
+            if (retired.stage != file_marker_handshake::Stage::CLEANUP) {
+                h->cleanup_failed = true;
+                return COMM_RECLAMATION_UNCONFIRMED;
+            }
+            h->domain_release_failed = true;
+            marker_rc = -1;
+        }
+    }
     h->domain_allocations.erase(it);
-    return 0;
+    h->domain_admission_stopped =
+        h->domain_release_failed || (prior_admission_stopped && (collective || h->last_allocation_id != allocation_id));
+    return marker_rc;
 } catch (const std::exception &e) {
     LOG_ERROR("[comm] release_domain: exception: %s", e.what());
     if (h) h->cleanup_failed = true;
@@ -2962,6 +3051,7 @@ extern "C" int comm_destroy(CommHandle h) try {
         publish_host_cleanup_failure(h);
         return COMM_RECLAMATION_UNCONFIRMED;
     }
+    if (!h->ccu_abort_pending_registrations.empty()) return COMM_RECLAMATION_UNCONFIRMED;
     h->cleanup_failed = true;
     const auto unconfirmed = [h] {
         publish_host_cleanup_failure(h);
@@ -3026,6 +3116,7 @@ extern "C" int comm_destroy(CommHandle h) try {
         const auto destroy_release =
             file_marker_handshake::release_after_cleanup(h->rootinfo_path, h->rank, h->nranks, h->run_token, options);
         if (!destroy_release.ok()) {
+            log_marker_error(destroy_release);
             LOG_WARN(
                 "[comm rank %d] comm_destroy: final release failed during %s for rank %d", h->rank,
                 file_marker_handshake::stage_name(destroy_release.stage), destroy_release.rank

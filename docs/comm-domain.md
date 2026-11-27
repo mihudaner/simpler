@@ -401,6 +401,14 @@ controls on its native chip binding. Failed initialization leaves the loop's
 previous handle unchanged. Native
 finalization retains ownership of communicator teardown.
 
+Simulator communication paths use a private directory per startup token and
+owner process group. Worker teardown scans only those owned directories after
+their readers exit, without scanning `/tmp`. It also reclaims rootinfo and barrier
+files left by failed initialization, including temporary files, and removes empty
+directories. Failed cleanup remains tracked for retry.
+Onboard communicators use the
+[leased generation lifecycle](#file-handshake-retirement-on-onboard-backends).
+
 Consequently, when a `Worker` runs multiple times, or `allocate_domain` is
 called many times:
 
@@ -750,6 +758,19 @@ Confirmed cleanup preserves successful execution and returns streams to the pool
 failed confirmation retains resources and reports failure. L2 finalization
 releases the pool after HCOMM registration resources.
 
+A failed CCU run permanently closes admission, even when stopping its missions
+succeeds. Terminal Worker cleanup first checks that every participating chip's
+native execution has ended, then confirms SDK stops across the participants
+before discarding run storage and releasing domains and buffers. An execution
+error remains the run's result; it does not by itself prevent successful close.
+Missing acknowledgements and visible SDK stop/query/destroy errors retain the
+affected owners and report unconfirmed cleanup.
+
+Simpler uses public SDK results for this boundary. It releases its own memory
+and public handles in ownership order; assigned CCU instances are destroyed by
+their owning communicator. Physical CCU resource reclamation remains the SDK's
+responsibility, with no additional driver-internal release performed by simpler.
+
 See [the native CCU contract](design/ccu-native-abi.md) for ABI versioning,
 registration ownership and stream-stop confirmation.
 
@@ -963,3 +984,52 @@ simpler stays framework-free — torch/numpy appear only on the caller's side.
 - `examples/a2a3/tensormap_and_ringbuffer/sdma_async_completion_demo/` — host
   staging via `copy_to` + cross-rank `SdmaTget`; the SDMA workspace is
   provisioned by constructing the `Worker` with `enable_sdma=True`.
+
+### File-handshake retirement on onboard backends
+
+A2/A3 and A5 dynamic allocation IDs increase strictly within each base
+communicator. Reusing or decreasing an ID is rejected before publishing files.
+The Worker allocates these IDs monotonically. Native callers serialize calls
+on a communicator and use the same ordering contract.
+
+After the subset release barrier, every member publishes a consumption ACK and
+ceases reading that allocation's handshake files. Subset domain rank zero waits
+for all ACKs and deletes the exact allocation/token's announce, readiness,
+release and ACK paths. A failed allocation stops admission until the parent
+joins the initializers and confirms the local abort; requests rejected by every
+rank before acquiring resources permit an immediate retry. Abort does not enter a
+marker collective. Confirmation clears only that allocation's pending failure;
+bootstrap and release failures remain latched across unrelated aborts.
+Failed release or retirement keeps admission stopped. On A5, a marker unlink
+failure after all consumption ACKs and successful resource closure is reported
+as a filesystem error; the enclosing communicator can still be destroyed.
+Cleanup errors identify the path, stage and system error;
+rootinfo retirement and marker-sweep diagnostics remain distinct so a sweep
+error cannot strand a follower after the rootinfo fence succeeds.
+
+Local onboard Workers use private per-user communication generation directories
+on the local temporary filesystem. The parent and every native communicator
+hold shared `flock` leases. A subsequent Worker reclaims a managed generation
+only after obtaining its exclusive lease; a late native join validates the
+lease inode after acquiring its lock and refuses an unlinked generation.
+Admission permits at most 64 live managed generations per user and refuses new
+generations when reclamation fails. Crash recovery therefore depends on kernel
+lease lifetime, including surviving ranks, rather than PID or file age. Lease
+retirement proves file-protocol quiescence, not device resource reclamation.
+
+This recovery contract requires local POSIX filesystem locking. External rootinfo
+paths retain caller ownership, and existing flat `/tmp` handshake files require
+separate operator recovery. Shared-filesystem/multi-host generation recovery and
+simulator shared-memory crash recovery are separate contracts.
+
+Marker retirement removes the published marker paths. Temporary publication
+files are reclaimed with an abandoned managed generation after exclusive lease
+acquisition; temporary files for external rootinfo paths retain caller ownership.
+Initialization rejects sweep errors even after rootinfo retirement so a new
+communicator cannot start with unreported cleanup debt. During destruction,
+rootinfo retirement permits the follower handoff while sweep errors remain visible.
+
+The repeated A2/A3 allocation-retirement qualification covers Device windows.
+Failed-initialization markers and A2/A3 Host-SDMA `host_window` retirement
+require separate qualification. Concurrent first-time CCU registration on a
+single Worker also requires separate bootstrap synchronization coverage.

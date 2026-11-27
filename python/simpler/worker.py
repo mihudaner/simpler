@@ -62,6 +62,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import enum
+import errno
 import hashlib
 import importlib
 import inspect
@@ -74,7 +75,6 @@ import re
 import shutil
 import signal
 import socket
-import stat
 import struct
 import subprocess
 import sys
@@ -191,6 +191,7 @@ from .comm_endpoints import (
     at,
     parse_endpoint_path,
 )
+from .comm_generation import CommGeneration
 from .comm_provider import (
     DeviceAllocationTarget,
     ProviderRegionStore,
@@ -453,7 +454,8 @@ _OFF_ENTRY_ERROR_TEXT = 104
 # semantic terminal. A count of identities; zero means no capacity report.
 _OFF_ENTRY_ADMISSIBLE_SETS = _OFF_ENTRY_ERROR_TEXT + MAILBOX_ERROR_MSG_SIZE
 _OFF_ENTRY_OBSERVATION_REQUESTED = _OFF_ENTRY_ADMISSIBLE_SETS + 4
-_ENTRY_BYTES = _OFF_ENTRY_OBSERVATION_REQUESTED + 4
+_OFF_ENTRY_PEER_CANCEL_REQUESTED = _OFF_ENTRY_OBSERVATION_REQUESTED + 4
+_ENTRY_BYTES = _OFF_ENTRY_PEER_CANCEL_REQUESTED + 4
 # Mirrors MAILBOX_OFF_SHUTDOWN / MAILBOX_SHUTDOWN_REQUESTED: termination is a
 # sticky one-way word on the control frame, not a MailboxState. _OFF_STATE has
 # three writers (parent CONTROL_REQUEST, child CONTROL_DONE, C++
@@ -462,6 +464,9 @@ _ENTRY_BYTES = _OFF_ENTRY_OBSERVATION_REQUESTED + 4
 # is reserved on every frame so a task-args blob can never reach it.
 _OFF_SHUTDOWN = MAILBOX_FRAME_SIZE - MAILBOX_ERROR_MSG_SIZE - 80
 _SHUTDOWN_REQUESTED = 1
+# In the reserved gap after the teardown report. Published once by the
+# parent after every chip has confirmed its missions stopped, for this mailbox lifetime.
+_OFF_CCU_PEERS_STOPPED = _OFF_SHUTDOWN - 4
 # The chip child's teardown observation. Like the shutdown word it is reserved
 # on every frame so a task-args blob can never reach it, and it is a record
 # rather than a state word because its fields only mean anything together.
@@ -595,6 +600,10 @@ def _assert_mailbox_wire_constants() -> None:
         "entry.observation_requested": (
             _OFF_ENTRY_OBSERVATION_REQUESTED,
             MAILBOX_RUN_ENTRY_OFFSETS["observation_requested"],
+        ),
+        "entry.peer_cancel_requested": (
+            _OFF_ENTRY_PEER_CANCEL_REQUESTED,
+            MAILBOX_RUN_ENTRY_OFFSETS["peer_cancel_requested"],
         ),
         # And the request frame's header, which binds a payload to its entry.
         "frame.entry_index": (_OFF_FRAME_ENTRY_INDEX, MAILBOX_REQUEST_FRAME_OFFSETS["entry_index"]),
@@ -919,12 +928,15 @@ _CTRL_OP_NAMES[_CTRL_DEVICE_MEMORY_INFO] = "device_memory_info"
 # Distributed Host registration uses generic control_payload transport.
 _CTRL_HOST_DDR = 29
 _CTRL_OP_NAMES[_CTRL_HOST_DDR] = "host_ddr"
+_L3_HOST_MAP_PLATFORMS = ("a2a3", "a5")
 
 # Publish every diagnostic run this chip child has closed. 26 is the delegated
 # region control; 27 mirrors worker_manager.h::CTRL_DFX_FLUSH.
 _CTRL_DFX_FLUSH = 27
 _CTRL_CCU_DOMAIN = 28
 _CCU_DOMAIN_REQUEST = struct.Struct("<QQI32si")
+_CCU_CONFIRM_PRODUCERS_STOPPED = 11
+_CCU_STOP_MISSIONS = 12
 _CTRL_BUFFER_EXPORT = 30
 _CTRL_OP_NAMES[_CTRL_DFX_FLUSH] = "flush_diagnostics"
 # The native flush wait takes a millisecond count in a C `int`. The wire field
@@ -957,14 +969,29 @@ _CTRL_SHM_NAME_BYTES = 32
 
 _COMM_ROOTINFO_DIR = "/tmp"
 _COMM_ROOTINFO_NAME_PATTERN = r"pto_multi_comm_([0-9a-f]{32})_([0-9a-f]{1,8})\.bin"
+_COMM_ROOTINFO_RE = re.compile(_COMM_ROOTINFO_NAME_PATTERN + r"(?:\.tmp\.[0-9]+)?")
 _COMM_DESTROY_MARKER_RE = re.compile(
-    _COMM_ROOTINFO_NAME_PATTERN + r"\.(?:destroy_failed\.[0-9a-f]{1,16}|destroy_released\.[0-9a-f]{1,16}\.[0-9]+)"
+    _COMM_ROOTINFO_NAME_PATTERN
+    + r"\.(?:destroy_failed\.[0-9a-f]{1,16}|destroy_released\.[0-9a-f]{1,16}\.[0-9]+)(?:\.tmp)?"
 )
-_COMM_HOST_PREPARE_MARKER_RE = re.compile(
-    r"barrier_"
-    + _COMM_ROOTINFO_NAME_PATTERN
-    + r"_alloc_[0-9]+_host_(?:ready|failed)_[0-9a-f]{1,16}_[0-9]+\.ready(?:\.tmp)?"
+_COMM_BARRIER_MARKER_RE = re.compile(
+    r"barrier_" + _COMM_ROOTINFO_NAME_PATTERN + r"_[a-z0-9_]+_[0-9a-f]{1,16}_[0-9]+\.ready(?:\.tmp(?:\.[0-9]+)?)?"
 )
+
+
+def _comm_marker_namespace(token: str) -> str:
+    return os.path.join(_COMM_ROOTINFO_DIR, f"simpler-comm-{token}")
+
+
+def _remove_empty_comm_directory(path: str) -> None:
+    try:
+        os.rmdir(path)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        if exc.errno not in (errno.ENOTEMPTY, errno.EEXIST):
+            raise
+
 
 # Domain-allocation request shm layout: 48-byte header + buffer_nbytes (u64) +
 # rank_ids (u32).  Buffer specs first so they remain 8-byte aligned regardless
@@ -988,6 +1015,7 @@ assert _DOMAIN_REPLY_HEADER.size == 40
 # throwing; it does not imply the window is usable. The parent's shm is
 # zero-filled, so an unwritten slot records no reported ownership.
 _OFF_DOMAIN_REPLY_COMMITTED = 0
+_DOMAIN_REPLY_REJECTED = 2
 
 # Control args layout (reuses task mailbox fields when state == _CONTROL_*):
 #   offset  8 (_OFF_CALLABLE):  uint64  sub-command
@@ -1417,12 +1445,14 @@ def _domain_reply_committed(reply_shm: SharedMemory | None) -> bool:
     The parent creates the shm zero-filled, so a chip that never ran, never
     allocated, or died before reporting ownership reads as not committed.
     """
-    if reply_shm is None:
-        return False
-    buf = reply_shm.buf
+    return _domain_reply_ownership(reply_shm) == 1
+
+
+def _domain_reply_ownership(reply_shm: SharedMemory | None) -> int:
+    buf = reply_shm.buf if reply_shm is not None else None
     if buf is None:
-        return False
-    return struct.unpack_from("<Q", buf, _OFF_DOMAIN_REPLY_COMMITTED)[0] != 0
+        return 0
+    return struct.unpack_from("<Q", buf, _OFF_DOMAIN_REPLY_COMMITTED)[0]
 
 
 def _raise_first(step, items) -> None:
@@ -3071,8 +3101,9 @@ def _ccu_control_requires_idle(buf: memoryview) -> bool:
         if size < _CCU_DOMAIN_REQUEST.size:
             return False
         operation = _CCU_DOMAIN_REQUEST.unpack_from(payload)[2]
-        # Association only updates the child resolver; it does not touch live CCU resources.
-        return operation != 6
+        # Terminal preflight owns its native-state check and must reach prepared
+        # successors even when the parent will never activate them.
+        return operation not in (6, _CCU_CONFIRM_PRODUCERS_STOPPED, _CCU_STOP_MISSIONS)
     finally:
         payload.release()
         staged.close()
@@ -3633,7 +3664,7 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
     if (
         chip_count >= 1
         and chip_rank is not None
-        and chip_platform == "a5"
+        and chip_platform in _L3_HOST_MAP_PLATFORMS
         and chip_runtime == "tensormap_and_ringbuffer"
     ):
         import_registry.host_mappings = ChildHostMappings(
@@ -3646,6 +3677,7 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
         )
     global_domain_store = _L2GlobalDomainStore()
     base_comm_handle = 0
+    ccu_terminal_requested = False
     diagnostic_capture_index = 0
     ccu_bindings = {}
     ccu_binding_acquisitions = {}
@@ -3698,15 +3730,23 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                 return 1, msg or f"chip_process dev={device_id}: diagnostic Host log flush failed"
         return code, msg
 
+    def reclaim_stopped_ccu_owners() -> None:
+        grant = _buffer_field_addr(buf, _OFF_CCU_PEERS_STOPPED)
+        if ccu_terminal_requested and _mailbox_load_i32(grant):
+            cw.reclaim_stopped_ccu_owners()
+            _mailbox_store_i32(grant, 0)
+
     def handle_control(  # noqa: PLR0912, PLR0915 -- one branch per control sub-command
         sub_cmd: int,
         *,
         terminal: bool = False,
     ) -> tuple[int, str]:
-        nonlocal base_comm_handle
+        nonlocal base_comm_handle, ccu_terminal_requested
         code = 0
         msg = ""
         try:
+            if terminal and sub_cmd != _CTRL_DFX_FLUSH:
+                reclaim_stopped_ccu_owners()
             if sub_cmd == _CTRL_BUFFER_EXPORT:
                 staged, payload, size = _open_ctrl_payload(buf, what="VMM buffer")
                 view = payload[:size]
@@ -3819,11 +3859,23 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                     if size < _CCU_DOMAIN_REQUEST.size:
                         raise ValueError("CCU domain control payload size mismatch")
                     allocation, generation, operation, digest, _ = _CCU_DOMAIN_REQUEST.unpack_from(payload)
-                    if terminal and operation not in (3, 4, 7):
+                    if terminal and operation not in (
+                        3,
+                        4,
+                        7,
+                        _CCU_CONFIRM_PRODUCERS_STOPPED,
+                        _CCU_STOP_MISSIONS,
+                    ):
                         raise RuntimeError("CCU admission is closed; only cleanup controls are accepted")
-                    comm = _require_base_communicator(base_comm_handle)
+                    terminal_operation = operation in (_CCU_CONFIRM_PRODUCERS_STOPPED, _CCU_STOP_MISSIONS)
+                    comm = base_comm_handle if terminal_operation else _require_base_communicator(base_comm_handle)
                     result = 0
-                    if operation == 9:
+                    if terminal_operation:
+                        if size != _CCU_DOMAIN_REQUEST.size:
+                            raise ValueError("CCU terminal control payload size mismatch")
+                        ccu_terminal_requested = True
+                        cw.control_ccu_terminal(operation)
+                    elif operation == 9:
                         try:
                             tail = _CCU_DOMAIN_REQUEST.size
                             collective_id, rank_count, domain_rank, ccu_id = struct.unpack_from("<QIII", payload, tail)
@@ -3909,7 +3961,7 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
             elif sub_cmd == _CTRL_HOST_DDR:
                 mappings = import_registry.host_mappings
                 if not isinstance(mappings, ChildHostMappings):
-                    raise RuntimeError("L3 MAP requires local A5 TMR chip workers")
+                    raise RuntimeError("L3 MAP requires local onboard TMR chip workers")
                 staged_shm, payload, payload_size = _open_ctrl_payload(buf, what="Host DDR")
                 try:
                     reply = mappings.handle(bytes(payload[:payload_size]))
@@ -4031,6 +4083,7 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
     live_entry_count = max(1, int(granted_sets)) + MAILBOX_REQUEST_FRAMES
 
     def run_staged_frame_loop() -> None:  # noqa: PLR0912, PLR0915 -- one progress owner drives control and every run
+        nonlocal ccu_terminal_requested
         # Two pools, with different lifetimes. A request frame carries one
         # submission's bytes and goes back as soon as they are copied out; a
         # run-state entry carries the run itself, for as long as it lives.
@@ -4067,11 +4120,14 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
             launched_published: bool = False
             ended_published: bool = False
             published_disposition: int = _DISPOSITION_NONE
+            uses_ccu: bool = False
             ccu_binding: Any = None
             ccu_started: bool = False
             native_activated: bool = False
+            cancelled_before_launch: bool = False
 
         staged_runs: dict[int, _StagedRun] = {}
+        terminal_staged_runs: list[_StagedRun] = []
 
         def task_frame_references_digest(digest: bytes) -> bool:
             # A live run's digest, from this side's own record of it: the frame
@@ -4186,7 +4242,8 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
             # its own storage, so this POD need not outlive the call.
             args = staged.pending_args  # type: ignore[attr-defined]
             plan = args.ccu_bindings()
-            if plan:
+            staged.uses_ccu = bool(plan)
+            if staged.uses_ccu:
                 from .ccu import ChipCcuRunSet  # noqa: PLC0415
 
                 registrations = []
@@ -4228,6 +4285,7 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                     import_registry.host_mappings.release(staged.identity)
                 raise
             staged.pending_args = None  # type: ignore[attr-defined]
+            staged.chip_run.bind_peer_cancel(staged.entry_addr + _OFF_ENTRY_PEER_CANCEL_REQUESTED)
             raw_disposition = staged.chip_run.preparation_disposition
             disposition = int(getattr(raw_disposition, "value", raw_disposition))
             if disposition not in (_VALIDATED_ONLY, _NATIVE_PREPARED):
@@ -4244,7 +4302,21 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                 staged.ccu_binding.discard()
                 staged.ccu_binding = None
 
+        def close_ccu_admission() -> None:
+            nonlocal ccu_terminal_requested
+            ccu_terminal_requested = True
+            cw._fence_chip_run_lane()
+
         def activate_run(staged: _StagedRun) -> bool:
+            if _mailbox_load_i32(staged.entry_addr + _OFF_ENTRY_PEER_CANCEL_REQUESTED):
+                staged.chip_run.abandon()
+                discard_unlaunched_ccu(staged)
+                if import_registry.host_mappings is not None and not staged.chip_run._owner_recovery_required:
+                    import_registry.host_mappings.release(staged.identity)
+                staged.cancelled_before_launch = True
+                fail_run(staged, "peer failed in the same run before activation")
+                staged_runs.pop(staged.index, None)
+                return True
             for previous in staged_runs.values():
                 if (
                     previous.identity[4] < staged.identity[4]
@@ -4259,8 +4331,13 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                 staged.chip_run.activate()
                 staged.native_activated = True
             except BaseException:
-                if staged.ccu_binding is not None:
-                    staged.ccu_binding.abort()
+                # A launched CCU mission keeps its uses until coordinated cleanup.
+                if (
+                    staged.ccu_binding is None
+                    and import_registry.host_mappings is not None
+                    and not staged.chip_run._owner_recovery_required
+                ):
+                    import_registry.host_mappings.release(staged.identity)
                 raise
             return True
 
@@ -4297,11 +4374,12 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                 finish_ccu_run(staged)
             except Exception as e:  # noqa: BLE001
                 if staged.ccu_started:
-                    staged.ccu_binding.abort()
+                    close_ccu_admission()
+                    terminal_staged_runs.append(staged)
                 code = 1
                 msg = _format_exc(f"chip_process dev={device_id}: chip run", e)
             if import_registry.host_mappings is not None and (
-                code == 0 or not staged.chip_run._owner_recovery_required
+                code == 0 or (not staged.ccu_started and not staged.chip_run._owner_recovery_required)
             ):
                 import_registry.host_mappings.release(staged.identity)
             if code == 0 and on_task_done_success is not None:
@@ -4381,7 +4459,7 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
 
         def serve_terminal_host_cleanup():
             mappings = import_registry.host_mappings
-            if not isinstance(mappings, ChildHostMappings):
+            if not isinstance(mappings, ChildHostMappings) and not ccu_terminal_requested:
                 return
             # The parent can retain cleanup obligations after NONE/H2D uses
             # retire. Keep the endpoint until the parent completes its protocol
@@ -4433,6 +4511,9 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                         ccu_control_requires_idle = None
                         _write_error(buf, code, msg)
                         _mailbox_store_i32(state_addr, _CONTROL_DONE)
+                        if ccu_terminal_requested:
+                            shutdown_message = f"chip_process dev={device_id}: CCU terminal cleanup closed admission"
+                            break
                         # A handler that could not establish conservative
                         # resource ownership requests this worker's own stop.
                         # Honour it here, before anything below stages,
@@ -4471,16 +4552,24 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                     break
 
                 for staged in sorted(new_runs, key=lambda run: run.identity[4]):
+                    if ccu_terminal_requested:
+                        fail_run(staged, shutdown_message)
+                        continue
                     try:
                         submit_run(staged)
                     except Exception as e:  # noqa: BLE001
-                        if staged.ccu_started:
-                            staged.ccu_binding.abort()
-                        else:
-                            discard_unlaunched_ccu(staged)
-                        fail_run(staged, _format_exc(f"chip_process dev={device_id}: chip run submit", e))
+                        message = _format_exc(f"chip_process dev={device_id}: chip run submit", e)
+                        if staged.uses_ccu:
+                            close_ccu_admission()
+                            terminal_staged_runs.append(staged)
+                            shutdown_message = message
+                        fail_run(staged, message)
                     else:
-                        staged_runs[staged.index] = staged
+                        if not staged.cancelled_before_launch:
+                            staged_runs[staged.index] = staged
+
+                if ccu_terminal_requested:
+                    break
 
                 stop_progress = False
                 for staged in sorted(staged_runs.values(), key=lambda run: run.identity[4]):
@@ -4582,6 +4671,26 @@ def _run_chip_main_loop(  # noqa: PLR0913, PLR0915 -- chip-child entry receives 
                         shutdown_message = f"chip_process dev={device_id}: parent exited"
                         break
         finally:
+            if ccu_terminal_requested or any(staged.ccu_binding is not None for staged in staged_runs.values()):
+                ccu_terminal_requested = True
+                # A local CCU failure can arrive before the parent checks producer completion.
+                # Hand back frames while keeping every native owner until the
+                # parent confirms that all peers have stopped their missions.
+                cw._fence_chip_run_lane()
+                for staged in staged_runs.values():
+                    fail_run(staged, shutdown_message)
+                    terminal_staged_runs.append(staged)
+                staged_runs.clear()
+                reject_terminal_frames()
+                for index, entry_buf in enumerate(entry_bufs):
+                    entry_state_addr = entry_addrs[index] + _OFF_ENTRY_STATE
+                    if _mailbox_load_u64(entry_addrs[index] + _OFF_ENTRY_GENERATION) % 2 == 0:
+                        continue
+                    if _mailbox_load_i32(entry_state_addr) not in (_TASK_DONE, _TASK_FAILED):
+                        _write_entry_error(entry_buf, 1, shutdown_message)
+                        _mailbox_store_i32(entry_state_addr, _TASK_FAILED)
+                serve_terminal_host_cleanup()
+                reclaim_stopped_ccu_owners()
             try:
                 cw._stop_chip_run_lane_admission()  # noqa: SLF001 -- terminal child teardown
                 cw._close_chip_run_lane()
@@ -6466,10 +6575,10 @@ class Worker:
         # 2^64 allocations — far beyond any realistic Worker lifetime.
         self._next_alloc_id: int = 0
         self._ccu_registration_collectives: dict[tuple[bytes, tuple[int, ...]], int] = {}
-        # Native CCU registration belongs to the communication context and
-        # callable, while this table only records a run's allocation binding.
-        self._ccu_run_registrations: dict[tuple[int, bytes], list[int]] = {}
+        # Cache the per-chip registrations for each communication context and callable.
         self._ccu_context_registrations: dict[tuple[Any, bytes], list[int]] = {}
+        self._ccu_terminal_error: BaseException | None = None
+        self._ccu_terminal_lock = threading.Lock()
         # Exactly one caller drives CTRL_RELEASE_DOMAIN for a given allocation,
         # and every other caller waits for its outcome. Several paths can reach
         # one handle at once — an end-of-run or close() sweep working from its
@@ -6486,7 +6595,10 @@ class Worker:
         # ``orch.allocate_domain`` call (see ``_ensure_comm_base``).  We
         # keep ``Worker.init()`` cheap — it only forks chip children and
         # starts the C++ scheduler; no comm work happens there.
+        self._comm_domain_error: BaseException | None = None
+        self._comm_domain_alloc_errors: dict[int, BaseException] = {}
         self._comm_base_ready: bool = False
+        self._comm_generation: CommGeneration | None = None
 
         self._endpoint_registry: EndpointRegistry | None = None
         self._endpoint_registry_epoch: int = 0
@@ -6555,13 +6667,23 @@ class Worker:
         return self._lifecycle is _Lifecycle.READY and self.level >= 3
 
     def _comm_plan_rootinfo_path(self) -> str:
-        """Per-Worker rootinfo path used by HCCL/sim base comm_init.
+        """Owned rootinfo path shared by the local Worker and its native ranks."""
+        if self._config.get("platform") not in ("a2a3", "a5"):
+            group = f"{os.getpgrp():x}"
+            namespace = _comm_marker_namespace(self._shm_token)
+            os.makedirs(namespace, mode=0o700, exist_ok=True)
+            directory = os.path.join(namespace, group)
+            os.makedirs(directory, mode=0o700, exist_ok=True)
+            tag = f"pto_multi_comm_{self._shm_token}_{group}.bin"
+            return os.path.join(directory, tag)
+        if self._comm_generation is None:
+            self._comm_generation = CommGeneration()
+        return self._comm_generation.rootinfo_path
 
-        The startup-tree token and process group identify the owner to an
-        ancestor even if the L3 exits before its chip children.
-        """
-        tag = f"pto_multi_comm_{self._shm_token}_{os.getpgrp():x}.bin"
-        return os.path.join(_COMM_ROOTINFO_DIR, tag)
+    def _close_comm_generation(self) -> None:
+        if self._comm_generation is not None:
+            self._comm_generation.close()
+            self._comm_generation = None
 
     def _allocate_next_level_worker_id(self) -> int:
         worker_id = self._next_level_worker_id_count
@@ -10735,6 +10857,10 @@ class Worker:
 
         with contextlib.suppress(BaseException):
             self._teardown_worker_tree(startup_abort=True, deadline=deadline)
+        if self._comm_generation is not None:
+            key = ("comm-generation", "local handshake generation")
+            self._cleanup_journal.add_once(*key, self._close_comm_generation)
+            self._cleanup_journal.drive({key})
         self._comm_base_ready = False
 
     @property
@@ -11189,12 +11315,18 @@ class Worker:
                     f"first error chip={first[0]}: {first[1]}"
                 )
 
-        _run_with_owned_shared_memory(
-            len(device_ids),
-            initialize,
-            name_prefix="shm-comm-init-lifecycle-",
-            after_success=lambda: setattr(self, "_comm_base_ready", True),
-        )
+        try:
+            _run_with_owned_shared_memory(
+                len(device_ids),
+                initialize,
+                name_prefix="shm-comm-init-lifecycle-",
+                after_success=lambda: setattr(self, "_comm_base_ready", True),
+            )
+        except BaseException as error:
+            with self._alloc_id_lock:
+                if self._comm_domain_error is None:
+                    self._comm_domain_error = error
+            raise
 
     def _domain_config(  # noqa: PLR0912 -- validate domain topology and platform-specific engines
         self, members, window_size, buffers, retain_after_run, workspace_engines=(), memory_source=AddressSpace.DEVICE
@@ -11582,59 +11714,65 @@ class Worker:
                 raise error
         return results
 
-    def _ccu_domain_collective(self, handle, operation, digest=bytes(32)) -> list[int]:
-        if operation == 5:
-            raise ValueError("CCU callable registration must use register_ccu_callable")
-        generation = getattr(handle, "_ccu_run_generation", 0)
-        if operation == 1:
-            generation += 1
-            handle._ccu_run_generation = generation
+    def _stop_run_ccu_domains(self, resources, native_error) -> None:
+        if native_error is None or not resources.ccu_domains:
+            return
+        with self._ccu_terminal_lock:
+            if self._ccu_terminal_error is None:
+                workers = tuple(range(len(self._config.get("device_ids", ()))))
+                pending_producer_confirmations = set(workers)
+                pending_mission_stops = set(workers)
+
+                def stop():
+                    if not workers:
+                        raise RuntimeError("CCU terminal cleanup has no participating chip workers")
+                    self._confirm_ccu_terminal(_CCU_CONFIRM_PRODUCERS_STOPPED, pending_producer_confirmations)
+                    self._confirm_ccu_terminal(_CCU_STOP_MISSIONS, pending_mission_stops)
+                    for chip in workers:
+                        buf = self._chip_shms[chip].buf
+                        if buf is None:
+                            raise RuntimeError("CCU stop confirmation lost its chip mailbox")
+                        _mailbox_store_i32(_buffer_field_addr(buf, _OFF_CCU_PEERS_STOPPED), 1)
+
+                self._cleanup_journal.add_once("native", "CCU terminal cleanup", stop)
+                self._ccu_terminal_error = native_error
+            self._drive_ccu_terminal_cleanup_locked()
+
+    def _finish_ccu_terminal_cleanup(self) -> None:
+        with self._ccu_terminal_lock:
+            self._drive_ccu_terminal_cleanup_locked()
+
+    def _drive_ccu_terminal_cleanup_locked(self) -> None:
+        if self._ccu_terminal_error is not None:
+            error = self._cleanup_journal.drive({("native", "CCU terminal cleanup")})
+            if error is not None:
+                raise error
+
+    def _confirm_ccu_terminal(self, operation: int, pending: set[int]) -> None:
+        if not pending:
+            return
         native = self._worker
         if native is None:
-            raise RuntimeError("CCU domain requires an initialized Worker")
-        if operation == 6 and (handle._config is None or "ccu" not in handle._config.workspace_engines):
-            raise ValueError("CCU run requires a CCU-enabled domain")
-        workers = handle.workers
-        results: list[int] = [0] * len(workers)
-        errors: list[BaseException | None] = [None] * len(workers)
+            raise RuntimeError("CCU terminal cleanup lost its chip transports")
+        chips = sorted(pending)
+        errors: dict[int, BaseException] = {}
 
-        def send(index, chip):
+        def send(chip):
             try:
-                registration = self._ccu_context_registrations.get((self._worker, digest), [])
-                if operation != 6 and not 0 <= chip < len(registration):
-                    raise ValueError("CCU callable is not registered in this communication context")
-                resource = handle.allocation_id if operation == 6 else registration[chip]
-                payload = _CCU_DOMAIN_REQUEST.pack(resource, generation, operation, digest, 0)
-                if operation == 6:
-                    payload += struct.pack("<Q", handle.contexts[chip].device_ctx)
+                payload = _CCU_DOMAIN_REQUEST.pack(0, 0, operation, bytes(32), 0)
                 reply = native.control_payload(
                     WorkerType.NEXT_LEVEL, chip, _CTRL_CCU_DOMAIN, payload, self._py_control_timeout_s
                 )
-                results[index] = _CCU_DOMAIN_REQUEST.unpack_from(reply)[-1]
+                if _CCU_DOMAIN_REQUEST.unpack_from(reply)[-1] != 0:
+                    raise RuntimeError(f"CCU terminal phase {operation} remains unconfirmed on chip {chip}")
             except BaseException as error:
-                errors[index] = error
+                errors[chip] = error
 
-        _start_and_join_threads(enumerate(workers), lambda item: send(*item), name_prefix="ccu-control-")
-        for error in errors:
-            if error is not None:
-                raise error
-        return results
-
-    def _abort_ccu_domain(self, handle) -> None:
-        for allocation, digest in self._ccu_run_registrations:
-            if allocation == handle.allocation_id:
-                try:
-                    self._ccu_domain_collective(handle, 4, digest)
-                except BaseException as error:
-                    self._record_unreclaimable("CCU stop is unconfirmed; domain resources are retained", error)
-
-    def _stop_run_ccu_domains(self, resources, native_error) -> None:
-        if native_error is None:
-            return
-        for handle in resources.ccu_domains.values():
-            self._abort_ccu_domain(handle)
-        if resources.ccu_domains:
-            raise RuntimeError("CCU run aborted after ordinary task failure") from native_error
+        _start_and_join_threads(chips, send, name_prefix="ccu-terminal-")
+        pending.intersection_update(errors)
+        for chip in chips:
+            if chip in errors:
+                raise errors[chip]
 
     def _domain_serialization(self):
         return contextlib.nullcontext() if _callback_frame_for(self) is not None else self._submit_mu.exclusive()
@@ -11702,7 +11840,7 @@ class Worker:
             self._use_domain(handle)
             return handle
 
-    def _allocate_domain(  # noqa: PLR0912 -- linear input-validation + per-chip shm staging + dispatch + reply unpack; splitting obscures the fail-fast ordering
+    def _allocate_domain(  # noqa: PLR0912, PLR0915 -- input validation, admission and publication share one ordered transaction
         self,
         *,
         name: str,
@@ -11725,6 +11863,10 @@ class Worker:
         # triggers HCCL RootInfo handshake + EnablePeerAccess on every chip.
         # Cheap enough to do once per Worker; defers cost from init() (which
         # used to pre-bootstrap) to the first DAG that actually needs comm.
+        with self._alloc_id_lock:
+            error = self._comm_domain_error or next(iter(self._comm_domain_alloc_errors.values()), None)
+            if error is not None:
+                raise RuntimeError("communication domain admission stopped after backend failure") from error
         self._ensure_comm_base()
 
         with self._alloc_id_lock:
@@ -11838,7 +11980,7 @@ class Worker:
                         (committed, device_ctx, local_window_base, actual_window_size, reply_buffer_count) = (
                             _DOMAIN_REPLY_HEADER.unpack_from(reply_buf, 0)
                         )
-                        if not committed:
+                        if committed != 1:
                             raise RuntimeError(f"allocate_domain: chip {chip_idx} reported success without committing")
                         if reply_buffer_count != buffer_count or actual_window_size < window_size:
                             raise RuntimeError(
@@ -11877,9 +12019,16 @@ class Worker:
                         )
                     handle.contexts = contexts
                 finally:
+                    if any(_domain_reply_ownership(reply_shms[w]) == 0 for w in workers):
+                        with self._alloc_id_lock:
+                            if self._comm_domain_error is None:
+                                self._comm_domain_error = RuntimeError("allocation ownership reply is unconfirmed")
                     committed = tuple(w for w in workers if _domain_reply_committed(reply_shms.get(w)))
                     handle.workers = committed
                     if not committed:
+                        if all(_domain_reply_ownership(reply_shms[w]) == _DOMAIN_REPLY_REJECTED for w in workers):
+                            with self._alloc_id_lock:
+                                self._comm_domain_alloc_errors.pop(allocation_id, None)
                         if self._live_domains.get(name) is handle:
                             self._live_domains.pop(name)
                         if resources.live_domains.get(name) is handle:
@@ -12189,11 +12338,11 @@ class Worker:
             )
 
         def retire_live_handle() -> None:
+            if handle._allocation_pending:
+                with self._alloc_id_lock:
+                    self._comm_domain_alloc_errors.pop(handle.allocation_id, None)
             if self._live_domains.get(handle.name) is handle:
                 self._live_domains.pop(handle.name)
-            for key in tuple(self._ccu_run_registrations):
-                if key[0] == handle.allocation_id:
-                    del self._ccu_run_registrations[key]
 
         try:
             _run_with_owned_shared_memory(
@@ -12243,10 +12392,16 @@ class Worker:
 
         if errors:
             first = next(iter(errors.items()))
-            raise RuntimeError(
+            error = RuntimeError(
                 f"{op}_domain(allocation_id={allocation_id}) failed on "
                 f"{len(errors)}/{len(workers)} chips; first error chip={first[0]}: {first[1]}"
             )
+            with self._alloc_id_lock:
+                if op == "alloc":
+                    self._comm_domain_alloc_errors[allocation_id] = error
+                elif self._comm_domain_error is None:
+                    self._comm_domain_error = error
+            raise error
 
     @staticmethod
     def _global_domain_command_identity(command: GlobalDomainCommand) -> tuple[Any, ...]:
@@ -14461,10 +14616,10 @@ class Worker:
     def _l3_host_mappings(self) -> ParentHostMappings:
         if (
             self.level != 3
-            or self._config.get("platform") != "a5"
+            or self._config.get("platform") not in _L3_HOST_MAP_PLATFORMS
             or self._config.get("runtime") != "tensormap_and_ringbuffer"
         ):
-            raise RuntimeError("L3 MAP requires local A5 onboard tensormap_and_ringbuffer children")
+            raise RuntimeError("L3 MAP requires local onboard A3 or A5 tensormap_and_ringbuffer children")
         members = tuple(range(len(self._config.get("device_ids", ()))))
         if not members:
             raise ValueError("L3 MAP requires local chip workers")
@@ -14775,7 +14930,8 @@ class Worker:
         ``caller_stream``: Direct L2 RTS stream handle, required for a borrowed
         environment. Successful submit enqueues the caller exit dependency before
         returning. The caller keeps the stream and external allocations alive through
-        explicit wait or close. Capture is rejected before source references are reserved.
+        explicit wait or close. Graph recording uses ``prepare_submission`` with
+        a framework adapter that retains the original run through its last model use.
 
         Graph construction remains serialized. A local L3 Worker that owns its
         startup and uses an onboard a2a3/a5 host_build_graph or
@@ -14986,6 +15142,10 @@ class Worker:
         """Refuse if a prior run's ordered cleanup failed."""
         self._require_no_delegated_session_fatal(api)
         with self._hierarchical_start_cv:
+            if getattr(self, "_ccu_terminal_error", None) is not None:
+                raise RuntimeError(
+                    f"Worker.{api}: a CCU run failed and no further work is admitted; close() it"
+                ) from self._ccu_terminal_error
             if self._ordered_cleanup_error is not None:
                 raise RuntimeError(
                     f"Worker.{api}: a prior run's ordered cleanup failed, so this worker's device state is "
@@ -15543,7 +15703,7 @@ class Worker:
         has_map = any(host_args.transfer(i) == TensorTransfer.MAP for i in range(host_args.tensor_count()))
         supported = (
             self.level == 3
-            and self._config.get("platform") == "a5"
+            and self._config.get("platform") in _L3_HOST_MAP_PLATFORMS
             and self._config.get("runtime") == "tensormap_and_ringbuffer"
             and bool(self._config.get("device_ids", ()))
         )
@@ -15738,6 +15898,15 @@ class Worker:
         try:
             resources = handle._resources
             orch = self._orch
+            try:
+                self._stop_run_ccu_domains(resources, native_error)
+            except BaseException:
+                # This is a release barrier, not an independent cursor action:
+                # every peer window and run keepalive survives until close retries it.
+                assert native_error is not None
+                handle._cache_finalization_error(native_error)
+                self._publish_abandoned_run(handle, native_error)
+                return native_error
 
             def _poison_endpoint() -> None:
                 if native_error is not None:
@@ -15753,7 +15922,6 @@ class Worker:
             cursor = _RunFinalizationCursor(
                 steps=(
                     ("endpoint_poison", _poison_endpoint),
-                    ("ccu_stop", lambda: self._stop_run_ccu_domains(resources, native_error)),
                     ("remote_slot_refs", lambda: self._release_active_remote_slot_refs(resources)),
                     ("remote_frees", self._flush_pending_remote_frees),
                     ("region_instances", lambda: self._region_instance_registry.cleanup_run(resources)),
@@ -15978,6 +16146,7 @@ class Worker:
         pending remote frees/import-releases."""
         return (
             self._has_native_tree()
+            or self._comm_generation is not None
             or bool(self._sub_pids or self._chip_pids or self._next_level_pids)
             or bool(self._sub_shms or self._chip_shms or self._next_level_shms)
             or any(group.process is not None or group.ready_dir is not None for group in self._mpi_l3_groups)
@@ -16581,22 +16750,49 @@ class Worker:
         if errors:
             raise errors[0]
 
-    def _unlink_comm_markers(self) -> None:
-        """Retire this startup tree's Host preparation and destroy markers after their readers exit."""
-        if not self._shm_tree_tokens:
+    def _unlink_comm_marker_group(self, token: str, group: str, directory: str) -> None:
+        if not self._host_domain_owner_exited(token[:8], group):
             return
         errors: list[BaseException] = []
-        for name in os.listdir(_COMM_ROOTINFO_DIR):
-            match = _COMM_DESTROY_MARKER_RE.fullmatch(name) or _COMM_HOST_PREPARE_MARKER_RE.fullmatch(name)
-            if match is None:
-                continue
-            token, group = match.groups()
-            if token not in self._shm_tree_tokens:
-                continue
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                match = (
+                    _COMM_ROOTINFO_RE.fullmatch(entry.name)
+                    or _COMM_DESTROY_MARKER_RE.fullmatch(entry.name)
+                    or _COMM_BARRIER_MARKER_RE.fullmatch(entry.name)
+                )
+                if match is None or match.groups() != (token, group):
+                    continue
+                try:
+                    if entry.is_file(follow_symlinks=False):
+                        os.unlink(entry.path)
+                except FileNotFoundError:
+                    pass
+                except OSError as exc:
+                    errors.append(exc)
+        if errors:
+            raise errors[0]
+        _remove_empty_comm_directory(directory)
+
+    def _unlink_comm_markers(self) -> None:
+        """Retire owned marker directories only after their readers exit."""
+        errors: list[BaseException] = []
+        for token in self._shm_tree_tokens:
+            namespace = _comm_marker_namespace(token)
             try:
-                path = os.path.join(_COMM_ROOTINFO_DIR, name)
-                if stat.S_ISREG(os.lstat(path).st_mode) and self._host_domain_owner_exited(token[:8], group):
-                    os.unlink(path)
+                with os.scandir(namespace) as groups:
+                    if self._cleanup_journal.has_kind("child"):
+                        raise RuntimeError("Comm marker namespace still has unconfirmed child exit")
+                    for entry in groups:
+                        if not re.fullmatch(r"[0-9a-f]{1,8}", entry.name) or not entry.is_dir(follow_symlinks=False):
+                            continue
+                        try:
+                            self._unlink_comm_marker_group(token, entry.name, entry.path)
+                        except FileNotFoundError:
+                            pass
+                        except (OSError, RuntimeError) as exc:
+                            errors.append(exc)
+                _remove_empty_comm_directory(namespace)
             except FileNotFoundError:
                 pass
             except (OSError, RuntimeError) as exc:
@@ -16676,10 +16872,14 @@ class Worker:
         self._chip_shms.clear()
         self._next_level_shms.clear()
 
-        for identity, cleanup in (
+        namespace_cleanup = [
             (f"startup namespace {self._shm_token[:8]}", lambda: self._unlink_shm_namespace(protected_names)),
-            ("comm markers", self._unlink_comm_markers),
-        ):
+        ]
+        if self._cleanup_journal.has_kind("child"):
+            self._cleanup_journal.add_once("shm", "comm markers", self._unlink_comm_markers)
+        else:
+            namespace_cleanup.append(("comm markers", self._unlink_comm_markers))
+        for identity, cleanup in namespace_cleanup:
             try:
                 cleanup()
             except BaseException as exc:  # noqa: BLE001
@@ -16720,6 +16920,8 @@ class Worker:
             control_error = self._cleanup_journal.drive({key})
             if control_error is not None:
                 raise control_error
+
+        self._finish_ccu_terminal_cleanup()
 
         if self.level == 2:
             close_drained_chip_runs = self._close_completion is not None and self._close_completion.draining_chip_runs
@@ -16908,6 +17110,13 @@ class Worker:
 
         if errors and self._has_native_tree():
             raise errors[0]
+
+        if self._comm_generation is not None:
+            generation_key = ("comm-generation", "local handshake generation")
+            self._cleanup_journal.add_once(*generation_key, self._close_comm_generation)
+            generation_error = self._cleanup_journal.drive({generation_key})
+            if generation_error is not None:
+                errors.append(generation_error)
 
         # Domain retirement reads the recorded release verdict. A failed child
         # exit must not hide that debt after the native owner has closed.

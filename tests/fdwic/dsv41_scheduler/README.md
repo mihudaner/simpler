@@ -13,16 +13,15 @@ experiment, not checkpoint accuracy validation. Isolated Attention and Engram
 cases run rank 0 on **one device**. Only `moe`, `layers_19_21`, and the original
 full forward run on **two devices** with real communication and deferred waits.
 
-The seven cases are selected by `workloads/pypto_lib_latest/source.json`.
-The build, export and run commands use this model by default.
-Measurement availability and the timing contract are maintained in [RESULTS.md](RESULTS.md).
-Refresh both HBG and percounter for every case.
+The default benchmark runs seven single-device cases: five native model slices
+(SWA, both C1A cases, C2A full and Engram), the six-stage MIX chain, and the balanced
+four-task MPMD diamond. `production/list_cases.py` prints the seven runnable bundle
+paths. MoE and layers 19–21 remain available as separate communication workloads.
+The original two-device forward is used once to prepare model inputs.
 
-Retain scheduler optimizations only when the sum of all seven case means improves,
-using AICore L0 wall with one warmup and ten measured rounds per case. Include
-both communicating cases; each two-device round starts after a Device
-rendezvous and contributes the maximum of the ranks' local durations. L1/L3
-are diagnostic and do not replace this acceptance metric.
+Report each case separately using the PGO L0 AICore wall, the zero-gap theoretical
+bound, the fixed-calendar 1 µs model and the percentage gap from that model.
+[RESULTS.md](RESULTS.md) records the values and measurement boundaries.
 
 ## Manual-only execution
 
@@ -55,12 +54,19 @@ correctness or update its performance results; run and record those explicitly.
 | c2a_full | 1 | Layer 2 full C2A attention |
 | c1a_reindex | 1 | Layer 24 C1A index refresh |
 | c1a_reuse | 1 | Layer 21 C1A index reuse |
-| moe | 2 | Standalone native MoE with Host token-count control |
 | engram | 1 | Layer 1 Engram quantization, projection and gating |
-| layers_19_21 | 2 | Layers 19 through 21, including the encoder-to-decoder transition |
+| full_wave_mix_chain | 1 | Six dependent synthetic stages alternating pure and mixed engine use |
+| mpmd_diamond | 1 | Four single-block tasks with two independent AIV branches and an AIC join |
 
 Layer indices are zero-based. The six slices use the original full-forward
 prefix to produce their boundary inputs.
+
+The synthetic chain uses 32 AIC blocks, 32 1C2V groups, 64 AIV blocks,
+32 1C2V groups, one 1C1V group, and 32 1C2V groups, in that order.
+The five full waves request `sync_start`. Each stage consumes the previous
+stage's output. The runner checks all six buffers against integer golden
+values, including untouched padding. One timed round covers 6 tasks and
+386 block/lane executions.
 
 An execution is one `(task, block, subtask)` invocation. Original scalar values,
 tensor shapes, strides, offsets, aliasing, argument directions, explicit
@@ -70,7 +76,7 @@ completion, MIX admission, and `defer_wait` use the unchanged production code.
 
 ## Latest native PyPTO-lib group
 
-The seven latest cases use the DeepSeek V4.1 Flash model at
+The seven source model cases use the DeepSeek V4.1 Flash model at
 [PyPTO-lib `4cb7442261`](https://github.com/hw-native-sys/pypto-lib/tree/4cb74422616359b3f95c598b1f9cdd31cf4e4173/models/deepseek_v4_1_flash).
 Six are slices of the same 40-layer HBG capture. The seventh runs the upstream
 `l3_moe` entry. All use the model's original task boundaries and synchronization.
@@ -94,11 +100,22 @@ The IR was lowered with the upstream compiler's pinned PTOAS 0.72.
 
 The native sources and compact input initializers are checked in under
 `kernels/pypto_lib_latest/` and `workloads/pypto_lib_latest/`. Build and prepare
-with `--flavor pypto_lib_latest` to regenerate the seven selected cases. To refresh
+with `--flavor pypto_lib_latest` to prepare the five single-device model cases. To refresh
 topology tables from a full 40-layer capture, place its `deps.json` and matching
 `name_map.json` together and run `export_workloads.py CAPTURE --flavor pypto_lib_latest`.
 The exporter recognizes the fused attention output and the following MoE boundary and
 checks all 40 pairs before refreshing only the selected replay regions. Native MoE remains a native descriptor.
+
+The `pypto_lib_latest` kernel manifest records which generated kernels complete
+their outputs when they return. These are the same vendored sources and
+declarations as revision `279c88201`. The communication kernel
+`combine_wait` can defer completion. In `kernels.txt` an optional trailing
+`on_return` marks a trusted synchronous child. The packer binds this
+declaration to the child's instructions and preserves it when replacing the
+Host orchestration. A bare row has no completion proof. On A5 hardware the
+PGO planner uses these declarations to select eligible peer notification edges
+automatically. Use the L2 trace to see which AIV kernels published DMB tokens
+and which consumers passed their completion check.
 
 ## Native MoE Host controls
 
@@ -134,14 +151,14 @@ Host controls execute during graph construction, outside Device wall time.
 The other replay cases preserve device execution for their captured controls;
 they do not test dynamic Host `get_tensor_data` reads.
 
-All seven prepared cases run with the C++ `native-runner`, standard Python and
+All seven default cases run with the C++ `native-runner`, standard Python and
 Simpler/CANN libraries. No PyPTO, PyPTO-lib checkout, Torch or Simpler Python
 bindings are needed during execution. Only initial native MoE input preparation
 requires CPU Torch; the numerical helpers and generated Host/kernel sources
 are included here. Existing prepared bundles avoid that preparation step.
 
 `build.sh --flavor pypto_lib_latest` also builds the native MoE callable under
-`build/portable/native-moe`. `prepare.py`/`export_cases.py` prepare its input
+`build/portable/native-moe`. The standalone `export_cases.py` can prepare its input
 bundle; `--native-moe-bundle` reuses an existing standalone bundle.
 `production/moe.py BUNDLE OUTPUT --compile-only --build-dir PATH` prepares
 only this case; `--reuse-bundle PATH` copies a compatible standalone bundle.
@@ -234,13 +251,11 @@ Historical Device-wall measurements in existing reports retain their original
 labels and cannot be reused as AICore-wall reference values. A refreshed table
 must identify the runtime revision and measurement boundary for each column.
 
-Use one row per native case. Report average milliseconds with six decimal
-places using the six columns in [RESULTS.md](RESULTS.md). Identify the runtime
-revisions for each measurement batch and which rows were refreshed.
-Compute the percentage as `(min(HBG, percounter) / limit - 1) * 100`
-before rounding to two decimal places. In the final row, sum the unrounded case
-means for each runtime and the case limits. Apply the same formula to these totals. Use an em dash for unavailable values.
-Mark unclosed solver bounds and their percentages with a dagger.
+Use one row per default case and the four data columns in [RESULTS.md](RESULTS.md).
+Calculate the PGO gap as `100 × (PGO L0 / fixed-calendar 1 µs time − 1)` before
+rounding. Record the runtime revision and capture level. The 1 µs model adds
+a delay to each same-worker handoff and dependency-to-launch edge, taking the
+latest required arrival at a join. Report the seven rows individually.
 
 ## Included sources and data
 
@@ -263,20 +278,6 @@ production/                         # Native runner, capture/replay adapters, bu
 The full forward registers 81 kernels and standalone MoE registers 26.
 Both preserve the original function IDs, argument directions and AIC/AIV
 targets. Their plain C++ Host entry points are under `workloads/*/vendor/`.
-
-Every registration declares `async_capability` alongside its signature:
-`SYNCHRONOUS` registers no deferred completion; `DEFERRED` supplies a static
-condition bound and condition-type mask. For legacy registrations, missing or
-`None` declarations and explicit `UNKNOWN` with zero condition fields normalize
-to `DEFERRED(max_conditions=64, condition_types=3)` at the input boundary;
-invalid fields remain errors. The checked-in declarations are explicit contracts maintained with the source, not deductions
-from kernel names or a successful execution. `build_sources.py` preserves them
-through the registration manifest into `CoreCallable`; model instructions are
-unchanged. The Host-only `native-runner --declare-async-capabilities INPUT
-DECLARATIONS OUTPUT` command can add reviewed declarations to an existing
-bundle's header padding without moving its kernel binaries. An A/B comparison
-must use the same declared bundle and verify each original kernel's bytes and
-offsets on both sides.
 
 Uniform zero/one initializers are stored as one element plus a repeat count;
 nonuniform metadata is stored in full. This avoids checking in tens of GB of
@@ -376,7 +377,21 @@ launcher never compiles while holding devices. Native MoE `--compile-only`
 remains available with an unwrapped runtime. Single-device Attention replay
 needs no gate.
 
-To run exactly the seven native scenarios, including when an older prepared directory contains extra cases:
+The default preparation creates all seven default bundles. To prepare just the two synthetic
+cases for an existing runtime and native runner, use the same `--runtime` for
+preparation and execution:
+
+```bash
+python3 "$DSV41/production/prepare.py" "$DSV41_RUNTIME" "$DSV41/build/chain-prepared" \
+  --flavor synthetic --runtime host_build_graph
+bash "$DSV41/run.sh" "$DSV41/build/chain-prepared/cases/synthetic/full_wave_mix_chain" \
+  "$DSV41_RUNTIME" "$DSV41/outputs/chain" 0 1 10 --runtime=host_build_graph
+```
+
+The balanced diamond is runnable at `cases/synthetic/mpmd_diamond`. Its B-last
+and C-last diagnostic inputs live under `diagnostics/mpmd_diamond/`.
+
+To run all seven active cases from the default prepared directory:
 
 ```bash
 while IFS= read -r selected; do

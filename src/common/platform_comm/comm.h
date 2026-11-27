@@ -50,6 +50,8 @@ typedef struct CommWorkspaceConfig {
 static_assert(std::is_trivially_copyable_v<CommWorkspaceConfig> && std::is_standard_layout_v<CommWorkspaceConfig>);
 static_assert(sizeof(CommWorkspaceConfig) == 12);
 #endif
+// Abort (also for run sets): 0 confirms stop; 1 awaits completion after successful abort;
+// COMM_RECLAMATION_UNCONFIRMED retains owners after an SDK error.
 // Internal callable execution controls: activate=1, stop/poll=3, abort=4, discard preparation=7.
 int comm_control_ccu_run(CommHandle h, uint64_t registration_id, uint32_t operation, uint64_t generation);
 
@@ -70,6 +72,12 @@ enum { COMM_RECLAMATION_UNCONFIRMED = -6 };
 // Join every participant's allocation request before aborting these owners;
 // a peer may still be importing an exported handle. This is not a usable domain.
 enum { COMM_INITIALIZATION_ABORT_REQUIRED = -7 };
+
+// Admission is stopped without implying an unconfirmed resource reclamation.
+enum { COMM_DOMAIN_ADMISSION_STOPPED = -8 };
+
+// Allocation reply ownership: zero means no result has been reported yet.
+enum { COMM_DOMAIN_OWNED = 1, COMM_DOMAIN_REJECTED = 2 };
 
 #define COMM_GLOBAL_DOMAIN_VERSION 2U
 #define COMM_GLOBAL_DOMAIN_HANDLE_BYTES 256U
@@ -274,8 +282,9 @@ int comm_derive_context(
  * @param h                       Base handle from comm_init().
  * @param allocation_id           Caller-assigned unique id; scopes the
  *                                handshake / barrier filenames.  Must be
- *                                unique for the lifetime of this handle, including
- *                                failed and released allocations (A5 enforces this).
+ *                                strictly increasing on each onboard handle,
+ *                                including failed/released allocations. Calls
+ *                                on a handle must be serialized.
  * @param rank_ids                Base-communicator rank ids in dense
  *                                domain order (length rank_count).
  * @param rank_count              Number of subset members.
@@ -379,6 +388,8 @@ int comm_prepare_ccu_run(
  * communicator-owned workspaces remain owned by their enclosing lifetime.
  * COMM_RECLAMATION_UNCONFIRMED retains the domain on h, including on allocation
  * rollback, and forbids further use or destruction of the enclosing session.
+ * A marker unlink failure after confirmed reclamation returns a different
+ * non-zero status: admission remains stopped, but comm_destroy is permitted.
  *
  * @param h               Base handle from comm_init().
  * @param allocation_id   Same id passed to the domain allocation entry point.

@@ -46,7 +46,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     env = {**os.environ, "DSV41_RUNNER": str(build / "host/native-runner")}
     for name in ("engram", "c1a_reuse", "c1a_reindex"):
-        (bundle,) = export(build / "forward" / flavor, capture, flavor, output / "cases", build / "host", case_name=name)
+        (bundle,) = export(build / "forward" / flavor, capture, flavor, output / "cases", build / "host", case_names=[name])
         materialize(bundle, runtime, output / "preparation" / name, env)
 
 

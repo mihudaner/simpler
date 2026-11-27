@@ -10,7 +10,6 @@
 
 import importlib.util
 import json
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -38,24 +37,26 @@ def test_manifests_and_tables_contain_only_selected_cases():
     assert {p.parent.name for p in folder.glob("*/tasks.tsv")} == CASES - {"moe"}
 
 
-def test_performance_table_matches_selected_variants():
+def test_performance_table_matches_default_list():
     table = [
         [cell.strip() for cell in line.split("|")[1:-1]]
         for line in (SUITE / "RESULTS.md").read_text().splitlines()
         if line.startswith("|")
     ]
-    assert len(table[0]) == 6
-    assert table[0][0] == "Case" and table[0][2:4] == ["main HBG", "main percounter"]
-    rows, total = table[2:-1], table[-1]
-    assert total[1].split()[0] == str(len(rows))
-    for row in [*rows, total]:
-        assert len(row) == 6
-        assert all(re.fullmatch(r"[0-9]+\.[0-9]{6}", value) for value in row[2:4])
-        assert re.fullmatch(r"[0-9]+\.[0-9]{6}†?", row[4])
-        assert re.fullmatch(r"-?[0-9]+\.[0-9]{2}%†?", row[5])
-    assert len(rows) == len(CASES)
-    assert {row[0] for row in rows} == CASES
-    assert len({row[1] for row in rows}) == 1
+    rows = table[2:]
+    assert [row[0] for row in rows] == [
+        "swa",
+        "c2a_full",
+        "c1a_reindex",
+        "c1a_reuse",
+        "engram",
+        "full_wave_mix_chain",
+        "mpmd_diamond",
+    ]
+    for _, pgo, bound, scheduled, gap in rows:
+        assert 0 < float(bound) <= float(scheduled) and gap.endswith("%")
+        # Displayed times are independently rounded to six decimal places.
+        assert float(gap[:-1]) == pytest.approx(100 * (float(pgo) / float(scheduled) - 1), abs=0.035)
 
 
 def test_topology_refresh_cannot_restore_removed_cases(tmp_path):
@@ -96,6 +97,9 @@ def test_run_list_excludes_removed_cached_bundles(args):
     listed = subprocess.check_output(
         [sys.executable, str(SUITE / "production/list_cases.py"), *args], text=True
     ).splitlines()
-    expected = {f"{FLAVOR}/{case}" for case in CASES}
-    assert set(listed) == expected
-    assert len(listed) == len(CASES)
+    model = ["swa", "c2a_full", "c1a_reindex", "c1a_reuse", "engram"]
+    assert listed == [
+        *(f"{FLAVOR}/{case}" for case in model),
+        "synthetic/full_wave_mix_chain",
+        "synthetic/mpmd_diamond",
+    ]

@@ -129,7 +129,8 @@ nav:
           - Native graphs and async completion: zh-cn/a5-hbg-aicore-walkthrough/04-native-async.md
       - TMR A2/A3 vs A5: tensormap-and-ringbuffer-a2a3-vs-a5.md
       - A5 AICPU core selection: design/a5-fg-pg-core-selection.en.md
-      - A5 local Host DDR access: design/a5-host-ddr.md
+      - A5 PGO 日历 DMB 通知: zh-cn/design/percounter-peer-dmb.md
+      - Local Host DDR access: design/a5-host-ddr.md
       - Run completion fences: design/run-completion-fence.md
       - Native framework submission: design/native-framework-submission.md
       - Native CCU ABI: design/ccu-native-abi.md
@@ -152,6 +153,8 @@ nav:
           - HBG L0 kernel 首尾计时: zh-cn/investigations/2026-11-a5-hbg-l0-aicore-wall.md
           - HBG 固定版本 L0 实测: zh-cn/investigations/2026-11-a5-hbg-latest-aicore-wall.md
           - Percounter L0 kernel 首尾实测: zh-cn/investigations/2026-11-a5-percounter-kernel-wall.md
+          - DSV4.1 Percounter 日历优化: zh-cn/investigations/2026-11-dsv41-percounter-calendar-optimization.md
+          - Graph Calendar PGO 分桶缓存: zh-cn/design/a5-graph-calendar-pgo-cache.md
           - 设计复审: zh-cn/design/a5-hbg-graph-task/review.md
           - 已否定的性能尝试: zh-cn/design/a5-hbg-graph-task/rejected-optimizations.md
           - 固定前缀成员历史测量: zh-cn/design/a5-hbg-graph-task/fixed-prefix-members.md

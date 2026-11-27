@@ -3218,38 +3218,6 @@ NB_MODULE(_task_interface, m) {
         nb::arg("direction"), "Return the string name of an ArgDirection."
     );
 
-    const auto parse_core_async_capability = [](const nb::object &value) {
-        CoreAsyncCapability result{};
-        if (value.is_none()) return normalize_core_async_capability(result);
-        if (!nb::isinstance<nb::dict>(value))
-            throw std::invalid_argument("async_capability must be a version-1 dictionary");
-        const auto dictionary = nb::cast<nb::dict>(value);
-        if (dictionary.size() != 4 || !dictionary.contains("version") || !dictionary.contains("mode") ||
-            !dictionary.contains("max_conditions") || !dictionary.contains("condition_types"))
-            throw std::invalid_argument("invalid async_capability fields");
-        const auto integer = [&](const char *key) -> int64_t {
-            const auto field = dictionary[key];
-            if (!PyLong_CheckExact(field.ptr()))
-                throw std::invalid_argument("async_capability fields must be integers");
-            return nb::cast<int64_t>(field);
-        };
-        const int64_t version = integer("version");
-        const int64_t count = integer("max_conditions");
-        const int64_t types = integer("condition_types");
-        if (version != 1 || count < 0 || count > 64 || types < 0 || types > 3 ||
-            !nb::isinstance<nb::str>(dictionary["mode"]))
-            throw std::invalid_argument("invalid async_capability version, mode, or bounds");
-        const auto mode = nb::cast<std::string>(dictionary["mode"]);
-        if (mode == "SYNCHRONOUS") result.mode = CoreAsyncMode::SYNCHRONOUS;
-        else if (mode == "DEFERRED") result.mode = CoreAsyncMode::DEFERRED;
-        else if (mode == "UNKNOWN") result.mode = static_cast<CoreAsyncMode>(0);
-        else throw std::invalid_argument("invalid async_capability mode");
-        result.version = 1;
-        result.max_conditions = static_cast<uint8_t>(count);
-        result.condition_types = static_cast<uint8_t>(types);
-        return normalize_core_async_capability(result);
-    };
-
     // --- PyCoreCallable wrapper ---
     struct PyCoreCallable {
         std::vector<uint8_t> buffer_;
@@ -3259,33 +3227,18 @@ NB_MODULE(_task_interface, m) {
     nb::class_<PyCoreCallable>(m, "CoreCallable")
         .def_static(
             "build",
-            [parse_core_async_capability](
-                std::vector<ArgDirection> signature, nb::bytes binary, nb::object async_capability
-            ) -> PyCoreCallable {
+            [](std::vector<ArgDirection> signature, nb::bytes binary, bool completes_on_return) -> PyCoreCallable {
                 auto bin_ptr = reinterpret_cast<const void *>(binary.c_str());
                 auto bin_size = static_cast<uint32_t>(binary.size());
                 auto buf = make_callable<CORE_MAX_TENSOR_ARGS>(
-                    signature.data(), static_cast<int32_t>(signature.size()), bin_ptr, bin_size,
-                    parse_core_async_capability(async_capability)
+                    signature.data(), static_cast<int32_t>(signature.size()), bin_ptr, bin_size
                 );
+                if (completes_on_return) reinterpret_cast<CoreCallable *>(buf.data())->declare_completion_on_return();
                 return PyCoreCallable{std::move(buf)};
             },
-            nb::arg("signature"), nb::arg("binary"), nb::arg("async_capability") = nb::none(),
-            "Build a CoreCallable from a signature list and binary bytes. The dump "
+            nb::arg("signature"), nb::arg("binary"), nb::kw_only(), nb::arg("completes_on_return") = false,
+            "Declare completes_on_return only for a kernel whose outputs complete at return. The dump "
             "maps signature entry i to payload slot i positionally."
-        )
-
-        .def_prop_ro(
-            "async_capability",
-            [](const PyCoreCallable &self) {
-                const auto value = normalize_core_async_capability(self.get().async_capability());
-                nb::dict result;
-                result["version"] = 1;
-                result["mode"] = value.mode == CoreAsyncMode::SYNCHRONOUS ? "SYNCHRONOUS" : "DEFERRED";
-                result["max_conditions"] = value.max_conditions;
-                result["condition_types"] = value.condition_types;
-                return result;
-            }
         )
 
         .def(
@@ -3399,7 +3352,7 @@ NB_MODULE(_task_interface, m) {
                     reinterpret_cast<const uint8_t *>(raw.c_str()),
                     reinterpret_cast<const uint8_t *>(raw.c_str()) + raw.size()
                 );
-                normalize_chip_callable_buffer(buf.data(), buf.size());
+                validate_chip_callable_buffer(buf.data(), buf.size());
                 return PyChipCallable{std::move(buf)};
             },
             nb::arg("raw"),
@@ -3531,8 +3484,6 @@ NB_MODULE(_task_interface, m) {
                 const uint8_t *child_start = reinterpret_cast<const uint8_t *>(parent.storage_ + offset);
                 const size_t child_size = CoreCallable::binary_data_offset() + c.binary_size();
                 std::vector<uint8_t> child_buf(child_start, child_start + child_size);
-                reinterpret_cast<CoreCallable *>(child_buf.data())->async_capability_ =
-                    normalize_core_async_capability(c.async_capability());
                 return PyCoreCallable{std::move(child_buf)};
             },
             nb::arg("i"), "Return the CoreCallable child at index i."
@@ -3835,6 +3786,12 @@ NB_MODULE(_task_interface, m) {
     nb::class_<ChipRun>(m, "_ChipRun")
         .def("done", &ChipRun::done)
         .def("activate", &ChipRun::activate)
+        .def(
+            "bind_peer_cancel",
+            [](ChipRun &self, uint64_t address) {
+                self.bind_peer_cancel(reinterpret_cast<const int32_t *>(address));
+            }
+        )
         .def("abandon", &ChipRun::abandon, nb::call_guard<nb::gil_scoped_release>())
         .def_prop_ro("launched", &ChipRun::launched)
         .def_prop_ro("_execution_ended", &ChipRun::execution_ended)
@@ -4039,6 +3996,7 @@ NB_MODULE(_task_interface, m) {
             nb::call_guard<nb::gil_scoped_release>(),
             "Drain active native ownership, abandon unlaunched work, and close the chip run lane."
         )
+        .def("_fence_chip_run_lane", &ChipWorker::fence_chip_run_lane, nb::call_guard<nb::gil_scoped_release>())
         .def(
             "_stop_chip_run_lane_admission", &ChipWorker::stop_chip_run_lane_admission,
             nb::call_guard<nb::gil_scoped_release>(),
@@ -4469,10 +4427,16 @@ NB_MODULE(_task_interface, m) {
             nb::arg("host_shm_name") = "", nb::arg("urma_jetties_per_aiv") = 1, nb::arg("urma_sq_depth") = 0,
             nb::arg("ccu_mode") = uint32_t{COMM_CCU_MODE_SCHED},
             "Collectively allocate a fresh per-rank pool for a subset; returns "
-            "(device_ctx, local_window_base, actual_window_size) for this rank. The commit flag records cleanup "
-            "responsibility before result conversion or an allocation error; it does not imply a usable context."
+            "(device_ctx, local_window_base, actual_window_size) for this rank. The ownership reply is 1 for retained "
+            "resources or 2 for a confirmed rejection without resources; zero means no reply. Ownership does not "
+            "imply a usable context."
         )
         .def("communication_cleanup_confirmed", &ChipWorker::communication_cleanup_confirmed)
+        .def(
+            "reclaim_stopped_ccu_owners", &ChipWorker::reclaim_stopped_ccu_owners,
+            nb::call_guard<nb::gil_scoped_release>()
+        )
+        .def("control_ccu_terminal", &ChipWorker::control_ccu_terminal, nb::call_guard<nb::gil_scoped_release>())
         .def(
             "register_ccu_callable",
             [](ChipWorker &self, uint64_t comm_handle, uint64_t collective_id, int32_t callable_id,

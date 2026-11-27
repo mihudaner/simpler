@@ -126,6 +126,7 @@ tmr_case(test_scheduler_dispatch_diagnostics.cpp
         ${SIMPLER_SRC}/@arch@/runtime/tensormap_and_ringbuffer/runtime/scheduler/scheduler_completion.cpp
         ${SIMPLER_SRC}/@arch@/runtime/tensormap_and_ringbuffer/runtime/scheduler/scheduler_cold_path.cpp
         ${SIMPLER_SRC}/common/platform/shared/aicpu/device_phase_aicpu.cpp
+        ${SIMPLER_SRC}/common/platform/shared/aicpu/device_run_result_base_aicpu.cpp
         ${SIMPLER_SRC}/common/platform/shared/aicpu/aicpu_device_config.cpp
         ${CMAKE_SOURCE_DIR}/support/device_time_stub.cpp
         ${SIMPLER_SRC}/@arch@/platform/sim/aicpu/inner_platform_regs.cpp
@@ -135,6 +136,9 @@ tmr_case(test_scheduler_dispatch_diagnostics.cpp
     COMPILE_OPTIONS -ffunction-sections -fdata-sections
     LINK_OPTIONS ${_mix_admission_gc}
     TIMEOUT 30)
+
+target_sources(test_a2a3_tmr_scheduler_dispatch_diagnostics PRIVATE
+    ${SIMPLER_SRC}/common/platform/shared/aicpu/device_run_result_base_aicpu.cpp)
 
 tmr_case(test_async_wait_poll_hint.cpp TIMEOUT 30)
 
@@ -151,6 +155,7 @@ tmr_case(test_early_dispatch_deferred_completion.cpp
         ${SIMPLER_SRC}/@arch@/runtime/tensormap_and_ringbuffer/runtime/scheduler/scheduler_completion.cpp
         ${SIMPLER_SRC}/@arch@/runtime/tensormap_and_ringbuffer/runtime/scheduler/scheduler_cold_path.cpp
         ${SIMPLER_SRC}/common/platform/shared/aicpu/device_phase_aicpu.cpp
+        ${SIMPLER_SRC}/common/platform/shared/aicpu/device_run_result_base_aicpu.cpp
         ${SIMPLER_SRC}/common/platform/shared/aicpu/aicpu_device_config.cpp
         ${CMAKE_SOURCE_DIR}/support/device_time_stub.cpp
         ${SIMPLER_SRC}/@arch@/platform/sim/aicpu/inner_platform_regs.cpp

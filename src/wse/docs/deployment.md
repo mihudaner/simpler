@@ -1,15 +1,18 @@
 # WSE Block deployment
 
 The device configuration supplies a fixed Core count `C` and four PEs per Core.
-Every run uses that device. The task supplies a logical Block count `B` through
-the existing `CoreTaskArgs.launch_spec`:
+Every run uses that device. The Host supplies the logical Block count `B`
+and one execution Core ID per Block. For example, this four-Block task uses
+Cores 6, 2, 6 and 1 in logical Block order.
 
 ```cpp
 CoreTaskArgs task;
 task.add_input(input_view);
 task.add_output(output_view);  // An existing view of fixed SRAM.
-task.launch_spec.set_block_num(blocks);
-rt_submit_wse_task(kernel_id, task);
+task.launch_spec.set_block_num(4);
+WseLaunchSpec launch;
+launch.placement = {{6}, {2}, {6}, {1}};
+rt_submit_wse_task(kernel_id, task, launch);
 ```
 
 This needs no Python binding or `CallConfig` extension. Python registers the
@@ -17,17 +20,23 @@ callable and submits ordinary `TaskArgs` through `Worker`.
 
 ## Placement and Threads
 
-The default assignment is `block_id % C`, with one logical Thread on PE 0.
-`WseLaunchSpec` can select one to four logical Threads and an explicit placement
-for each Block. A placement names one Core and distinct PEs on that Core. Invalid
-Core IDs, duplicate PEs, mismatched table lengths and unsupported synchronization
-requirements reject before launch.
+A single SS task supplies one placement. An SPMD task supplies exactly `B`
+placements, indexed by logical Block ID. Core IDs may repeat. Each ID must be
+within the configured device. Missing, extra or invalid placements fail during
+Host submission. Graph enter and exit nodes carry dependencies and execute no
+Blocks.
 
-If `B < C`, some Cores have no task Blocks. If `B > C`, each Core drains its
-queue in order. Device initialization and run completion still include all Cores
-and PEs. One Core runs at most one active Block; all participating Threads must
-finish before that Core advances. The task reports completion exactly once,
-after all its Blocks finish.
+A placement such as `{6}` runs on Core 6 with one Thread on PE 0 by default.
+Setting `launch.thread_num` selects the first one to four PEs on each Core.
+An explicit local PE list, such as `{6, {2, 0}}`, selects the Threads for that
+Block. Duplicate or out-of-range PEs and unsupported synchronization requirements
+reject before launch.
+
+If `B < C`, some Cores have no task Blocks. If `B > C`, each Core executes
+its assigned Blocks in Host calendar order. Device initialization and run
+completion include all Cores and PEs. One Core runs at most one active Block.
+All participating Threads must finish before that Core advances. The task
+reports completion exactly once, after all its Blocks finish.
 
 ## Fixed data ownership
 
@@ -61,9 +70,18 @@ The WSE scene tests cover:
 - explicit Core/PE placement and one to four Threads;
 - independent per-Block Tensor arguments, cross-Core access and fixed data owners;
 - Graph recording, rebinding, predicates and reverse-order waits;
+- an `SS → SPMD(4) → SS` Graph on Cores `7 → [6, 2, 6, 1] → 3`, with actual
+  dispatch checked against the submitted placements and per-Core calendar on
+  each replay, and the final SS consuming all four results;
 - counter and SharedTile collaboration, FFN numerics and capacity refusal before GO;
 - startup failure rollback, timed waits and owner shutdown.
 
 Run the same fixed-SRAM FFN tests after rebuilding the configuration with 1 MiB
 per Core to qualify that device model. Passing with the default 100 MiB model is
 not evidence for the smaller capacity.
+
+Run the two Graph tests to verify calendar scheduling with the ordinary Worker.
+
+```sh
+python -m pytest tests/st/wse/host_build_graph/calendar --platform wsesim --require-pto-isa
+```
