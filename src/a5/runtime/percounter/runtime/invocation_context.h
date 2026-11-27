@@ -42,7 +42,12 @@ static_assert(std::is_standard_layout_v<LocalContext> && std::is_trivially_copya
 
 namespace simpler::percounter {
 
+// Business kernels and the resident calendar address the same per-lane slots.
+#if defined(SIMPLER_PLATFORM_A6)
+inline constexpr uint32_t PERCOUNTER_CONTEXT_SSBUF_OFFSET = 1920;
+#else
 inline constexpr uint32_t PERCOUNTER_CONTEXT_SSBUF_OFFSET = 2816;
+#endif
 inline constexpr uint32_t PERCOUNTER_CONTEXT_SSBUF_STRIDE = 64;
 
 struct PercounterInvocationContext {

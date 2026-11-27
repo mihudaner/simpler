@@ -130,7 +130,7 @@ struct Template {
     std::vector<uint32_t> indexes;
     std::vector<CalendarRow> rows;
     std::vector<CalendarLocalJoin> joins;
-    std::vector<std::array<uint32_t, 3>> binding_indexes;
+    std::vector<std::array<uint32_t, PLATFORM_CORES_PER_BLOCKDIM>> binding_indexes;
     std::vector<bool> polls_task_fanins;
     uint32_t binding_count{0};
     uint32_t rows_offset{0};
@@ -144,7 +144,7 @@ inline bool decode_template(
     if (plan.bytes.size() < sizeof(result.header)) return false;
     std::memcpy(&result.header, plan.bytes.data(), sizeof(result.header));
     const auto &header = result.header;
-    if (header.worker_count != clusters * 3 || header.row_count == 0 ||
+    if (header.worker_count != clusters * PLATFORM_CORES_PER_BLOCKDIM || header.row_count == 0 ||
         !calendar_detail::read_table(plan, header.index_offset, header.worker_count + 1, &result.indexes) ||
         !calendar_detail::read_table(plan, header.row_offset, header.row_count, &result.rows) ||
         !calendar_detail::read_table(plan, header.join_offset, header.join_count, &result.joins))
@@ -175,7 +175,7 @@ inline bool decode_template(
             result.binding_count += result.binding_count % 2;
         result.binding_indexes[task].fill(UINT32_MAX);
         const auto mask = phase.tasks[task].active_mask;
-        for (uint32_t role = 0; role < 3; ++role) {
+        for (uint32_t role = 0; role < PLATFORM_CORES_PER_BLOCKDIM; ++role) {
             if ((mask & (1U << role)) || (mask == 0 && role == 1))
                 result.binding_indexes[task][role] = result.binding_count++;
         }
@@ -184,7 +184,7 @@ inline bool decode_template(
         const uint32_t begin = result.indexes[worker];
         const uint32_t end = result.indexes[worker + 1];
         if (begin > end || end > header.row_count) return false;
-        const uint32_t lane = worker < clusters ? 0 : 1 + (worker - clusters) % 2;
+        const uint32_t lane = calendar_detail::worker_lane(clusters, worker);
         for (uint32_t i = begin; i < end; ++i) {
             const auto &row = result.rows[i];
             const uint32_t task = static_cast<uint32_t>(percounter_order_task_id(row.entry));
@@ -214,10 +214,10 @@ inline bool decode_template(
             const uint32_t owner = waits.row_input_owners[i];
             if (owner != CALENDAR_NO_INPUT_OWNER) {
                 const bool summary = (flags & CALENDAR_EXEC_FANIN) != 0;
-                if (lane == 0 || input.is_mix || input.sync_start || input.has_predicate || input.active_mask == 0 ||
-                    row.local_join != CALENDAR_NO_JOIN || (!summary && wait_count != 1) ||
-                    (summary && owner != i && wait_count != 0) || owner >= header.row_count ||
-                    waits.row_input_owners[owner] != owner ||
+                if (PLATFORM_AIV_CORES_PER_BLOCKDIM != 2 || lane == 0 || input.is_mix || input.sync_start ||
+                    input.has_predicate || input.active_mask == 0 || row.local_join != CALENDAR_NO_JOIN ||
+                    (!summary && wait_count != 1) || (summary && owner != i && wait_count != 0) ||
+                    owner >= header.row_count || waits.row_input_owners[owner] != owner ||
                     percounter_order_task_id(result.rows[owner].entry) != task)
                     return false;
                 const uint32_t owner_worker = owner == i ? worker : (lane == 1 ? worker + 1 : worker - 1);
@@ -599,7 +599,7 @@ inline bool build_range_calendar(
     const uint32_t patch_offset = graphs.invocation_count == 0 ? 0 : image.allocate<CalendarDispatchPatch>(total_tasks);
     if (graphs.invocation_count != 0 && patch_offset == 0) return false;
 
-    const uint32_t workers = clusters * 3;
+    const uint32_t workers = clusters * PLATFORM_CORES_PER_BLOCKDIM;
     std::vector<std::vector<RangeRecord>> ranges(workers);
     std::map<const CalendarPlan *, Template> templates;
     uint32_t sequence_base = 0;
@@ -702,7 +702,7 @@ inline bool build_range_calendar(
             image.extras.push_back({extra_offset, global, shell});
             CalendarDispatchPatch patch{};
             if (task_input.has_predicate) patch.predicate_extra_offset = extra_offset;
-            for (uint32_t role = 0; role < 3; ++role) {
+            for (uint32_t role = 0; role < PLATFORM_CORES_PER_BLOCKDIM; ++role) {
                 const uint32_t index = tmpl.binding_indexes[task][role];
                 if (index == UINT32_MAX) continue;
                 const auto offset = static_cast<uint32_t>(bindings + index * sizeof(CalendarDispatch));
@@ -825,8 +825,14 @@ inline bool build_range_calendar(
     return true;
 }
 
+// All calendar commands reserve the low address bits for wait tags.
+inline uint64_t calendar_add_address(uint64_t address) {
+    if constexpr (PERCOUNTER_GM_NOTIFICATIONS) return (address & CALENDAR_WAIT_TAG_MASK) == 0 ? address : 0;
+    return a5_cnt_notify_increment_address(address);
+}
+
 inline uint64_t range_add_command(const PercounterCounter &counter) {
-    return a5_cnt_notify_increment_address(counter.completion_notify_address);
+    return calendar_add_address(counter.completion_notify_address);
 }
 
 inline CalendarWait range_completion_wait(const PercounterCounter &counter, uint32_t task) {
@@ -847,7 +853,7 @@ inline bool bind_range_calendar(
     if (image.completion.tasks.size() != layout.task_count || notifications.size() != header.notify_slots_count)
         return false;
     for (size_t i = 0; i < notifications.size(); ++i) {
-        if (a5_cnt_notify_increment_address(notifications[i]) == 0) return false;
+        if (calendar_add_address(notifications[i]) == 0) return false;
         image.store(header.notify_slots_offset + static_cast<uint32_t>(i * sizeof(uint64_t)), notifications[i]);
     }
     auto *counters = region_at<PercounterCounter>(host, layout.counters_offset);
@@ -885,9 +891,7 @@ inline bool bind_range_calendar(
     for (const auto &patch : image.peer_counter_patches) {
         const size_t slot = first_fanin_slot + patch.slot;
         if (slot >= notifications.size()) return false;
-        image.store(
-            patch.offset, patch.add ? a5_cnt_notify_increment_address(notifications[slot]) : notifications[slot]
-        );
+        image.store(patch.offset, patch.add ? calendar_add_address(notifications[slot]) : notifications[slot]);
     }
     for (const auto &group : image.fused_fanins) {
         const size_t slot = first_fanin_slot + group.slot;
@@ -913,7 +917,7 @@ inline bool bind_range_calendar(
         } else if (end.slot != UINT32_MAX) {
             const uint64_t set = notifications[first_phase_slot + end.slot];
             phase_waits[phase] = {set | CALENDAR_WAIT_NOTIFY, end.contributors};
-            phase_add[phase] = a5_cnt_notify_increment_address(set);
+            phase_add[phase] = calendar_add_address(set);
         }
     }
     for (const auto &patch : image.waits) {

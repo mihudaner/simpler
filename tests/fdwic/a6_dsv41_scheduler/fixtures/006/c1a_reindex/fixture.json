@@ -14,7 +14,7 @@
     "edge_table_sha256": "0884a5f78ed6615e390bd3cc4f87742a8b32ec4d807d804259e4d95b93a27ff3"
   },
   "archive": "c1a_reindex.tar.xz",
-  "archive_sha256": "1a2691003747a3bc2ec45f7c1c5083ac4607f258218a235506519cf35f56acea",
+  "archive_sha256": "48269048465526590f10eb6ba375cb5949d5f4f1cb3ebf01d2db45c8db860b94",
   "files": {
     "case.json": "a5b95ebac2786d5c738600bed7c2d2c04bce19ea61a1ddbe6d0200a7aaeec17d",
     "input-rank0-0.bin": "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7",
@@ -144,7 +144,6 @@
     "snapshot-input-94.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
     "snapshot.txt": "89d8c3b37a1d94a22cb7e1768a19dc4d247dcf77ab2e8875f4d0ac69d3740e4d",
     "zero.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
-    "callable.bin": "0f5bd548046b5bcdc24d4ad5b8e8c424da815542f0f8ca4746651ed9ac44aa1f"
-  },
-  "callable_wire_version": 2
+    "callable.bin": "4470008f7ad98be54bf1f591a6720c4bb2effe56ace57b7de2b3fcd51de6779a"
+  }
 }

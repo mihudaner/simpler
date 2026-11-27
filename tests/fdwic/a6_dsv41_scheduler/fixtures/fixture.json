@@ -14,7 +14,7 @@
     "edge_table_sha256": "473aaacd1dfe0c71471e608f234d86d7dbd18721cf47b24bda58544a51df8bb7"
   },
   "archive": "swa.tar.xz",
-  "archive_sha256": "66a525f38e15f10b51e0cc45fd7922a41a786ec3d973de7aa772fabd563109a8",
+  "archive_sha256": "bfc2738c072442dea045974852daa89eb225fb50ce9278fa49c66359c7b63642",
   "files": {
     "case.json": "ec5ca8f5ab9a635a3e8c83af078059cc6be8393f260a5bbe22805b5432dec0a1",
     "input-rank0-0.bin": "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7",
@@ -133,7 +133,6 @@
     "snapshot-input-85.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
     "snapshot-input-86.bin": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
     "snapshot.txt": "89d8c3b37a1d94a22cb7e1768a19dc4d247dcf77ab2e8875f4d0ac69d3740e4d",
-    "callable.bin": "81331c71a1d804ed0c0132e676b564aed68913b3df79327d30834c1cf76489d4"
-  },
-  "callable_wire_version": 2
+    "callable.bin": "f6ab89fa4c26778060d07012e217972f6712cceb4984fd89e87873a19d439963"
+  }
 }

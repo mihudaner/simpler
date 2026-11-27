@@ -30,6 +30,15 @@
 
 namespace simpler::percounter {
 
+// A6 counters and the launch generation live in the calendar's GM allocation.
+// A5 uses the CntNotify ADD alias eight bytes above its SET/read address.
+#if defined(SIMPLER_PLATFORM_A6)
+inline constexpr bool PERCOUNTER_GM_NOTIFICATIONS = true;
+#else
+inline constexpr bool PERCOUNTER_GM_NOTIFICATIONS = false;
+#endif
+inline constexpr uint64_t PERCOUNTER_ADD_OFFSET = PERCOUNTER_GM_NOTIFICATIONS ? 0 : 8;
+
 inline constexpr uint32_t CALENDAR_NO_JOIN = UINT32_MAX;
 inline constexpr uint32_t CALENDAR_NO_INPUT_OWNER = UINT32_MAX;
 inline constexpr uint32_t CALENDAR_COUNT_MASK = 0x00ff'ffff;

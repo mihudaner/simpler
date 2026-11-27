@@ -214,7 +214,7 @@ inline TaskPlacement task_placement_from_active_mask(uint8_t active_mask, uint8_
     }
     // Two or three of the three slots, which is every legal MIX shape: AIC+AIV0
     // (0b011), AIC+AIV1 (0b101), both AIV (0b110), all three (0b111).
-    if (active_mask <= 7U && (active_mask & (active_mask - 1U)) != 0) {
+    if (active_mask < (1U << PLATFORM_CORES_PER_BLOCKDIM) && (active_mask & (active_mask - 1U)) != 0) {
         *core_type_index = 0;
         return TaskPlacement::MIX;
     }

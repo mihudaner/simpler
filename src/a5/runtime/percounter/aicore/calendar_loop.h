@@ -83,12 +83,30 @@ inline __aicore__ void percounter_calendar_add(uint64_t address) {
     if (address == 0) return;
 #if defined(__CPU_SIM)
     // Simulated notifications keep the counter at the SET/read address.
-    address -= percounter_notify_add_address(1) - 1;
+    address -= PERCOUNTER_ADD_OFFSET;
 #endif
     percounter_notify_add(*reinterpret_cast<__gm__ volatile uint32_t *>(address), 1);
 }
 
 inline __aicore__ void percounter_calendar_set_defer_bit(uint64_t address, uint32_t bit) {
+    if constexpr (PERCOUNTER_GM_NOTIFICATIONS) {
+        auto *word = reinterpret_cast<__gm__ uint32_t *>(address);
+        uint32_t observed = 0;
+        while ((observed & bit) == 0) {
+            const uint32_t prior = percounter_scalar_memory_result(ProfilePhase::AtomicCas, [=]() __aicore__ {
+#if defined(__CCE_AICORE__)
+                return atomicCAS(word, observed, observed | bit);
+#else
+                uint32_t expected = observed;
+                __atomic_compare_exchange_n(word, &expected, observed | bit, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+                return expected;
+#endif
+            });
+            if (prior == observed) break;
+            observed = prior;
+        }
+        return;
+    }
     percounter_scalar_notify_issue(ProfilePhase::CntNotifyDeferIssue, address, bit, [=]() __aicore__ {
 #if defined(__CCE_AICORE__)
         __builtin_cce_st_dev(bit, reinterpret_cast<__gm__ uint32_t *>(address + 16), 0);
@@ -497,7 +515,7 @@ percounter_decode_counted_wait(const __gm__ CalendarWait &wait, uint64_t &addres
 
 // The observation clock supplies the counted wait's retry deadline, including at L0.
 inline __aicore__ uint32_t percounter_read_dmb_sample(uint64_t &cycles) {
-#if defined(__CCE_AICORE__)
+#if defined(__CCE_AICORE__) && !defined(SIMPLER_PLATFORM_A6)
     uint64_t token;
     asm volatile("MOV %0, DATA_MAIN_BASE\nMOV %1, SYS_CNT" : "=&l"(token), "=&l"(cycles) : : "memory");
     return static_cast<uint32_t>(token);
@@ -772,6 +790,7 @@ inline __aicore__ bool percounter_send_peer_notifications(
     const LaneConfig &cfg, const __gm__ uint8_t *image, uint64_t bytes, const __gm__ CalendarPeerExtra &peer,
     uint64_t entry, bool credited_done
 ) {
+    if constexpr (PERCOUNTER_GM_NOTIFICATIONS) return false;
     const uint32_t count = peer.send_count;
     const auto *sends = percounter_calendar_table<CalendarPeerSend>(image, bytes, peer.sends_offset, count);
     if (sends == nullptr) return false;
@@ -938,6 +957,7 @@ inline __aicore__ bool percounter_complete_spmd_and_notify(
     const LaneConfig &cfg, const __gm__ uint8_t *image, uint64_t bytes, const __gm__ CalendarSpmdPeerExtra &peer,
     uint64_t done_add_cmd, uint32_t block, uint32_t role, uint64_t entry
 ) {
+    if constexpr (PERCOUNTER_GM_NOTIFICATIONS) return false;
     const uint32_t count = peer.target_count;
     const uint32_t sequence = peer.token_begin + PLATFORM_CORES_PER_BLOCKDIM * block + role;
     if (count > 1) {
@@ -1057,7 +1077,7 @@ inline __aicore__ bool percounter_calendar_execute_range(
                 cfg, PercounterTaskEventKind::InputsReady, entry, percounter_task_event_clock(cfg)
             );
         } else if ((flags & CALENDAR_EXEC_INPUT_FOLLOWER) != 0) {
-            if (row->wait_count != 0) {
+            if (PLATFORM_AIV_CORES_PER_BLOCKDIM != 2 || row->wait_count != 0) {
                 percounter_fail(cfg, SchedulerGraphResult::INVALID_ARGUMENTS, percounter_order_task_id(entry));
                 return false;
             }
@@ -1162,8 +1182,9 @@ inline __aicore__ bool percounter_calendar_execute_range(
 inline __aicore__ void percounter_calendar_loop(const LaneConfig &cfg) {
     const uint64_t offset = cfg.control->calendar_offset;
     const uint64_t image_bytes = cfg.control->image_bytes;
-    if (cfg.aiv_per_cluster != 2 || offset < sizeof(PercounterControl) || offset % alignof(CalendarRangeHeader) != 0 ||
-        offset > image_bytes || image_bytes - offset < sizeof(CalendarRangeHeader)) {
+    if (cfg.aiv_per_cluster != PLATFORM_AIV_CORES_PER_BLOCKDIM || offset < sizeof(PercounterControl) ||
+        offset % alignof(CalendarRangeHeader) != 0 || offset > image_bytes ||
+        image_bytes - offset < sizeof(CalendarRangeHeader)) {
         percounter_fail(cfg, SchedulerGraphResult::INVALID_ARGUMENTS);
         return;
     }

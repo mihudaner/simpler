@@ -14,7 +14,7 @@ case_dir=tests/fdwic/a6_dsv41_scheduler
 platform=a6                  # 在 A5 上改为 a5
 python simpler_setup/build_runtimes.py --platforms "$platform" --runtime host_build_graph \
   --profiling-dfx 1 --profiling-orch 0 --profiling-sched 0 --profiling-tensormap 0
-python -I "$case_dir/prepare.py" build --platform "$platform" --pto-isa build/pto-isa \
+python -I "$case_dir/prepare.py" build --platform "$platform" --runtime host_build_graph --pto-isa build/pto-isa \
   --build-dir "build/005-swa-$platform"
 ```
 
@@ -29,6 +29,18 @@ python -I "$case_dir/run.py" --build-dir build/005-swa-a5 --runtime host_build_g
 ```
 
 输出目录包含原生 runner 日志及逐轮数值校验。A5 迁移版的采集等级、调度下界、分块及代表轮选取见[005 性能报告](../results/005-swa-a5-baseline-a6-timeouts/README.zh-CN.md)。每次复测使用新的输出目录。
+
+## A6 日历调度
+
+A6 的 HBG 和日历采用不同的业务核上下文布局。组包时用 `--runtime percounter` 选择日历，runner 会检查运行时和 callable 是否匹配。使用 `--runtime both` 可从同一输入生成两套 callable，再在同一张已分配的卡上逐项校验输出。分开准备时每个包使用独立目录。[007 对照与板端验证](../results/007-calendar-scheduler/README.zh-CN.md)
+
+```bash
+python simpler_setup/build_runtimes.py --platforms a6 --runtime percounter
+python -I "$case_dir/prepare.py" build --platform a6 --runtime percounter \
+  --kernel-set cpp --five-block-t0 --build-dir build/007-a6-swa-calendar
+python -I "$case_dir/run.py" --build-dir build/007-a6-swa-calendar \
+  --device "${TASK_DEVICE:?请设置已分配的 A6 单卡编号}" --output outputs/007-a6-swa-calendar
+```
 
 ## 从原始 forward 刷新单卡快照
 

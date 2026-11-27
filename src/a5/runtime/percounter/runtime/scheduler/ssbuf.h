@@ -8,11 +8,11 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  * -----------------------------------------------------------------------------------------------------------
  */
-// The scheduler owns the upper 1 KiB of each cluster's 3 KiB SSBUF.
 #pragma once
 
 #include <cstdint>
 
+#include "host_build_graph/cluster_signal_layout.h"
 #include "scheduler/scheduler_types.h"
 #include "scheduler/profiling_memory.h"
 
@@ -22,9 +22,10 @@
 #define PERCOUNTER_SSBUF
 #endif
 
-constexpr uint32_t PERCOUNTER_SSBUF_REGION_OFFSET = 2 * 1024;
-constexpr uint32_t PERCOUNTER_SSBUF_REGION_SIZE = 1024;
-static_assert(PERCOUNTER_SSBUF_REGION_OFFSET + PERCOUNTER_SSBUF_REGION_SIZE == PLATFORM_SSBUF_SIZE);
+using PercounterClusterRegion = SchedulerClusterSsbufRegion<PLATFORM_CORES_PER_BLOCKDIM>;
+constexpr uint32_t PERCOUNTER_SSBUF_REGION_OFFSET = PercounterClusterRegion::offset;
+constexpr uint32_t PERCOUNTER_SSBUF_REGION_SIZE = PLATFORM_SSBUF_SIZE - PERCOUNTER_SSBUF_REGION_OFFSET;
+static_assert(PercounterClusterRegion::capacity == PLATFORM_SSBUF_SIZE);
 
 template <typename T>
 static inline __aicore__ T percounter_ssbuf_load_field(const PERCOUNTER_SSBUF volatile T *field) {

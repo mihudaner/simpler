@@ -91,7 +91,7 @@ inline TemplateResult build_graph_template(
         const TaskPlacement placement =
             dummy ? TaskPlacement::AIV : task_placement_from_active_mask(shape.active_mask, &core_type);
         if (placement == TaskPlacement::UNSUPPORTED)
-            return fail(TemplateStatus::UNSUPPORTED, "an AIV1-only body task", i);
+            return fail(TemplateStatus::UNSUPPORTED, "a body task requesting unsupported lanes", i);
         if (shape.sync_start &&
             (dummy || shape.block_num < 2 || static_cast<uint32_t>(shape.block_num) > PERCOUNTER_ORDER_BLOCK_MASK))
             return fail(TemplateStatus::MALFORMED, "a sync-start body task with an impossible block count", i);

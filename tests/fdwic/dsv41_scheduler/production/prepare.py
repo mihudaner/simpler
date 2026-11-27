@@ -75,7 +75,7 @@ def main():
     print(f"Prepared cases: {output / 'cases'}")
 
 
-def prepare_model_cases(output, build, runtime, runtime_name, runner, moe_bundle, case):
+def prepare_model_cases(output, build, runtime, runtime_name, runner, moe_bundle, selected_case):
     env = {**os.environ, "DSV41_RUNNER": str(runner)}
     flavor = "pypto_lib_latest"
     bundle = build / "forward" / flavor
@@ -96,7 +96,14 @@ def prepare_model_cases(output, build, runtime, runtime_name, runner, moe_bundle
         check=True,
     )
     cases = export(
-        bundle, capture, flavor, output / "cases", build / "host", moe_bundle, [case] if case else MODEL_CASES, runner
+        bundle,
+        capture,
+        flavor,
+        output / "cases",
+        build / "host",
+        moe_bundle,
+        [selected_case] if selected_case else MODEL_CASES,
+        runner,
     )
     for case in cases:
         if json.loads((case / "case.json").read_text())["device_count"] == 1:

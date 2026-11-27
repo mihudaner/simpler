@@ -274,7 +274,8 @@ inline StateSelection select_percounter_state(
             const TaskPlacement placement = task_placement_from_active_mask(active_mask, &input.core_type_index);
             if (placement == TaskPlacement::UNSUPPORTED) {
                 log_unsupported(
-                    total_tasks, active_mask == 4U ? "an AIV1-only task" : "a task with no subtask", task_id
+                    total_tasks, active_mask != 0 ? "a task requesting unsupported lanes" : "a task with no subtask",
+                    task_id
                 );
                 return StateSelection::FAILED;
             }
@@ -457,11 +458,24 @@ inline StateSelection select_percounter_state(
         LOG_ERROR("A5 percounter: state layout overflow");
         return StateSelection::FAILED;
     }
+    const auto calendar_header = calendar.load<CalendarRangeHeader>(0);
+    // The lifecycle word is deliberately absent from the AICPU's per-run reset list.
+    const size_t requested = static_cast<size_t>(calendar_header.notify_slots_count) + 1;
+    struct alignas(64) GmCounter {
+        uint32_t value;
+    };
+    uint32_t gm_counters_offset = 0;
+    if constexpr (PERCOUNTER_GM_NOTIFICATIONS) {
+        gm_counters_offset = calendar.allocate<GmCounter>(requested);
+        if (gm_counters_offset == 0) {
+            LOG_ERROR("A6 calendar: GM counter storage exceeds calendar size limit");
+            return StateSelection::FAILED;
+        }
+    }
     constexpr uint64_t alignment = 128;
     if (layout.total_size > SIZE_MAX - alignment - calendar.bytes.size()) return StateSelection::FAILED;
     const uint64_t calendar_offset = (layout.total_size + alignment - 1) & ~(alignment - 1);
     const uint64_t allocation_size = calendar_offset + calendar.bytes.size();
-    const auto calendar_header = calendar.load<CalendarRangeHeader>(0);
     void *device_state = nullptr;
     void *host_base = nullptr;
     if (api->acquire_scheduler_state_storage(
@@ -474,18 +488,23 @@ inline StateSelection select_percounter_state(
     const uint64_t device_base = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(device_state));
 
     SchedulerDoneNotifications notifications{};
-    // The last SET slot is a run-wide lifecycle word. Keep it out of the
-    // calendar slot table: lanes sample the previous generation before discovery.
-    const size_t requested = static_cast<size_t>(calendar_header.notify_slots_count) + 1;
-    const int lease_rc =
-        api->acquire_scheduler_notifications(SchedulerNotificationPurpose::CALENDAR_COUNTER, requested, &notifications);
-    if (lease_rc != 0 || notifications.addresses.size() != requested || notifications.owner == nullptr ||
-        a5_cnt_notify_increment_address(notifications.addresses.back()) == 0) {
-        LOG_ERROR(
-            "A5 calendar: complete CntNotify lease required (requested=%zu, received=%zu, status=%d)", requested,
-            notifications.addresses.size(), lease_rc
+    if constexpr (PERCOUNTER_GM_NOTIFICATIONS) {
+        const uint64_t base = device_base + calendar_offset + gm_counters_offset;
+        notifications.addresses.reserve(requested);
+        for (size_t i = 0; i < requested; ++i)
+            notifications.addresses.push_back(base + i * sizeof(GmCounter));
+    } else {
+        const int lease_rc = api->acquire_scheduler_notifications(
+            SchedulerNotificationPurpose::CALENDAR_COUNTER, requested, &notifications
         );
-        return StateSelection::FAILED;
+        if (lease_rc != 0 || notifications.addresses.size() != requested || notifications.owner == nullptr ||
+            a5_cnt_notify_increment_address(notifications.addresses.back()) == 0) {
+            LOG_ERROR(
+                "A5 calendar: complete CntNotify lease required (requested=%zu, received=%zu, status=%d)", requested,
+                notifications.addresses.size(), lease_rc
+            );
+            return StateSelection::FAILED;
+        }
     }
     const uint64_t lifecycle_notify = notifications.addresses.back();
     notifications.addresses.pop_back();
@@ -562,7 +581,7 @@ inline StateSelection select_percounter_state(
         control->calendar_offset = calendar_offset - layout.control_offset;
         control->image_bytes = allocation_size;
         if (!bind_range_calendar(calendar, device_base, layout, host_base, notifications.addresses)) {
-            LOG_ERROR("A5 calendar: failed to bind leased CntNotify counters");
+            LOG_ERROR("calendar: failed to bind completion counters");
             return StateSelection::FAILED;
         }
         if (notifications.owner != nullptr) runtime->retain_pending_resource(std::move(notifications.owner));

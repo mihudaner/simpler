@@ -60,6 +60,9 @@ CoreType subtask_core_type(uint8_t subtask) { return subtask == 0 ? CoreType::AI
 void publish_lifecycle_word(volatile uint32_t *word, uint32_t value) {
     wmb();
     __atomic_store_n(word, value, __ATOMIC_RELEASE);
+#if defined(SIMPLER_PLATFORM_A6)
+    cache_flush_range(const_cast<const uint32_t *>(word), sizeof(*word));
+#endif
     // Drain the posted SET on the same register before a different partition
     // can issue EXIT, or the completed run can release its lease for reuse.
     (void)__atomic_load_n(word, __ATOMIC_RELAXED);
@@ -107,6 +110,9 @@ int32_t AicoreLifecycle::pre_handshake_init(Runtime *runtime, int32_t aicpu_thre
         reinterpret_cast<volatile uint32_t *>(runtime->dev.scheduler_bootstrap.lifecycle_notify_address);
     rejected_exit_ = reinterpret_cast<uint32_t *>(runtime->dev.scheduler_bootstrap.rejected_exit_address);
     if (lifecycle_notify_ != nullptr) {
+#if defined(SIMPLER_PLATFORM_A6)
+        cache_invalidate_range(const_cast<const uint32_t *>(lifecycle_notify_), sizeof(*lifecycle_notify_));
+#endif
         const uint32_t prior = __atomic_load_n(lifecycle_notify_, __ATOMIC_RELAXED);
         lifecycle_start_ = (prior + 2U) & ~AICORE_LIFECYCLE_EXIT_BIT;
     }

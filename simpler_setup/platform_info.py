@@ -57,7 +57,7 @@ def to_platform(arch: str, variant: str) -> str:
 
 
 def runtime_source_arch(arch: str) -> str:
-    """A6 HBG shares its source tree with A5 and has its own artifact directory."""
+    """A6 shares its runtime source tree with A5 and has its own artifact directory."""
     return "a5" if arch == "a6" else arch
 
 
@@ -66,8 +66,10 @@ def discover_runtimes(arch: str, *, root: Path | None = None) -> list[str]:
     runtime_base = (PROJECT_ROOT if root is None else root) / "src" / runtime_source_arch(arch) / "runtime"
     if not runtime_base.is_dir():
         return []
-    configs = runtime_base.glob("host_build_graph/build_config.py" if arch == "a6" else "*/build_config.py")
-    return sorted(config.parent.name for config in configs if config.is_file())
+    names = sorted(config.parent.name for config in runtime_base.glob("*/build_config.py") if config.is_file())
+    if arch == "a6":
+        return [name for name in names if name in ("host_build_graph", "percounter")]
+    return names
 
 
 def runtime_builds_by_default(arch: str, runtime: str) -> bool:

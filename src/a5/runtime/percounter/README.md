@@ -1,4 +1,4 @@
-# A5 calendar scheduler
+# A5 and A6 calendar scheduler
 
 The Host places each kernel block and role on an AICore and uploads a calendar
 for each physical lane. A lane executes its rows in order. Ordinary tasks and
@@ -11,8 +11,8 @@ outer DAG by dependency and uses a separate range for each Graph body.
 | ------- | ----------------------- |
 | GM | Per-lane range indexes, calendar rows, bound kernel entries and arguments, and dependency descriptors. AICPU materializes a Graph's arguments and publishes a prefix watermark after flushing the bindings. |
 | SSBUF | Per-cluster rendezvous tokens for MIX roles and eligible blocks of the same consumer, and the block context read by each kernel. |
-| CntNotify SRAM | Run-wide START and EXIT, logical DONE counts, defer indicators, and range tail arrivals. |
-| SPR | Each core acknowledges quiescence through its own COND nonce. |
+| CntNotify SRAM (A5) / GM (A6) | Run-wide START and EXIT, logical DONE counts, defer indicators, and range tail arrivals. |
+| SPR | Each core acknowledges quiescence through its own nonce using COND on A5 and IPC4 on A6. |
 
 Several invocations can share the placement of a Graph body. Each invocation
 has its own argument bindings and completion targets. A lane waits for the
@@ -65,6 +65,22 @@ SYS_CNT ticks after the last check. Reaching the threshold releases the consumer
 The [peer DMB design](../../../../docs/zh-cn/design/percounter-peer-dmb.md)
 describes eligibility, hardware ordering assumptions and A5 measurements.
 
+## Notifications on A6
+
+The A6 Host puts the DONE, fan-in and range-tail counters in the bound GM
+image, with one 64-byte aligned word per counter. The AICPU clears these words
+before releasing the lanes on every execution, including replay. A lane reads
+a word with atomic add-zero, adds a completion credit with atomic add-one, and
+sets a deferred-completion bit with a compare-and-swap loop on that same word. The bits and
+counts therefore survive concurrent publications. Consumers poll the GM
+threshold, including for MIX and `sync_start` tasks.
+
+A separate GM word carries the launch generation. Lanes sample it before
+reporting, run after the AICPU publishes START, and retire on this generation's
+EXIT. The existing per-lane IPC4 nonce and GM return gate confirm retirement
+before the run releases its storage. A6 uses these counters for all waits. The
+peer DMB optimization and CntNotify quota below apply to A5.
+
 ## CntNotify capacity
 
 The Host requires a complete CntNotify lease for DONE, range tail and
@@ -92,16 +108,16 @@ through teardown until all discovered cores acknowledge their fresh COND nonces.
 
 ## Completion and defer
 
-One CntNotify word holds a 24-bit completion count and up to eight sticky defer
+One 32-bit word holds a 24-bit completion count and up to eight sticky defer
 bits. Tasks can share the count when the Host can prove their completions advance
 in order. Each executable task has its own defer bit within the slot.
 
 1. After the output barrier, an execution with no registered signal issues a
-   DONE ADD in CntNotify SRAM. The scheduler can take this path after observing
+   DONE increment. The scheduler can take this path after observing
    that a single monotonic counter wait is already satisfied. A pending
    deferred execution publishes one record in GM and sets its task's defer bit
-   in CntNotify SRAM.
-2. A successor reads the DONE word in SRAM. It checks the count first. If the
+   in the completion word.
+2. A successor reads the DONE word. It checks the count first. If the
    count is short and the task's defer bit is set, it visits the task's
    registration records in GM and can claim any unowned record with a CAS.
 3. The owner alone polls the signals in that record. Once all of them are
@@ -124,7 +140,7 @@ For an independent multi-block consumer with multiple predecessors, the Host
 can assign the dependency checks to distinct consumer lanes. Each assigned lane
 must be able to reach the consumer's wait without relying on other consumer rows
 to execute. A lane with multiple assignments visits its pending predecessors
-in turn. Each completed predecessor contributes once to a shared CntNotify
+in turn. Each completed predecessor contributes once to a shared completion
 counter. The rest of the consumer lanes only wait for that counter. MIX and
 synchronized SPMD retain their per-block entry protocol and dependency checks.
 
@@ -139,7 +155,7 @@ independent producers that have one common remaining consumer. Each producer
 keeps its own defer bit and a lane that can service its registrations. The
 consumer waits for the combined count. Wide groups use a bounded,
 cluster-dependent interval between unsuccessful reads to reduce contention
-when many lanes poll the same CntNotify counter. A helper checks promptly when
+when many lanes poll the same completion counter. A helper checks promptly when
 at most two credits remain or its producer has published a defer bit.
 The Host proves fusion eligibility while planning and reuses the result on
 cache hits. The independence check has a phase-wide edge budget. Groups

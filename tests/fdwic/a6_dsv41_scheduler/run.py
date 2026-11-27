@@ -64,19 +64,36 @@ def allocated_device(parser, requested):
     return int(device)
 
 
-def set_run_defaults(parser, args, platform):
+def set_run_defaults(parser, args, platform, built_runtime, has_pair):
     if platform == "a5" and args.device is not None and not os.environ.get("TASK_DEVICE"):
         parser.error("--device must come from task-submit on A5")
     if args.runtime is None:
-        args.runtime = "host_build_graph" if platform == "a6" else "both"
+        args.runtime = "both" if has_pair else built_runtime
     if args.warmup is None:
         args.warmup = 0 if platform == "a6" else 1
     if args.rounds is None:
         args.rounds = 1 if platform == "a6" else 10
     if args.warmup < (0 if platform == "a6" else 1) or args.rounds < 1:
         parser.error("Invalid warmup or round count")
-    if platform == "a6" and args.runtime != "host_build_graph":
-        parser.error("The A6 SWA case uses host_build_graph")
+
+
+def runtime_packages(parser, build_dir, build, runtimes, has_pair):
+    packages = {}
+    for runtime in runtimes:
+        directory = build_dir / "percounter" if has_pair and runtime == "percounter" else build_dir
+        metadata = json.loads((directory / "build.json").read_text())
+        if (
+            metadata["runtime"] != runtime
+            or metadata["platform"] != build["platform"]
+            or metadata["case"] != build["case"]
+        ):
+            parser.error(f"Build a {build['platform']} {build['case']} callable for {runtime} before running it")
+        bundle, runner = directory / "bundle", directory / "host/native-runner"
+        for path, key in ((runner, "runner_sha256"), (bundle / "callable.bin", "callable_sha256")):
+            if hashlib.sha256(path.read_bytes()).hexdigest() != metadata[key]:
+                parser.error(f"Build artifact changed: {path.name}")
+        packages[runtime] = (metadata, bundle, runner)
+    return packages
 
 
 def run_a6(parser, args, build, bundle, runner, libraries, output):
@@ -98,7 +115,7 @@ def run_a6(parser, args, build, bundle, runner, libraries, output):
         str(args.level),
         str(args.warmup),
         str(args.rounds),
-        "--runtime=host_build_graph",
+        f"--runtime={build['runtime']}",
     ]
     with (rank / "console.log").open("w") as log:
         result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False)
@@ -132,12 +149,11 @@ def main():
     if platform == "a5" and args.level != 0:
         parser.error("This A5 runner collects L0")
     libraries = (args.runtime_lib or REPO / "build/lib" / platform / "onboard").resolve()
-    set_run_defaults(parser, args, platform)
-    bundle, runner = build_dir / "bundle", build_dir / "host/native-runner"
-    for path, expected in ((runner, build["runner_sha256"]), (bundle / "callable.bin", build["callable_sha256"])):
-        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
-            parser.error(f"Build artifact changed: {path.name}")
+    pair = build_dir / "percounter"
+    has_pair = build["runtime"] == "host_build_graph" and (pair / "build.json").is_file()
+    set_run_defaults(parser, args, platform, build["runtime"], has_pair)
     runtimes = ["host_build_graph", "percounter"] if args.runtime == "both" else [args.runtime]
+    packages = runtime_packages(parser, build_dir, build, runtimes, has_pair)
     runtime_files = [libraries / "../dispatcher/libsimpler_aicpu_dispatcher.so"]
     for runtime in runtimes:
         runtime_files += [
@@ -148,7 +164,8 @@ def main():
     if not os.environ.get("ASCEND_HOME_PATH"):
         parser.error("Source the CANN environment first")
     if platform == "a6":
-        run_a6(parser, args, build, bundle, runner, libraries, output)
+        for runtime, package in packages.items():
+            run_a6(parser, args, *package, libraries, output / runtime if len(packages) > 1 else output)
         return
     if not os.environ.get("TASK_DEVICE"):
         command = [
@@ -176,13 +193,13 @@ def main():
     device = allocated_device(parser, args.device)
     subprocess.run(["bash", str(REPO / ".claude/skills/onboard-arch-precheck/check.sh"), "a5"], check=True)
     output.mkdir(parents=True)
-    environment = {**os.environ, "DSV41_RUNNER": str(runner), "DSV41_PYTHON": sys.executable}
     record = {
-        "case": "swa",
+        "case": build["case"],
         "platform": "a5",
         "device": device,
         "start_time": datetime.now(timezone.utc).isoformat(),
         "build": build,
+        "callables": {name: package[0]["callable_sha256"] for name, package in packages.items()},
         "runtime_sha256": {
             p.resolve().relative_to(libraries.parent).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
             for p in runtime_files
@@ -191,7 +208,8 @@ def main():
         "results": [],
     }
     try:
-        for runtime in runtimes:
+        for runtime, (_, bundle, runner) in packages.items():
+            environment = {**os.environ, "DSV41_RUNNER": str(runner), "DSV41_PYTHON": sys.executable}
             destination = output / runtime
             command = [
                 "bash",

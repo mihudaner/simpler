@@ -104,7 +104,7 @@ inline bool build_graph_phase(const HostGraphTemplate &body, int32_t invocation,
         const auto placement =
             mask == 0 ? TaskPlacement::AIV : task_placement_from_active_mask(static_cast<uint8_t>(mask), &core_type);
         const int32_t subtasks = mask == 0 ? 1 : __builtin_popcount(mask);
-        if (mask > 7 || placement == TaskPlacement::UNSUPPORTED || blocks == 0 ||
+        if (mask >= (1U << PLATFORM_CORES_PER_BLOCKDIM) || placement == TaskPlacement::UNSUPPORTED || blocks == 0 ||
             blocks > PERCOUNTER_ORDER_BLOCK_MASK || src.subtask_total != blocks * subtasks ||
             (mask == 0 && blocks != 1) || (sync && (mask == 0 || blocks < 2)))
             return false;

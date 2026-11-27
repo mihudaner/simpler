@@ -42,6 +42,7 @@
 
 #include "dispatch_payload.h"
 #include "scheduler/scheduler_types.h"
+#include "scheduler/calendar_wire.h"
 #include "scheduler/profiling_memory.h"
 
 static inline __aicore__ void percounter_memory_barrier() {
@@ -150,9 +151,23 @@ static inline __aicore__ uint64_t percounter_gm_read_immutable_word(const __gm__
  * several observers see the same value. Neither access may be widened into a
  * neighbouring register, and the mapping never takes cache maintenance.
  *
- * These commands access CntNotify SRAM through device MMIO.
+ * A6 uses GM words. A read-modify-write with delta zero observes all preceding
+ * updates to the word, including its upper deferred-completion bits.
  */
+static inline __aicore__ uint32_t percounter_gm_counter_add(__gm__ volatile uint32_t &value, uint32_t credits) {
+    return simpler::percounter::percounter_scalar_memory_result(
+        simpler::percounter::ProfilePhase::AtomicFetchAdd, [&value, credits]() __aicore__ {
+#if defined(__CCE_AICORE__)
+            return atomicAdd(const_cast<__gm__ uint32_t *>(&value), credits);
+#else
+            return __atomic_fetch_add(&value, credits, __ATOMIC_ACQ_REL);
+#endif
+        }
+    );
+}
+
 static inline __aicore__ uint32_t percounter_notify_query(__gm__ volatile uint32_t &value) {
+    if constexpr (simpler::percounter::PERCOUNTER_GM_NOTIFICATIONS) return percounter_gm_counter_add(value, 0);
     return simpler::percounter::percounter_scalar_notify_read(
         reinterpret_cast<uint64_t>(&value), [&value]() __aicore__ {
 #if defined(__CCE_AICORE__)
@@ -166,6 +181,10 @@ static inline __aicore__ uint32_t percounter_notify_query(__gm__ volatile uint32
 
 /** Command one increments once: a payload of two does not add two. */
 static inline __aicore__ void percounter_notify_add(__gm__ volatile uint32_t &value, uint32_t credits) {
+    if constexpr (simpler::percounter::PERCOUNTER_GM_NOTIFICATIONS) {
+        (void)percounter_gm_counter_add(value, credits);
+        return;
+    }
     for (uint32_t credit = 0; credit < credits; ++credit) {
         simpler::percounter::percounter_scalar_notify_issue(
             simpler::percounter::ProfilePhase::CntNotifyAddIssue, reinterpret_cast<uint64_t>(&value), 1,

@@ -94,11 +94,11 @@ def copy_snapshot(source, destination, tools, name="swa"):
     if not references or references != {p.relative_to(source).as_posix() for p in (source / "reference").glob("*.bin")}:
         raise ValueError("Snapshot reference set differs from writable device tensors")
     hashes = {}
-    for name in sorted(files | references):
-        target = destination / name
+    for filename in sorted(files | references):
+        target = destination / filename
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source / name, target)
-        hashes[name] = sha256(target)
+        shutil.copyfile(source / filename, target)
+        hashes[filename] = sha256(target)
     return {"signature": signature, "files": hashes, "reference_count": len(references)}
 
 
@@ -236,8 +236,13 @@ def build_bundle(args, build_dir, bundle, source):
     binary_dir = build_dir / "kernels"
     binary_dir.mkdir(exist_ok=True)
     compiled = compile_kernel_set(
-        args.platform, args.pto_isa, binary_dir, args.jobs,
-        kernel_set=args.kernel_set, case=args.case,
+        args.platform,
+        args.pto_isa,
+        binary_dir,
+        args.jobs,
+        kernel_set=args.kernel_set,
+        case=args.case,
+        runtime=args.runtime,
     )
     executions = sum(blocks * sum(k >= 0 for k in slots) for blocks, slots in tasks.values())
     if args.platform == "a6":
@@ -254,7 +259,7 @@ def build_bundle(args, build_dir, bundle, source):
         converted.replace(plan)
     runner = tools / "native-runner"
     original_callable = source / "callable.bin"
-    if args.platform == "a5" and args.kernel_set == "005-export":
+    if args.platform == "a5" and args.runtime == "host_build_graph" and args.kernel_set == "005-export":
         # Original full-model registration fixes the starting cache set of every kernel.
         # Validate the rebuilt active images and keep every child at its source offset.
         image = original_callable.read_bytes()
@@ -279,6 +284,7 @@ def build_bundle(args, build_dir, bundle, source):
         build_dir / "build.json",
         {
             "platform": args.platform,
+            "runtime": args.runtime,
             "source_commit": capture(["git", "-C", REPO, "rev-parse", "HEAD"]).strip(),
             "model": manifest["origin"],
             "tasks": len(tasks),
@@ -352,6 +358,7 @@ def main():
     freezer.add_argument("--source-revision", required=True, help="Commit used for the upstream A5 capture")
     freezer.add_argument("--output", type=Path, required=True)
     compile_case = commands.add_parser("build", help="Compile case kernels and assemble a native replay")
+    compile_case.add_argument("--runtime", choices=("host_build_graph", "percounter", "both"))
     compile_case.add_argument("--stage", choices=("005", "006"), default="005")
     compile_case.add_argument("--case", choices=CASES_006, default="swa")
     compile_case.add_argument("--platform", choices=["a5", "a6"], default="a5")
@@ -363,7 +370,8 @@ def main():
         "--five-block-t0", action="store_true", help="Use five A6 vector blocks for the initial HC collapse"
     )
     compile_case.add_argument(
-        "--kernel-set", choices=("cpp", "005-export"),
+        "--kernel-set",
+        choices=("cpp", "005-export"),
         help="Use shared C++ kernels or the earlier 005 build (defaults: 005 C++, 006 original VF)",
     )
     compile_case.add_argument("--build-dir", type=Path)
@@ -385,6 +393,12 @@ def main():
             args.kernel_set = args.kernel_set or "cpp"
         if args.five_block_t0 and args.platform != "a6":
             parser.error("--five-block-t0 requires --platform a6")
+        args.runtime = args.runtime or ("both" if args.platform == "a5" else "host_build_graph")
+        if args.runtime == "both":
+            args.build_dir = (args.build_dir or HERE / "build" / args.platform).resolve()
+            build(argparse.Namespace(**{**vars(args), "runtime": "host_build_graph"}))
+            args.build_dir = args.build_dir / "percounter"
+            args.runtime = "percounter"
         build(args)
 
 

@@ -98,7 +98,7 @@ def kernel_inputs(kernel, platform, kernel_set):
     return SOURCES / kernel["source"], helpers
 
 
-def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="swa"):
+def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="swa", runtime="host_build_graph"):
     sys.path[:0] = [str(REPO), str(REPO / "python"), str(SUITE / "production")]
     from build_sources import VF_FLAGS, compile_vector_functions  # noqa: PLC0415
 
@@ -121,7 +121,7 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
 
     def compile_one(kernel):
         source, vf_paths = kernel_inputs(kernel, platform, kernel_set)
-        extra = compiler.get_orchestration_include_dirs("host_build_graph") + [
+        extra = compiler.get_orchestration_include_dirs(runtime) + [
             str(SOURCES / item) for item in kernel["include_dirs"]
         ]
         helpers = [SOURCES / path for path in vf_paths]
@@ -153,7 +153,7 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
         target = output / f"kernel-{kernel['func_id']}.bin"
         target.write_bytes(binary)
         registration = target
-        if platform == "a5":
+        if platform == "a5" and runtime == "host_build_graph":
             annotated = annotate_a5_hbg_text(binary, kernel["core_type"])
             if annotated != binary:
                 registration = target.with_suffix(".hbg")
@@ -168,7 +168,9 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
             "bytes": len(binary),
             "source": os.path.relpath(source, SOURCES),
             "source_sha256": sha256(source),
-            "completes_on_return": bool(kernel.get("completes_on_return") and sha256(source) == kernel["source_sha256"]),
+            "completes_on_return": bool(
+                kernel.get("completes_on_return") and sha256(source) == kernel["source_sha256"]
+            ),
             "vf_llvm": {path: sha256(SOURCES / path) for path in vf_paths},
             "binary_sha256": sha256(target),
         }
@@ -180,6 +182,7 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
         compiled = list(pool.map(compile_one, kernels))
     summary = {
         "platform": platform,
+        "runtime": runtime,
         "case": case,
         "kernel_set": kernel_set,
         "runtime_executed": False,
@@ -196,6 +199,7 @@ def compile_kernel_set(platform, pto, output, jobs, *, kernel_set="cpp", case="s
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--runtime", choices=("host_build_graph", "percounter"), default="host_build_graph")
     parser.add_argument("--platform", choices=("a5", "a6"), default="a6")
     parser.add_argument("--pto-isa", type=Path, default=REPO / "build/pto-isa")
     parser.add_argument("--kernel-set", choices=("cpp", "005-export", "original-vf"), default="cpp")
@@ -209,7 +213,9 @@ def main():
         parser.error("--kernel-set 005-export requires the 005 SWA case")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    compile_kernel_set(args.platform, args.pto_isa, output, args.jobs, kernel_set=args.kernel_set, case=args.case)
+    compile_kernel_set(
+        args.platform, args.pto_isa, output, args.jobs, kernel_set=args.kernel_set, case=args.case, runtime=args.runtime
+    )
 
 
 if __name__ == "__main__":

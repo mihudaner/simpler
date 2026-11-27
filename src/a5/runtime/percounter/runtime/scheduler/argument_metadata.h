@@ -21,8 +21,8 @@ inline SchedulerGraphResult percounter_prepare_argument_metadata(
     PercounterCounter &counter, const uint64_t *functions, uint32_t mask, uint64_t arguments_address,
     uint32_t tensor_count, uint32_t scalar_count
 ) {
-    if (functions == nullptr || (mask & ~7U) != 0 || tensor_count > MAX_TENSOR_ARGS || scalar_count > MAX_SCALAR_ARGS ||
-        tensor_count + scalar_count > SPMD_LOCAL_CONTEXT_INDEX ||
+    if (functions == nullptr || mask >= (1U << PLATFORM_CORES_PER_BLOCKDIM) || tensor_count > MAX_TENSOR_ARGS ||
+        scalar_count > MAX_SCALAR_ARGS || tensor_count + scalar_count > SPMD_LOCAL_CONTEXT_INDEX ||
         ((mask != 0 || tensor_count + scalar_count != 0) &&
          (arguments_address == 0 || arguments_address % alignof(DispatchPayload) != 0 ||
           arguments_address > UINT64_MAX - sizeof(DispatchPayload))))

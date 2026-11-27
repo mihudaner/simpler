@@ -32,6 +32,7 @@
 // it in scope by then, and this runtime's do not.
 #include "async_completion_types.h"
 #include "common/lane_mask.h"
+#include "scheduler/calendar_wire.h"
 #include "scheduler/scheduler_layout.h"
 #include "scheduler/ssbuf.h"
 #include "invocation_context.h"
@@ -95,9 +96,8 @@ static_assert(
     std::is_trivially_copyable_v<PercounterAsyncCompletion> && std::is_standard_layout_v<PercounterAsyncCompletion>
 );
 
-// The CntNotify ADD alias is eight bytes above SET.
 inline __aicore__ uint64_t percounter_notify_add_address(uint64_t read_address) {
-    return read_address == 0 ? 0 : read_address + 8;
+    return read_address == 0 ? 0 : read_address + PERCOUNTER_ADD_OFFSET;
 }
 
 inline bool percounter_sync_widths_fit(const uint64_t *widths, uint64_t clusters, uint64_t aivs_per_cluster) {

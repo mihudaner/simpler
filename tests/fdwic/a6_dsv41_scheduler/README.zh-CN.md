@@ -10,6 +10,8 @@
 | 核与输入 | 两端各自编译核。固定输入与参考由原生 forward 提取，运行独立 SWA 只需单卡 |
 | 历史版本 | 00–004 使用上一版 SWA。004 的 A6 L0 为 290.068 µs，涉及 16 个任务和 616 个实例。[004 报告](results/004-a6-swa-output-tiles/README.zh-CN.md) |
 
+007 在 A6 上为 HBG 和日历分别编译业务核，两种运行时共用固定输入及参考输出。A5 六场景的主线对照与 A6 板端验证包见 [007 日历调度](results/007-calendar-scheduler/README.zh-CN.md)。
+
 ## 文档索引
 
 | 要看什么 | 文档 | 内容 |
@@ -32,7 +34,7 @@
 | [prepare.py](prepare.py) | 读取新版快照，编译目标核与原生工具，组装运行包 |
 | [compile_kernels.py](compile_kernels.py) | 独立检查目标平台的 19 个核：编译、链接、提取机器码；不启动设备 |
 | [prepare_plan.py](prepare_plan.py)、[adapt_plan.cpp](adapt_plan.cpp) | 按 005 的 A6 分片生成计划，逐条核对原始记录与允许的改动 |
-| [run.py](run.py) | A5 单卡性能复测；A6 单卡 HBG 功能验收入口 |
+| [run.py](run.py) | A5 单卡性能复测和 A6 单卡 HBG、日历调度功能验收入口 |
 | [test_fixture.py](test_fixture.py) | 离线检查输入包与参考覆盖 |
 | [fixtures/](fixtures/) | 固定输入、plan、参考与来源清单 |
 | [performance.py](performance.py) | 统计 PR 指标与 AICPU 生命周期耗时，导出详细泳道 |
