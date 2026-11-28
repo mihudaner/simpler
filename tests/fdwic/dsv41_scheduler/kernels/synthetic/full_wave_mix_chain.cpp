@@ -10,6 +10,7 @@
  */
 
 #include <cstdint>
+#include "common/platform_config.h"
 #include "orchestration_api.h"
 
 extern "C" __attribute__((visibility("default"))) OrchestrationConfig aicpu_orchestration_config(const ChipTaskArgs &) {
@@ -19,8 +20,12 @@ extern "C" __attribute__((visibility("default"))) OrchestrationConfig aicpu_orch
 extern "C" __attribute__((visibility("default"))) void aicpu_orchestration_entry(const ChipTaskArgs &args) {
     const int32_t clusters = rt_available_cluster_count();
     const int32_t vectors = rt_available_aiv_count();
-    if (clusters != 32 || vectors != 64) {
-        rt_report_fatal(SIMPLER_ERROR_INVALID_ARGS, "full-wave chain needs 32 clusters and 64 AIVs");
+    constexpr int32_t full_width = PLATFORM_CORES_PER_BLOCKDIM;
+    constexpr int32_t expected_clusters = PLATFORM_AIV_CORES_PER_BLOCKDIM == 1 ? 54 : 32;
+    if (clusters != expected_clusters || vectors != clusters * PLATFORM_AIV_CORES_PER_BLOCKDIM) {
+        rt_report_fatal(
+            SIMPLER_ERROR_INVALID_ARGS, "full-wave chain needs the full cluster and vector counts of its target"
+        );
         return;
     }
     struct Stage {
@@ -30,10 +35,11 @@ extern "C" __attribute__((visibility("default"))) void aicpu_orchestration_entry
     };
     const MixedKernels cube{0, INVALID_KERNEL_ID, INVALID_KERNEL_ID};
     const MixedKernels vector{INVALID_KERNEL_ID, 1, INVALID_KERNEL_ID};
-    const MixedKernels full{0, 1, 1};
+    const MixedKernels full{0, 1, PLATFORM_AIV_CORES_PER_BLOCKDIM == 2 ? 1 : INVALID_KERNEL_ID};
     const MixedKernels pair{0, 1, INVALID_KERNEL_ID};
-    const Stage stages[] = {{clusters, cube, 1}, {clusters, full, 3}, {vectors, vector, 1},
-                            {clusters, full, 3}, {1, pair, 2},        {clusters, full, 3}};
+    const Stage stages[] = {{clusters, cube, 1},  {clusters, full, full_width},
+                            {vectors, vector, 1}, {clusters, full, full_width},
+                            {1, pair, 2},         {clusters, full, full_width}};
 
     int32_t previous_members = clusters;
     for (int32_t i = 0; i < 6; ++i) {

@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-"""Prepare the six-stage native A5 scheduling case without a model capture."""
+"""Prepare the six-stage native A5 or A6 scheduling case without a model capture."""
 
 import argparse
 import json
@@ -19,26 +19,32 @@ from pathlib import Path
 CASE = "full_wave_mix_chain"
 ROOT = Path(__file__).resolve().parents[4]
 KERNELS = Path(__file__).resolve().parents[1] / "kernels/synthetic"
-# Kernel IDs name the AIC, AIV0 and AIV1 members in this order.
-FULL_MIX = (0, 1, 1)
-STAGES = (
-    (32, (0, -1, -1)),
-    (32, FULL_MIX),
-    (64, (-1, 1, -1)),
-    (32, FULL_MIX),
-    (1, (0, 1, -1)),
-    (32, FULL_MIX),
-)
 WORDS_PER_MEMBER = 16
 
 
-def write_inputs(output: Path) -> None:
+def stage_layout(platform):
+    # Kernel IDs name the AIC, AIV0 and AIV1 members in this order.
+    clusters, vectors, full = {
+        "a5": (32, 64, (0, 1, 1)),
+        "a6": (54, 54, (0, 1, -1)),
+    }[platform]
+    return (
+        (clusters, (0, -1, -1)),
+        (clusters, full),
+        (vectors, (-1, 1, -1)),
+        (clusters, full),
+        (1, (0, 1, -1)),
+        (clusters, full),
+    )
+
+
+def write_inputs(output: Path, stages) -> None:
     # Each member owns a 128-byte line and writes only its first int64.
-    seed = array("q", range(11, 11 + 32 * WORDS_PER_MEMBER))
+    seed = array("q", range(11, 11 + stages[0][0] * WORDS_PER_MEMBER))
     (output / "input0.bin").write_bytes(seed.tobytes())
     manifest = ["DSV41_NATIVE_V1", "1 0", "7", f"DEVICE 7 {len(seed) * 8} 1 {len(seed)} RAW input0.bin"]
     previous = seed[::WORDS_PER_MEMBER]
-    for index, (blocks, kernels) in enumerate(STAGES, 1):
+    for index, (blocks, kernels) in enumerate(stages, 1):
         members = blocks * sum(kernel >= 0 for kernel in kernels)
         words = array("q", [-1]) * (WORDS_PER_MEMBER * members)
         name = f"input{index}.bin"
@@ -53,20 +59,21 @@ def write_inputs(output: Path) -> None:
     (output / "snapshot.txt").write_text("analytical\n")
 
 
-def build_bundle(output: Path, runtime: str, runner: Path) -> Path:
+def build_bundle(output: Path, runtime: str, runner: Path, platform: str = "a5") -> Path:
     """Build for this runtime's block-index ABI and write independent numerical references."""
     # Listing cases or reading an existing bundle does not require a compiler installation.
     from simpler_setup import KernelCompiler, extract_text_section  # noqa: PLC0415
 
     if runtime not in ("host_build_graph", "percounter"):
         raise ValueError(f"Unsupported full-wave runtime: {runtime}")
+    layout = stage_layout(platform)
     output = output.resolve()
     runner = runner.resolve()
     if not runner.is_file():
         raise FileNotFoundError(runner)
     output.mkdir(parents=True, exist_ok=False)
     (output / "reference").mkdir()
-    compiler = KernelCompiler("a5")
+    compiler = KernelCompiler(platform)
     includes = compiler.get_orchestration_include_dirs(runtime)
 
     def compile_member(core):
@@ -95,18 +102,19 @@ def build_bundle(output: Path, runtime: str, runner: Path) -> Path:
         cwd=output,
         check=True,
     )
-    write_inputs(output)
+    write_inputs(output, layout)
     stages = [
         {"task_id": task, "block_num": blocks, "kernel_ids": list(kernels), "sync_start": blocks > 1}
-        for task, (blocks, kernels) in enumerate(STAGES)
+        for task, (blocks, kernels) in enumerate(layout)
     ]
-    executions = sum(blocks * sum(kernel >= 0 for kernel in kernels) for blocks, kernels in STAGES)
+    executions = sum(blocks * sum(kernel >= 0 for kernel in kernels) for blocks, kernels in layout)
     case = {
         "flavor": "synthetic",
         "variant": "synthetic",
         "case": CASE,
         "execution": CASE,
         "runtime": runtime,
+        "platform": platform,
         "device_count": 1,
         "validation": "Compare all six writable tensors, including padding, byte-for-byte against analytical outputs.",
         "source": {"tasks": len(stages), "executions": executions, "stages": stages},
@@ -126,5 +134,6 @@ if __name__ == "__main__":
     parser.add_argument("output", type=Path, help="New directory for the prepared bundle")
     parser.add_argument("--runtime", choices=("host_build_graph", "percounter"), required=True)
     parser.add_argument("--runner", type=Path, required=True)
+    parser.add_argument("--platform", choices=("a5", "a6"), default="a5")
     args = parser.parse_args()
-    print(build_bundle(args.output, args.runtime, args.runner))
+    print(build_bundle(args.output, args.runtime, args.runner, args.platform))

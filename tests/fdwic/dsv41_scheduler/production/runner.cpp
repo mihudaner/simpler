@@ -171,6 +171,7 @@ int run(int argc, char **argv) {
     }
     if (argc == 5 && std::string(argv[1]) == "--assemble-orchestration") {
         std::ifstream manifest(argv[2]);
+        if (!manifest) throw std::runtime_error("Cannot open kernel assembly manifest: " + std::string(argv[2]));
         auto signature = [&] {
             std::vector<ArgDirection> values;
             const auto count = read<size_t>(manifest);

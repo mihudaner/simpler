@@ -61,12 +61,15 @@ correctness or update its performance results; run and record those explicitly.
 Layer indices are zero-based. The six slices use the original full-forward
 prefix to produce their boundary inputs.
 
-The synthetic chain uses 32 AIC blocks, 32 1C2V groups, 64 AIV blocks,
+On A5 the synthetic chain uses 32 AIC blocks, 32 1C2V groups, 64 AIV blocks,
 32 1C2V groups, one 1C1V group, and 32 1C2V groups, in that order.
 The five full waves request `sync_start`. Each stage consumes the previous
 stage's output. The runner checks all six buffers against integer golden
 values, including untouched padding. One timed round covers 6 tasks and
-386 block/lane executions.
+386 block/lane executions. On A6 the same six stages use 54 AIC blocks,
+54 1C1V groups, 54 AIV blocks, 54 1C1V groups, one 1C1V group and
+54 1C1V groups (434 executions). Both targets fill one wave in each
+multi-block stage. The targets have different member counts and reference buffers.
 
 An execution is one `(task, block, subtask)` invocation. Original scalar values,
 tensor shapes, strides, offsets, aliasing, argument directions, explicit
@@ -498,6 +501,37 @@ The Host adapter occupies the original orchestration slot, with trailing ELF
 padding, so model kernels retain their original offsets in the uploaded
 callable image. Packing rejects an adapter larger than that slot. This does
 not promise identical absolute device addresses or cache state across launches.
+
+### Six-stage chain on A6
+
+For the six-stage chain on A6, prepare the bundle offline with the A6 native
+runner from the same checkout. The builder calls `--assemble-orchestration`
+in the bundle directory, where `kernels.txt`, `aic.bin` and `aiv.bin` reside.
+From the repository root with CANN loaded and the local Python environment active:
+
+```bash
+suite=tests/fdwic/dsv41_scheduler/production
+cmake -S "$suite" -B build/chain-a6-host -DSIMPLER_ROOT="$PWD" -DSIMPLER_PLATFORM_A6=1 -DCMAKE_BUILD_TYPE=Release
+cmake --build build/chain-a6-host --target native-runner -j4
+PYTHONPATH=.:python python "$suite/full_wave_mix_chain.py" build/chain-a6 --platform a6 --runtime percounter --runner build/chain-a6-host/native-runner
+build/chain-a6-host/native-runner --describe-callable build/chain-a6/callable.bin
+```
+
+On an allocated Ascend960 with the bundle, matching runtime and runner,
+collect L0 and L2 in separate new directories. L0 timing uses the first and
+last business-kernel endpoints. L2 records each measured round under `rank0/run*/`.
+
+```bash
+out=$(mktemp -d "$PWD/chain-a6-results-XXXXXX")
+for level in 0 2; do
+    dest="$out/L$level"
+    mkdir -p "$dest/rank0/ascend"
+    ASCEND_PROCESS_LOG_PATH="$dest/rank0/ascend" build/chain-a6-host/native-runner \
+        "$PWD/build/chain-a6" "$PWD/build/lib/a6/onboard" "${TASK_DEVICE:?}" 0 "$dest/rootinfo" \
+        "$dest/rank0" "$level" 2 10 --runtime=percounter >"$dest/rank0/console.log" 2>&1 || exit 1
+done
+python "$suite/timing.py" "$out/L0"
+```
 
 ## Audit and compare
 
