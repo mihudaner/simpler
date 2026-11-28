@@ -10,7 +10,7 @@
 | 核与输入 | 两端各自编译核。固定输入与参考由原生 forward 提取，运行独立 SWA 只需单卡 |
 | 历史版本 | 00–004 使用上一版 SWA。004 的 A6 L0 为 290.068 µs，涉及 16 个任务和 616 个实例。[004 报告](results/004-a6-swa-output-tiles/README.zh-CN.md) |
 
-007 为 SWA、两种 C1A、C2A full 和 Engram 分别生成 A6 HBG 和日历回放。四个 Attention 的导出 VF 均改用设备 C++，同一用例的两种运行时共用固定输入及参考输出。A5 六项同卡性能对照及 A6 五模型板端包见 [007 日历调度](results/007-calendar-scheduler/README.zh-CN.md)。
+007 为 SWA、两种 C1A、C2A full 和 Engram 分别生成 A6 HBG 和日历回放。四个 Attention 的导出 VF 均改用设备 C++，同一用例的两种运行时共用固定输入及参考输出。六段 MIX 链的 A5 泳道图和六个用例的适配前后对照见 [007 日历调度](results/007-calendar-scheduler/README.zh-CN.md)。
 
 ## 文档索引
 

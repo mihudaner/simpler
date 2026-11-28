@@ -32,7 +32,7 @@ python -I "$case_dir/run.py" --build-dir build/005-swa-a5 --runtime host_build_g
 
 ## A6 日历调度
 
-A6 的 HBG 和日历采用不同的业务核上下文布局。组包时用 `--runtime percounter` 选择日历，runner 会检查运行时和 callable 是否匹配。使用 `--runtime both` 可从同一输入生成两套 callable，再在同一张已分配的卡上逐项校验输出。分开准备时每个包使用独立目录。[007 对照与板端验证](../results/007-calendar-scheduler/README.zh-CN.md)
+A6 的 HBG 和日历采用不同的业务核上下文布局。组包时用 `--runtime percounter` 选择日历，runner 会检查运行时和 callable 是否匹配。使用 `--runtime both` 可从同一输入生成两套 callable，再在同一张已分配的卡上逐项校验输出。分开准备时每个包使用独立目录。[007 日历调度泳道图与实测对照表](../results/007-calendar-scheduler/README.zh-CN.md)
 
 ```bash
 python simpler_setup/build_runtimes.py --platforms a6 --runtime percounter
