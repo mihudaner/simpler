@@ -151,8 +151,8 @@ static inline __aicore__ uint64_t percounter_gm_read_immutable_word(const __gm__
  * several observers see the same value. Neither access may be widened into a
  * neighbouring register, and the mapping never takes cache maintenance.
  *
- * A6 uses GM words. A read-modify-write with delta zero observes all preceding
- * updates to the word, including its upper deferred-completion bits.
+ * An A6 completion word holds the count and sticky defer bits in one GM word.
+ * A lane retries a pending observation; the next launch resets the word before START.
  */
 static inline __aicore__ uint32_t percounter_gm_counter_add(__gm__ volatile uint32_t &value, uint32_t credits) {
     return simpler::percounter::percounter_scalar_memory_result(
@@ -167,7 +167,7 @@ static inline __aicore__ uint32_t percounter_gm_counter_add(__gm__ volatile uint
 }
 
 static inline __aicore__ uint32_t percounter_notify_query(__gm__ volatile uint32_t &value) {
-    if constexpr (simpler::percounter::PERCOUNTER_GM_NOTIFICATIONS) return percounter_gm_counter_add(value, 0);
+    if constexpr (simpler::percounter::PERCOUNTER_GM_NOTIFICATIONS) return percounter_gm_read(value);
     return simpler::percounter::percounter_scalar_notify_read(
         reinterpret_cast<uint64_t>(&value), [&value]() __aicore__ {
 #if defined(__CCE_AICORE__)
@@ -177,6 +177,12 @@ static inline __aicore__ uint32_t percounter_notify_query(__gm__ volatile uint32
 #endif
         }
     );
+}
+
+/** Admission distinguishes successive START/EXIT generations, including the first sample on replay. */
+static inline __aicore__ uint32_t percounter_lifecycle_query(__gm__ volatile uint32_t &value) {
+    if constexpr (simpler::percounter::PERCOUNTER_GM_NOTIFICATIONS) return percounter_gm_counter_add(value, 0);
+    return percounter_notify_query(value);
 }
 
 /** Command one increments once: a payload of two does not add two. */

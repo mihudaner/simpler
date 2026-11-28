@@ -178,7 +178,7 @@ inline __aicore__ bool percounter_should_stop(const LaneConfig &cfg, bool check_
     const uint64_t now = get_sys_cnt_aicore();
     if (now - cfg.last_exit_poll < PERCOUNTER_EXIT_POLL_CYCLES) return false;
     cfg.last_exit_poll = now;
-    return (percounter_notify_query(*cfg.lifecycle_notify) & AICORE_LIFECYCLE_EXIT_BIT) != 0;
+    return (percounter_lifecycle_query(*cfg.lifecycle_notify) & AICORE_LIFECYCLE_EXIT_BIT) != 0;
 }
 
 inline __aicore__ __gm__ pto2::resident::AsyncGroupData *percounter_init_async_record(
@@ -464,7 +464,7 @@ inline __aicore__ PercounterAdmission percounter_wait_for_admission(
     const uint64_t poll_cycles = 512U + 16U * static_cast<uint32_t>(block_idx);
     bool timed_out = false;
     for (;;) {
-        const uint32_t signal = percounter_notify_query(lifecycle);
+        const uint32_t signal = percounter_lifecycle_query(lifecycle);
         if (signal != previous) {
             if (signal & AICORE_LIFECYCLE_EXIT_BIT)
                 return percounter_ack_rejected_exit(request, signal) ? PercounterAdmission::Rejected :
@@ -502,7 +502,7 @@ inline __aicore__ void percounter_aicore_execute(__gm__ Runtime *runtime, int bl
     // The Host rejects an incomplete lease before launch. A malformed
     // bootstrap cannot publish a report for a gate this lane cannot observe.
     if (lifecycle == nullptr) return;
-    const uint32_t previous = percounter_notify_query(*lifecycle);
+    const uint32_t previous = percounter_lifecycle_query(*lifecycle);
     percounter_memory_barrier();  // Complete the sample before discovery can authorize START or EXIT.
 
     const uint64_t report_epoch = get_aicore_report_epoch();
@@ -535,7 +535,7 @@ inline __aicore__ void percounter_aicore_execute(__gm__ Runtime *runtime, int bl
         dsb((mem_dsb_t)0);
         // A finished lane can be idle for most of the run. Space its SRAM reads
         // so retired lanes do not consume the active workers' notification bandwidth.
-        while ((percounter_notify_query(*lifecycle) & AICORE_LIFECYCLE_EXIT_BIT) == 0) {
+        while ((percounter_lifecycle_query(*lifecycle) & AICORE_LIFECYCLE_EXIT_BIT) == 0) {
             const uint64_t poll_start = get_sys_cnt_aicore();
             while (get_sys_cnt_aicore() - poll_start < PERCOUNTER_EXIT_POLL_CYCLES)
                 SPIN_WAIT_HINT();

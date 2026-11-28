@@ -69,13 +69,14 @@ describes eligibility, hardware ordering assumptions and A5 measurements.
 
 The A6 Host puts the DONE, fan-in and range-tail counters in the bound GM
 image, with one 64-byte aligned word per counter. The AICPU clears these words
-before releasing the lanes on every execution, including replay. A lane reads
-a word with atomic add-zero, adds a completion credit with atomic add-one, and
-sets a deferred-completion bit with a compare-and-swap loop on that same word. The bits and
-counts therefore survive concurrent publications. Consumers poll the GM
-threshold, including for MIX and `sync_start` tasks.
+before releasing the lanes on every execution, including replay. A consumer
+polls the full 32-bit word with `ld_dev`, including for MIX and `sync_start`
+tasks. It checks the count against the threshold and can observe a sticky defer
+bit in the same sample. Producers add a completion credit with atomic add-one
+and set defer bits with compare-and-swap on that same word.
 
-A separate GM word carries the launch generation. Lanes sample it before
+A separate GM word carries the launch generation. Lanes use atomic add-zero
+for their START and EXIT observations. They sample it before
 reporting, run after the AICPU publishes START, and retire on this generation's
 EXIT. The existing per-lane IPC4 nonce and GM return gate confirm retirement
 before the run releases its storage. A6 uses these counters for all waits. The

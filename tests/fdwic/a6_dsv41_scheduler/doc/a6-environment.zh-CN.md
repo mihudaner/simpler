@@ -13,16 +13,18 @@ A5 日历在选中的依赖边上由前驱 AIV 向后继核的 DMB（`DATA_MAIN_
 
 ### 2. 优先在 A6 同卡把完成计数的轮询读换成 `ld_dev`
 
-当前 007 的前驱用 `atomicAdd(counter, 1)` 向 32 位 GM 完成计数报到，后继用 `atomicAdd(counter, 0)` 读值判断阈值。002 在 A6 上让 96 个核各读同一地址一次，第 96 名的平均用时为 `ld_dev` **0.503 µs**、`atomicAdd(0)` **0.990 µs**。六段链中前驱持续写、后继反复读，需要用 007 本身测收益。这项对照可以与跨核提醒探针并行做。[计数读写实现](../../../../src/a5/runtime/percounter/runtime/scheduler/gm.h) · [002 同址实测](../results/002-hbg-same-address-access/README.zh-CN.md)
+007 的两版都用 `atomicAdd(counter, 1)` 上报完成。基线 `dbdfdcea3` 的后继用 `atomicAdd(counter, 0)` 查阈值，本分支已改为 32 位 `ld_dev(GM)`。002 在 A6 上让 96 个核各读同一地址一次，第 96 名的平均用时为 `ld_dev` **0.503 µs**、`atomicAdd(0)` **0.990 µs**。六段链中前驱持续写、后继反复读，整链收益待同卡实测。[计数读写实现](../../../../src/a5/runtime/percounter/runtime/scheduler/gm.h) · [002 同址实测](../results/002-hbg-same-address-access/README.zh-CN.md)
 
-- [ ] 在同一张 A6 卡上交替运行两版。仅把后继轮询前驱完成计数的读操作从 `atomicAdd(0)` 换成 32 位 `ld_dev(GM)`。固定计数地址布局、前驱原子加一、内存屏障、重试间隔、DMB 关闭和 SSBUF 放行逻辑。逐轮检查计数跨核可见、后继达到阈值才开跑、434 个成员完成且输出正确。
+- [x] 已在同一 CANN 9.3.0 工具链交叉编译两版 A6 运行时。按源码位置核对最终 AICore 镜像，完成计数查询由 `ATOM.ADD.u32` 变为 `LD_DEV.b32`。一次加载取得低位计数和高位 defer 标志，前驱加一仍用原子指令，START/EXIT 也继续使用原子加零。两版 Host、AICPU 库逐字节一致，共用同一个六段链 callable。六组日历相关无卡 C++ 测试通过，包含 A6 的普通→MIX→普通执行、并发完成与 defer 位、跨轮启停。[运行时协议](../../../../src/a5/runtime/percounter/README.md#notifications-on-a6)
+- [ ] 在同一张 A6 卡上交替运行两版。沿用同一组包、内存屏障、重试间隔、DMB 设置和 SSBUF 放行逻辑。逐轮检查后继达到阈值才开跑、434 个成员全部完成、六路输出及 padding 正确，关注多轮复用时最后一次加一能否及时被观察到。
 - [ ] 两版各预热 2 轮、正式 10 轮，分别采 L0 和 L2。L0 比首个业务核开始至末个业务核结束的耗时，L2 比五次交接各自的间隙（下段最早业务核开始减上段最晚业务核结束）。重点对齐 t0 最后完成上报、t1 领队观察到输入就绪、t1 的 V 看到 SSBUF 放行，判断哪一段缩短，并保留两版的代表泳道。[007 组包与采集命令](../../dsv41_scheduler/README.md#six-stage-chain-on-a6)
 
 ### 3. 查明 A6 的 CntNotify 加一入口，再选完成计数方案
 
 002 已在 A6 创建了 CntNotify，映射 SET/read 成功，写 1 能读回 1。卡点在 **AICore 并发加一**。`rtGetDevResAddress` 映射 `RT_RES_TYPE_STARS_CNT_NOTIFY_ADD` 时返回 `507899`，沿用 A5 的 `SET + 0x08` 写 96 次，期望 96，实际读回 0。现有结果只覆盖这两种取 ADD 入口的方式。[002 入口与返回值](../results/002-hbg-same-address-access/README.zh-CN.md#a6-完成计数)
 
-- [ ] 记录复测卡的 SoC、CANN、驱动和固件版本，查清该版本对 `507899` 的定义、支持的资源类型、命令和映射方式。如果 A6 更换了接口或推荐其他硬件机制，确认它允许业务核直接并发加一、后继核能读到累计值。用该入口先做单核 0→1，再做 96 核各加一、跨核读回 96，重复多轮并检查轮间清零。
+- [x] 已核对本机 CANN 9.3.0 头文件。`acl/error_codes/rt_error_codes.h` 把 `507899` 定义为 `ACL_ERROR_RT_DRV_INTERNAL_ERROR`。`runtime/rt_external_device.h` 仍声明 ADD 资源类型，`acl/acl_rt.h` 提供带 stream 参数的 `aclrtCntNotifyRecord` 和 ADD 模式。业务核直接映射 ADD 的失败原因仍需对应 A6 驱动日志定位。
+- [ ] 记录复测卡的 SoC、CANN、驱动和固件版本，核对映射调用对应的驱动日志、支持的资源类型和进程域。如果 A6 更换了接口或推荐其他硬件机制，确认它允许业务核直接并发加一、后继核能读到累计值。用该入口先做单核 0→1，再做 96 核各加一、跨核读回 96，重复多轮并检查轮间清零。
 - [ ] 通过探针后，固定 DMB 设置和 MIX 实现，在同一张 A6 上对比硬件计数和第 2 项的 GM 方案。按结果正确性、六段链 L0 和 L2 最慢交接选型。**GM 保留为可长期采用的候选**，当前 `atomicAdd(0)` 版作为对照基线，待同卡结果出来后再定默认实现。[007 结果表](../results/007-calendar-scheduler/a6/README.zh-CN.md)
 
 ---
